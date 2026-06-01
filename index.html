@@ -508,7 +508,7 @@ function renderCard(v) {
       '<div class="card-dir">' + v.direccion + '</div>' +
       '<div class="card-meta"><span class="meta-tag">' + v.tipo + '</span>' + (v.medidas ? '<span class="meta-tag">' + v.medidas + '</span>' : '') + '<span class="meta-tag">' + v.lugar + '</span></div>' +
       aHtml +
-      '<div class="card-footer"><div><div class="card-cliente">' + (v.cliente || (v.estado === 'DISPONIBLE' ? '— disponible —' : '—')) + '</div><div class="card-ejecutiva">' + (v.ejecutiva || '') + '</div></div>' +
+      '<div class="card-footer"><div><div class="card-cliente">' + (v.cliente || (v.estado === 'DISPONIBLE' ? '' : '—')) + '</div><div class="card-ejecutiva">' + (v.ejecutiva || '') + '</div></div>' +
       (v.valor ? '<div style="font-family:monospace;font-size:10px;color:var(--muted)">$' + Number(v.valor).toLocaleString() + '</div>' : '') + '</div>' +
       rBtn + '</div></div>';
 }
@@ -1221,9 +1221,15 @@ async function cargarBloqueos() {
   // 1. Cargar localStorage inmediatamente (sin esperar red)
   try {
     const local = JSON.parse(localStorage.getItem('zz_bloqueos_cache') || '{}');
+    // Clean expired
+    Object.keys(local).forEach(k => {
+      if (local[k] && new Date() > new Date(local[k].expira)) delete local[k];
+    });
     if (Object.keys(local).length > 0) {
       _bloqueos = local;
-      if (typeof render === 'function') { render(); updateStats(); }
+      if (typeof render === 'function' && typeof DATA !== 'undefined' && DATA.length > 0) {
+        render(); updateStats();
+      }
     }
   } catch(e) {}
 
@@ -1242,8 +1248,11 @@ async function cargarBloqueos() {
     if (changed) await guardarBloqueos();
     // Guardar en localStorage como cache local
     localStorage.setItem('zz_bloqueos_cache', JSON.stringify(_bloqueos));
-    // Re-render con datos frescos
-    if (typeof render === 'function') { render(); updateStats(); }
+    // Re-render con datos frescos para mostrar contadores
+    if (typeof render === 'function' && typeof DATA !== 'undefined' && DATA.length > 0) {
+      render();
+      updateStats();
+    }
   } catch(e) {
     // Si falla Firebase, usar localStorage
     console.warn('Firebase no disponible, usando caché local');
