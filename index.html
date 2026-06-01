@@ -364,6 +364,12 @@ function loadFromCache() {
   if (cached && cached.length) { DATA = cached; onDataLoaded(); }
 }
 
+function onDataLoaded() {
+  populateFilters();
+  updateStats();
+  render();
+}
+
 // ── CACHÉ ────────────────────────────────────────────────────
 function setCache(data) {
   try {
