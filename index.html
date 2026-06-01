@@ -766,14 +766,20 @@ async function cancelarReserva(codigo) {
     showToast('❌ PIN incorrecto', 'error');
     return;
   }
+  showToast('⏳ Cancelando reserva...', 'info');
   try {
-    // Cancelar en Sheet
+    // 1. Cancelar en Sheet primero (esperar confirmación)
     try {
-      await fetch(API_URL, {
+      const res = await fetch(API_URL, {
         method: 'POST',
         body: JSON.stringify({ action: 'cancelarReserva', codigo })
       });
-    } catch(e) {}
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+    } catch(e) {
+      showToast('⚠️ Error al cancelar en Sheet: ' + e.message, 'error');
+    }
+    // 2. Limpiar Firebase después
     removeBloqueo(codigo);
     showToast('✓ Reserva cancelada', 'info');
     closeModal();
