@@ -498,7 +498,16 @@ function renderCard(v) {
     : '<div class="photo-placeholder"><div class="icon">📷</div><span>Sin foto</span></div>';
   const isVenc = v.alerta && v.alerta.includes('VENCIDO');
   const aHtml = v.alerta ? '<span class="alerta-tag ' + (isVenc ? 'at-danger' : 'at-warn') + '">' + v.alerta + '</span>' : '';
-  const bloqueo = isBlocked(v.codigo);
+  // Check Firebase first, then Sheet's bloqueo fields
+  let bloqueo = isBlocked(v.codigo);
+  if (!bloqueo && v.bloqueo_expira && new Date() < new Date(v.bloqueo_expira)) {
+    bloqueo = {
+      expira: v.bloqueo_expira,
+      ejecutiva: v.bloqueo_ejecutiva || v.ejecutiva_reserva || '',
+      cliente: v.cliente_reserva || v.cliente || '',
+      fromSheet: true
+    };
+  }
   const efectivoReservada = v.estado === 'RESERVADA' || bloqueo;
   const rBtn = v.estado === 'DISPONIBLE'
     ? bloqueo
@@ -506,7 +515,9 @@ function renderCard(v) {
         '<div style="font-size:10px;color:var(--muted);margin-top:4px">Reservada por ' + bloqueo.ejecutiva + ' para ' + bloqueo.cliente + '</div>' +
         '<button class="btn-cancelar" onclick="event.stopPropagation();cancelarReservaBloqueo(\'' + v.codigo + '\')">🔐 Cancelar (admin)</button>'
       : '<button class="reserve-btn" onclick="event.stopPropagation();openModal(\'' + v.codigo + '\')">+ Reservar esta valla</button>'
-    : '';
+    : (v.estado === 'RESERVADA' && bloqueo
+        ? '<div class="countdown" data-countdown="' + bloqueo.expira + '" data-codigo="' + v.codigo + '">🔒 calculando...</div>'
+        : '');
   return '<div class="card" onclick="openModal(\'' + v.codigo + '\')">' +
     '<div class="card-photo">' + fHtml + '</div>' +
     '<div class="card-body">' +
