@@ -569,7 +569,7 @@ function renderCard(v) {
   const onclk = (multiSelectMode && v.estado === 'DISPONIBLE')
     ? 'toggleValla(\'' + v.codigo + '\',event)'
     : 'openModal(\'' + v.codigo + '\')';
-  return '<div class="card' + selClass + '" onclick="' + onclk + '">' + chk +' +
+  return '<div class="card' + selClass + '" onclick="' + onclk + '">' + chk +
     '<div class="card-photo">' + fHtml + '</div>' +
     '<div class="card-body">' +
       '<div class="card-header"><div class="card-codigo">' + v.codigo + '</div><div class="estado-badge ' + (bloqueo ? 'eb-RESERVADA' : ec(v.estado)) + '">' + (bloqueo ? 'RESERVADA' : v.estado) + '</div></div>' +
