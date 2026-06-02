@@ -587,7 +587,8 @@ function renderCard(v) {
   const chk = (multiSelectMode && isDisp) ? '<input type="checkbox" class="card-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();toggleValla(event,\'' + v.codigo + '\')">': '';
   const selClass = isSelected ? ' selected-card' : '';
   const onclk = (multiSelectMode && isDisp) ? 'toggleValla(event,\'' + v.codigo + '\')' : 'openModal(\'' + v.codigo + '\')';
-  return '<div class="card' + selClass + '" onclick="' + onclk + '">' +
+  const cardOnClick = (multiSelectMode && isDisp) ? 'selValla(event,this)' : 'openModal(\'' + v.codigo + '\')';
+  return '<div class="card' + selClass + '" data-codigo="' + v.codigo + '" onclick="' + cardOnClick + '">' +
     chk +
     '<div class="card-photo">' + fHtml + '</div>' +
     '<div class="card-body">' +
@@ -1370,6 +1371,13 @@ function toggleMultiSelect() {
     btn.style.color = multiSelectMode ? '#ef4444' : '#3b82f6';
   }
   render();
+}
+
+function selValla(event, el) {
+  event.stopPropagation();
+  const codigo = el.dataset ? el.dataset.codigo : (el.closest ? el.closest('[data-codigo]')?.dataset.codigo : null);
+  if (!codigo) return;
+  toggleValla(event, codigo);
 }
 
 function toggleValla(event, codigo) {
