@@ -562,14 +562,13 @@ function renderCard(v) {
     : (v.estado === 'RESERVADA' && bloqueo
         ? '<div class="countdown" data-countdown="' + bloqueo.expira + '" data-codigo="' + v.codigo + '">🔒 calculando...</div>'
         : '');
-  const chk = (multiSelectMode && v.estado === 'DISPONIBLE')
-    ? '<input type="checkbox" class="card-checkbox" ' + (selectedVallas.has(v.codigo)?'checked':'') + ' onclick="event.stopPropagation();toggleValla(\'' + v.codigo + '\',event)">'
-    : '';
-  const selClass = selectedVallas.has(v.codigo) ? ' selected-card' : '';
-  const onclk = (multiSelectMode && v.estado === 'DISPONIBLE')
-    ? 'toggleValla(\'' + v.codigo + '\',event)'
-    : 'openModal(\'' + v.codigo + '\')';
-  return '<div class="card' + selClass + '" onclick="' + onclk + '">' + chk +
+  const isDisp = v.estado === 'DISPONIBLE';
+  const isSelected = selectedVallas.has(v.codigo);
+  const chk = (multiSelectMode && isDisp) ? '<input type="checkbox" class="card-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();toggleValla(event,\'' + v.codigo + '\')">': '';
+  const selClass = isSelected ? ' selected-card' : '';
+  const onclk = (multiSelectMode && isDisp) ? 'toggleValla(event,\'' + v.codigo + '\')' : 'openModal(\'' + v.codigo + '\')';
+  return '<div class="card' + selClass + '" onclick="' + onclk + '">' +
+    chk +
     '<div class="card-photo">' + fHtml + '</div>' +
     '<div class="card-body">' +
       '<div class="card-header"><div class="card-codigo">' + v.codigo + '</div><div class="estado-badge ' + (bloqueo ? 'eb-RESERVADA' : ec(v.estado)) + '">' + (bloqueo ? 'RESERVADA' : v.estado) + '</div></div>' +
@@ -1010,7 +1009,7 @@ function toggleMultiSelect() {
   render();
 }
 
-function toggleValla(codigo, event) {
+function toggleValla(event, codigo) {
   event.stopPropagation();
   if (selectedVallas.has(codigo)) selectedVallas.delete(codigo);
   else selectedVallas.add(codigo);
