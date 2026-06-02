@@ -179,6 +179,28 @@
   .btn-contratar-confirm{width:100%;padding:10px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:opacity .2s;margin-top:8px;}
   .btn-contratar-confirm:hover{opacity:.85;}
   .btn-contratar-confirm:disabled{opacity:.4;cursor:not-allowed;}
+
+  .card-checkbox{position:absolute;top:10px;left:10px;width:20px;height:20px;cursor:pointer;z-index:10;accent-color:#3b82f6;}
+  .card.selected-card{outline:2px solid #3b82f6;outline-offset:2px;}
+  .floating-contratar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#3b82f6;color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer;font-family:sans-serif;box-shadow:0 4px 20px rgba(59,130,246,.5);z-index:200;display:none;transition:all .2s;}
+  .floating-contratar:hover{opacity:.9;transform:translateX(-50%) scale(1.02);}
+  .dashboard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;padding:4px;}
+  .dash-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
+  .dash-card h4{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:14px;}
+  .exec-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);}
+  .exec-row:last-child{border-bottom:none;}
+  .exec-name{font-size:12px;font-weight:600;color:var(--text);}
+  .exec-pills{display:flex;gap:6px;}
+  .exec-pill{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;}
+  .pill-cont{background:rgba(239,68,68,.15);color:#ef4444;}
+  .pill-res{background:rgba(245,158,11,.15);color:var(--accent);}
+  .pill-alert{background:rgba(239,68,68,.1);color:#f87171;}
+  .dash-stat{text-align:center;padding:10px 0;}
+  .dash-stat .num{font-size:32px;font-weight:700;color:var(--accent);}
+  .dash-stat .lbl{font-size:11px;color:var(--muted);margin-top:4px;}
+  .dash-stats-row{display:flex;justify-content:space-around;}
+  .liberar-btn{margin-top:12px;width:100%;padding:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:sans-serif;}
+  .liberar-btn:hover{background:rgba(239,68,68,.2);}
   @media(max-width:640px){.kanban{grid-template-columns:1fr;}.form-row{grid-template-columns:1fr;}.header-right .stat-pill{display:none;}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -208,6 +230,7 @@
   <div class="tab" onclick="switchTab('reservadas')">🟡 Reservadas</div>
   <div class="tab" onclick="switchTab('alertas')">⚠️ Alertas</div>
   <div class="tab" onclick="switchTab('mapa')">🗺 Mapa</div>
+  <div class="tab" id="tabDashboard" onclick="switchTab('dashboard')">📊 Dashboard</div>
 </div>
 
 <div class="toolbar">
@@ -217,6 +240,7 @@
   <select class="filter" id="filterEjecutiva" onchange="applyFilters()"><option value="">Todas las ejecutivas</option></select>
   <span class="count-badge" id="countBadge">–</span>
   <button id="btnExportPPT" onclick="exportarPPT()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
+      <button id="btnMultiSelect" onclick="toggleMultiSelect()" style="display:none;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;color:#3b82f6;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Selección múltiple</button>
   <div class="view-toggle" id="viewToggle">
     <button class="view-btn active" onclick="setView('grid',this)">⊞ Galería</button>
     <button class="view-btn" onclick="setView('table',this)">≡ Tabla</button>
@@ -233,6 +257,8 @@
 <div class="content" id="mainContent">
   <div class="loading"><div class="spinner"></div><p>Cargando inventario desde Google Sheets...</p></div>
 </div>
+
+<button class="floating-contratar" id="floatingContratar" onclick="openModalMultiContratar()">⚡ Contratar seleccionadas (<span id="selectedCount">0</span>)</button>
 
 <div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
   <div class="modal">
@@ -454,6 +480,9 @@ function switchTab(t) {
   document.getElementById('viewToggle').style.display = (t === 'alertas' || t === 'mapa') ? 'none' : '';
   const pptBtn = document.getElementById('btnExportPPT');
   if (pptBtn) pptBtn.style.display = t === 'disponibles' ? 'block' : 'none';
+  const msBtn = document.getElementById('btnMultiSelect');
+  if (msBtn) msBtn.style.display = t === 'disponibles' ? 'block' : 'none';
+  if (t !== 'disponibles') { multiSelectMode = false; selectedVallas.clear(); updateFloatingBtn(); }
   render();
 }
 
@@ -477,6 +506,7 @@ function render() {
   const content = document.getElementById('mainContent');
   if (state.tab === 'alertas') { renderAlerts(content); return; }
   if (state.tab === 'mapa') { renderMapa(content); return; }
+  if (state.tab === 'dashboard') { renderDashboard(content); return; }
 
   const filtered = getFiltered();
   const total = filtered.length;
@@ -532,7 +562,14 @@ function renderCard(v) {
     : (v.estado === 'RESERVADA' && bloqueo
         ? '<div class="countdown" data-countdown="' + bloqueo.expira + '" data-codigo="' + v.codigo + '">🔒 calculando...</div>'
         : '');
-  return '<div class="card" onclick="openModal(\'' + v.codigo + '\')">' +
+  const chk = (multiSelectMode && v.estado === 'DISPONIBLE')
+    ? '<input type="checkbox" class="card-checkbox" ' + (selectedVallas.has(v.codigo)?'checked':'') + ' onclick="event.stopPropagation();toggleValla(\'' + v.codigo + '\',event)">'
+    : '';
+  const selClass = selectedVallas.has(v.codigo) ? ' selected-card' : '';
+  const onclk = (multiSelectMode && v.estado === 'DISPONIBLE')
+    ? 'toggleValla(\'' + v.codigo + '\',event)'
+    : 'openModal(\'' + v.codigo + '\')';
+  return '<div class="card' + selClass + '" onclick="' + onclk + '">' + chk +' +
     '<div class="card-photo">' + fHtml + '</div>' +
     '<div class="card-body">' +
       '<div class="card-header"><div class="card-codigo">' + v.codigo + '</div><div class="estado-badge ' + (bloqueo ? 'eb-RESERVADA' : ec(v.estado)) + '">' + (bloqueo ? 'RESERVADA' : v.estado) + '</div></div>' +
@@ -665,6 +702,7 @@ function openModal(codigo) {
     '<button onclick="setFotoPos(\'' + v.codigo + '\',\'' + p + '\')" style="padding:3px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-family:inherit;border:1px solid ' + (fotoPos===p ? 'var(--accent)' : 'var(--border)') + ';background:' + (fotoPos===p ? 'rgba(245,158,11,.2)' : 'var(--surface)') + ';color:' + (fotoPos===p ? 'var(--accent)' : 'var(--muted)') + '">' + posLabels[p] + '</button>'
   ).join('');
   const fotoControls = fotoLocal ? '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><span style="font-size:10px;color:var(--muted);margin-right:2px">Posición:</span>' + posBtns + '</div>' : '';
+  const liberarBtn = (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') ? '<button class="liberar-btn" onclick="liberarValla(\'' + v.codigo + '\')">🔓 Liberar valla (Admin)</button>' : '';
   document.getElementById('modalBody').innerHTML =
     fotoControls +
     '<div class="modal-photo" style="cursor:pointer" onclick="' + (fotoLocal ? '' : 'triggerFotoUpload(\'' + v.codigo + '\')') + '" title="' + (fotoLocal ? '' : 'Click para subir foto') + '">' +
@@ -688,6 +726,9 @@ function openModal(codigo) {
       (v.cliente_reserva && v.estado !== 'RESERVADA' ? '<div class="detail-item"><div class="detail-label">Pre-reserva</div><div class="detail-value">' + v.cliente_reserva + ' / ' + v.ejecutiva_reserva + '</div></div>' : '') +
     '</div>' + rSec;
 
+  // Add liberar button to modal
+  const existingBody = document.getElementById('modalBody');
+  if (existingBody && liberarBtn) existingBody.insertAdjacentHTML('beforeend', liberarBtn);
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -946,6 +987,293 @@ function updateMapMarkers() {
 }
 
 
+
+
+
+// ── MULTI-SELECT ──────────────────────────────────────────────
+let multiSelectMode = false;
+let selectedVallas = new Set();
+let _multiPdfFile = null;
+let _multiPdfBase64 = null;
+
+function toggleMultiSelect() {
+  multiSelectMode = !multiSelectMode;
+  selectedVallas.clear();
+  updateFloatingBtn();
+  const btn = document.getElementById('btnMultiSelect');
+  if (btn) {
+    btn.textContent = multiSelectMode ? '✕ Cancelar selección' : '☐ Selección múltiple';
+    btn.style.background = multiSelectMode ? 'rgba(239,68,68,.12)' : 'rgba(59,130,246,.12)';
+    btn.style.borderColor = multiSelectMode ? 'rgba(239,68,68,.35)' : 'rgba(59,130,246,.35)';
+    btn.style.color = multiSelectMode ? '#ef4444' : '#3b82f6';
+  }
+  render();
+}
+
+function toggleValla(codigo, event) {
+  event.stopPropagation();
+  if (selectedVallas.has(codigo)) selectedVallas.delete(codigo);
+  else selectedVallas.add(codigo);
+  updateFloatingBtn();
+  // Update card visual
+  const card = event.target.closest('.card');
+  if (card) card.classList.toggle('selected-card', selectedVallas.has(codigo));
+}
+
+function updateFloatingBtn() {
+  const btn = document.getElementById('floatingContratar');
+  const cnt = document.getElementById('selectedCount');
+  if (!btn) return;
+  if (multiSelectMode && selectedVallas.size > 0) {
+    btn.style.display = 'block';
+    if (cnt) cnt.textContent = selectedVallas.size;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+function openModalMultiContratar() {
+  if (selectedVallas.size === 0) return;
+  const vallas = [...selectedVallas].map(c => DATA.find(v => v.codigo === c)).filter(Boolean);
+  _multiPdfFile = null; _multiPdfBase64 = null;
+  const today = new Date().toISOString().split('T')[0];
+
+  document.getElementById('modalTitle').textContent = '⚡ Contratación Múltiple';
+  document.getElementById('modalSubtitle').textContent = vallas.length + ' vallas seleccionadas';
+
+  document.getElementById('modalBody').innerHTML = `
+    <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#60a5fa;max-height:120px;overflow-y:auto">
+      ${vallas.map(v => '<div style="padding:2px 0">📍 <strong>' + v.codigo + '</strong> — ' + v.direccion.substring(0,50) + '…</div>').join('')}
+    </div>
+    <div class="contratar-form">
+      <h4>⚡ Datos de Contratación (aplica a todas las vallas)</h4>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cliente</label>
+          <input type="text" id="mct-cliente" placeholder="Nombre del cliente" oninput="checkMultiForm()">
+        </div>
+        <div class="form-group">
+          <label>Ejecutiva</label>
+          <select id="mct-ejecutiva" onchange="checkMultiForm()">
+            <option value="">Seleccionar...</option>
+            ${['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'].map(e=>'<option>'+e+'</option>').join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fecha inicio</label>
+          <input type="date" id="mct-inicio" value="${today}" oninput="checkMultiForm()">
+        </div>
+        <div class="form-group">
+          <label>Fecha fin</label>
+          <input type="date" id="mct-fin" oninput="checkMultiForm()">
+        </div>
+      </div>
+      <div class="pdf-upload-area" id="mpdfUploadArea" onclick="document.getElementById('mpdfFileInput').click()">
+        <div class="pdf-icon">📎</div>
+        <p><strong>Click para subir la Orden de Contratación</strong></p>
+        <p>Solo PDF · Obligatorio</p>
+        <div class="pdf-name" id="mpdfFileName"></div>
+      </div>
+      <input type="file" id="mpdfFileInput" accept="application/pdf" style="display:none" onchange="handleMultiPdf(event)">
+      <button class="btn-contratar-confirm" id="btnMultiContratar" onclick="confirmarMultiContratacion()" disabled>
+        📎 Sube el PDF para continuar
+      </button>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function handleMultiPdf(event) {
+  const file = event.target.files[0];
+  if (!file || file.type !== 'application/pdf') return;
+  _multiPdfFile = file;
+  document.getElementById('mpdfFileName').textContent = '✓ ' + file.name;
+  document.getElementById('mpdfUploadArea').classList.add('has-file');
+  const reader = new FileReader();
+  reader.onload = e => { _multiPdfBase64 = e.target.result.split(',')[1]; checkMultiForm(); };
+  reader.readAsDataURL(file);
+}
+
+function checkMultiForm() {
+  const c = document.getElementById('mct-cliente')?.value.trim();
+  const e = document.getElementById('mct-ejecutiva')?.value;
+  const i = document.getElementById('mct-inicio')?.value;
+  const f = document.getElementById('mct-fin')?.value;
+  const btn = document.getElementById('btnMultiContratar');
+  if (!btn) return;
+  const ok = c && e && i && f && _multiPdfBase64;
+  btn.disabled = !ok;
+  btn.textContent = ok ? '⚡ Confirmar Contratación Múltiple' : '📎 Sube el PDF para continuar';
+}
+
+async function confirmarMultiContratacion() {
+  const cliente = document.getElementById('mct-cliente').value.trim();
+  const ejecutiva = document.getElementById('mct-ejecutiva').value;
+  const inicio = document.getElementById('mct-inicio').value;
+  const fin = document.getElementById('mct-fin').value;
+  const codigos = [...selectedVallas];
+
+  const btn = document.getElementById('btnMultiContratar');
+  btn.disabled = true;
+  btn.textContent = '⏳ Procesando...';
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'contratarMultiple',
+        codigos, cliente, ejecutiva, inicio, fin,
+        pdfBase64: _multiPdfBase64,
+        pdfNombre: _multiPdfFile ? _multiPdfFile.name : 'orden.pdf'
+      })
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+
+    showToast('✅ ' + codigos.length + ' vallas contratadas — email enviado', 'success');
+    closeModal();
+    multiSelectMode = false;
+    selectedVallas.clear();
+    updateFloatingBtn();
+    const msBtn = document.getElementById('btnMultiSelect');
+    if (msBtn) { msBtn.textContent = '☐ Selección múltiple'; msBtn.style.background='rgba(59,130,246,.12)'; msBtn.style.color='#3b82f6'; }
+    await loadData(true);
+  } catch(err) {
+    showToast('❌ Error: ' + err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '⚡ Confirmar Contratación Múltiple';
+  }
+}
+
+// ── LIBERAR VALLA (ADMIN) ─────────────────────────────────────
+async function liberarValla(codigo) {
+  const pin = prompt('🔐 PIN de administrador para liberar valla:');
+  if (pin === null) return;
+  if (pin !== ADMIN_PIN) { showToast('❌ PIN incorrecto', 'error'); return; }
+  if (!confirm('¿Seguro que deseas liberar ' + codigo + ' y ponerla DISPONIBLE?')) return;
+
+  showToast('⏳ Liberando valla...', 'info');
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'liberarValla', codigo })
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    removeBloqueo(codigo);
+    showToast('✅ Valla liberada: ' + codigo, 'success');
+    closeModal();
+    await loadData(true);
+  } catch(err) {
+    showToast('❌ Error: ' + err.message, 'error');
+  }
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────
+function renderDashboard(container) {
+  const ejecutivas = {};
+  const ciudades = {};
+  let totalDisp=0,totalCont=0,totalRes=0,totalAlert=0;
+  const hoy = new Date();
+  const en30 = new Date(hoy.getTime() + 30*24*3600000);
+
+  DATA.forEach(v => {
+    const e = v.ejecutiva || 'Sin asignar';
+    if (!ejecutivas[e]) ejecutivas[e] = {cont:0,res:0,alert:0,vencen:0,clientes:new Set()};
+    if (v.estado==='CONTRATADA') { ejecutivas[e].cont++; totalCont++; if(v.cliente) ejecutivas[e].clientes.add(v.cliente); }
+    if (v.estado==='RESERVADA')  { ejecutivas[e].res++;  totalRes++; }
+    if (v.alerta)                { ejecutivas[e].alert++;totalAlert++; }
+    if (v.termino) {
+      const parts = v.termino.split('/');
+      if (parts.length===3) {
+        const t = new Date(parts[2]+'-'+parts[1]+'-'+parts[0]);
+        if (t>=hoy && t<=en30) ejecutivas[e].vencen++;
+      }
+    }
+    ciudades[v.lugar||'Otra'] = (ciudades[v.lugar||'Otra']||0)+1;
+    if (v.estado==='DISPONIBLE') totalDisp++;
+  });
+
+  const execList = Object.entries(ejecutivas)
+    .filter(([e])=>e&&e!=='Sin asignar')
+    .sort((a,b)=>b[1].cont-a[1].cont)
+    .filter(([,d])=>d.cont+d.res>0);
+
+  const clienteCount = {};
+  DATA.filter(v=>v.cliente&&v.estado==='CONTRATADA').forEach(v=>{clienteCount[v.cliente]=(clienteCount[v.cliente]||0)+1;});
+  const topClientes = Object.entries(clienteCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  const proxVencer = DATA.filter(v=>{
+    if(!v.termino||v.estado!=='CONTRATADA') return false;
+    const p=v.termino.split('/');
+    if(p.length!==3) return false;
+    const t=new Date(p[2]+'-'+p[1]+'-'+p[0]);
+    return t>=hoy && t<=en30;
+  });
+
+  let execRows = execList.map(function(entry) {
+    const name=entry[0], d=entry[1];
+    return '<div class="exec-row">' +
+      '<span class="exec-name">' + name + '</span>' +
+      '<div class="exec-pills">' +
+      '<span class="exec-pill pill-cont">' + d.cont + ' cont.</span>' +
+      (d.res>0 ? '<span class="exec-pill pill-res">'+d.res+' res.</span>' : '') +
+      (d.alert>0 ? '<span class="exec-pill pill-alert">⚠️ '+d.alert+'</span>' : '') +
+      (d.vencen>0 ? '<span class="exec-pill" style="background:rgba(167,139,250,.15);color:#a78bfa">📅 '+d.vencen+' vencen</span>' : '') +
+      '<span class="exec-pill" style="background:var(--surface2);color:var(--muted)">'+d.clientes.size+' clientes</span>' +
+      '</div></div>';
+  }).join('');
+
+  let clienteRows = topClientes.map(function(entry,i) {
+    return '<div class="exec-row">' +
+      '<span class="exec-name">'+(i+1)+'. '+entry[0]+'</span>' +
+      '<span class="exec-pill pill-cont">'+entry[1]+' valla'+(entry[1]>1?'s':'')+'</span>' +
+      '</div>';
+  }).join('');
+
+  let ciudadRows = Object.entries(ciudades).sort((a,b)=>b[1]-a[1]).slice(0,8).map(function(entry) {
+    return '<div class="exec-row">' +
+      '<span class="exec-name">'+entry[0]+'</span>' +
+      '<span class="exec-pill" style="background:var(--surface2);color:var(--muted)">'+entry[1]+'</span>' +
+      '</div>';
+  }).join('');
+
+  let vencRows = proxVencer.slice(0,10).map(function(v) {
+    return '<div class="exec-row">' +
+      '<span class="exec-name" style="font-family:monospace;font-size:11px;color:var(--accent)">'+v.codigo+'</span>' +
+      '<span style="font-size:11px;color:var(--muted);flex:1;margin:0 10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+(v.cliente||'—')+' · '+(v.ejecutiva||'—')+'</span>' +
+      '<span class="exec-pill pill-alert">Vence: '+v.termino+'</span>' +
+      '</div>';
+  }).join('') || '<p style="color:var(--muted);font-size:12px">Sin vencimientos en los próximos 30 días</p>';
+
+  container.innerHTML =
+    '<div class="dashboard-grid">' +
+    '<div class="dash-card" style="grid-column:span 2">' +
+      '<h4>📊 Resumen general</h4>' +
+      '<div class="dash-stats-row">' +
+        '<div class="dash-stat"><div class="num" style="color:#10b981">'+totalDisp+'</div><div class="lbl">Disponibles</div></div>' +
+        '<div class="dash-stat"><div class="num" style="color:#ef4444">'+totalCont+'</div><div class="lbl">Contratadas</div></div>' +
+        '<div class="dash-stat"><div class="num" style="color:var(--accent)">'+totalRes+'</div><div class="lbl">Reservadas</div></div>' +
+        '<div class="dash-stat"><div class="num" style="color:#f87171">'+totalAlert+'</div><div class="lbl">En alerta</div></div>' +
+        '<div class="dash-stat"><div class="num" style="color:#a78bfa">'+proxVencer.length+'</div><div class="lbl">Vencen en 30d</div></div>' +
+        '<div class="dash-stat"><div class="num" style="color:#60a5fa">'+DATA.length+'</div><div class="lbl">Total inventario</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="dash-card" style="grid-column:span 2">' +
+      '<h4>👤 Por ejecutiva</h4>' + execRows +
+    '</div>' +
+    '<div class="dash-card">' +
+      '<h4>🏆 Top clientes</h4>' + clienteRows +
+    '</div>' +
+    '<div class="dash-card">' +
+      '<h4>🏙️ Por ciudad</h4>' + ciudadRows +
+    '</div>' +
+    '<div class="dash-card" style="grid-column:span 2">' +
+      '<h4>⚠️ Vencimientos próximos 30 días</h4>' + vencRows +
+    '</div>' +
+    '</div>';
+}
 
 
 // ── CONTRATACIÓN INMEDIATA ────────────────────────────────────
