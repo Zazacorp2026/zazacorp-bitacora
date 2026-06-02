@@ -275,7 +275,10 @@
   <div class="loading"><div class="spinner"></div><p>Cargando inventario desde Google Sheets...</p></div>
 </div>
 
-<button class="floating-contratar" id="floatingContratar" onclick="openModalMultiContratar()">⚡ Contratar seleccionadas (<span id="selectedCount">0</span>)</button>
+<div id="floatingBar" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:none;gap:10px;z-index:200">
+  <button class="floating-contratar" style="background:#f59e0b;color:#000" onclick="openModalMultiReservar()">🔒 Reservar seleccionadas (<span id="selectedCountR">0</span>)</button>
+  <button class="floating-contratar" style="background:#3b82f6;color:#fff" onclick="openModalMultiContratar()">⚡ Contratar seleccionadas (<span id="selectedCountC">0</span>)</button>
+</div>
 
 <div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
   <div class="modal">
@@ -579,12 +582,13 @@ function renderCard(v) {
     : (v.estado === 'RESERVADA' && bloqueo
         ? '<div class="countdown" data-countdown="' + bloqueo.expira + '" data-codigo="' + v.codigo + '">🔒 calculando...</div>'
         : '');
-  const isDisp = v.estado === 'DISPONIBLE';
+  const isDisp = v.estado === 'DISPONIBLE' || v.estado === 'RESERVADA';
   const isSelected = selectedVallas.has(v.codigo);
   const chk = (multiSelectMode && isDisp) ? '<input type="checkbox" class="card-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();toggleValla(event,\'' + v.codigo + '\')">': '';
   const selClass = isSelected ? ' selected-card' : '';
   const onclk = (multiSelectMode && isDisp) ? 'toggleValla(event,\'' + v.codigo + '\')' : 'openModal(\'' + v.codigo + '\')';
-  return '<div class="card' + selClass + '" onclick="' + onclk + '">' +
+  const cardOnClick = (multiSelectMode && isDisp) ? 'selValla(event,this)' : 'openModal(\'' + v.codigo + '\')';
+  return '<div class="card' + selClass + '" data-codigo="' + v.codigo + '" onclick="' + cardOnClick + '">' +
     chk +
     '<div class="card-photo">' + fHtml + '</div>' +
     '<div class="card-body">' +
@@ -761,6 +765,16 @@ function openModal(codigo) {
       const _cod2 = v.codigo;
       seg2Btn.onclick = function() { openModalSegundaReserva(_cod2); };
       existingBody.appendChild(seg2Btn);
+    }
+    // Contratar desde RESERVADA
+    if (v.estado === 'RESERVADA') {
+      const contBtn = document.createElement('button');
+      contBtn.className = 'contratar-btn';
+      contBtn.textContent = '⚡ Contratar esta valla';
+      contBtn.style.marginTop = '8px';
+      const _codC = v.codigo;
+      contBtn.onclick = function() { closeModal(); setTimeout(function(){ openModalContratar(_codC); }, 200); };
+      existingBody.appendChild(contBtn);
     }
     // Edit button
     const editBtn = document.createElement('button');
@@ -1037,6 +1051,78 @@ function updateMapMarkers() {
 
 
 
+
+// ── RESERVA MÚLTIPLE ──────────────────────────────────────────
+function openModalMultiReservar() {
+  if (selectedVallas.size === 0) return;
+  const vallas = [...selectedVallas].map(c => DATA.find(v => v.codigo === c)).filter(Boolean);
+
+  document.getElementById('modalTitle').textContent = '🔒 Reserva Múltiple';
+  document.getElementById('modalSubtitle').textContent = vallas.length + ' vallas seleccionadas';
+
+  const today = new Date().toISOString().split('T')[0];
+
+  document.getElementById('modalBody').innerHTML =
+    '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--accent);max-height:120px;overflow-y:auto">' +
+    vallas.map(function(v){ return '<div style="padding:2px 0">📍 <strong>' + v.codigo + '</strong> — ' + v.direccion.substring(0,50) + '…</div>'; }).join('') +
+    '</div>' +
+    '<div class="form-row">' +
+      '<div class="form-group"><label>Cliente</label><input type="text" id="mr-cliente" class="modal-input" placeholder="Nombre del cliente"></div>' +
+      '<div class="form-group"><label>Ejecutiva</label><select id="mr-ejecutiva" class="modal-input">' +
+      '<option value="">Seleccionar...</option>' +
+      ['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'].map(function(e){ return '<option>' + e + '</option>'; }).join('') +
+      '</select></div>' +
+    '</div>' +
+    '<button class="btn-contratar-confirm" style="background:var(--accent);color:#000;margin-top:12px" onclick="confirmarMultiReserva()">🔒 Confirmar Reserva Múltiple</button>';
+
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+async function confirmarMultiReserva() {
+  const cliente = document.getElementById('mr-cliente')?.value.trim();
+  const ejecutiva = document.getElementById('mr-ejecutiva')?.value;
+  if (!cliente || !ejecutiva) { showToast('Completa cliente y ejecutiva', 'info'); return; }
+
+  const btn = document.querySelector('.btn-contratar-confirm');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Reservando...'; }
+
+  const codigos = [...selectedVallas];
+  const expira = new Date(Date.now() + 48*3600000).toISOString();
+
+  try {
+    // Save each reserva to Sheet via Apps Script
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'reservarMultiple', codigos, cliente, ejecutiva, expira })
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+
+    // Save to Firebase for real-time
+    for (const codigo of codigos) {
+      const v = DATA.find(x => x.codigo === codigo);
+      await setBloqueoAsync(codigo, {
+        codigo, cliente, ejecutiva,
+        expira, fecha: new Date().toISOString().split('T')[0],
+        direccion: v ? v.direccion : '',
+        registrado: new Date().toISOString()
+      });
+    }
+
+    showToast('✅ ' + codigos.length + ' vallas reservadas', 'success');
+    closeModal();
+    multiSelectMode = false;
+    selectedVallas.clear();
+    updateFloatingBtn();
+    const msBtn = document.getElementById('btnMultiSelect');
+    if (msBtn) { msBtn.textContent='☐ Selección múltiple'; msBtn.style.background='rgba(59,130,246,.12)'; msBtn.style.color='#3b82f6'; }
+    await loadData(true);
+  } catch(err) {
+    showToast('❌ Error: ' + err.message, 'error');
+    if (btn) { btn.disabled=false; btn.textContent='🔒 Confirmar Reserva Múltiple'; }
+  }
+}
+
 // ── SEGUNDA RESERVA ───────────────────────────────────────────
 function openModalSegundaReserva(codigo) {
   const v = DATA.find(x => x.codigo === codigo);
@@ -1287,6 +1373,13 @@ function toggleMultiSelect() {
   render();
 }
 
+function selValla(event, el) {
+  event.stopPropagation();
+  const codigo = el.dataset ? el.dataset.codigo : (el.closest ? el.closest('[data-codigo]')?.dataset.codigo : null);
+  if (!codigo) return;
+  toggleValla(event, codigo);
+}
+
 function toggleValla(event, codigo) {
   event.stopPropagation();
   if (selectedVallas.has(codigo)) selectedVallas.delete(codigo);
@@ -1298,14 +1391,17 @@ function toggleValla(event, codigo) {
 }
 
 function updateFloatingBtn() {
-  const btn = document.getElementById('floatingContratar');
-  const cnt = document.getElementById('selectedCount');
-  if (!btn) return;
+  const bar = document.getElementById('floatingBar');
+  if (!bar) return;
   if (multiSelectMode && selectedVallas.size > 0) {
-    btn.style.display = 'block';
-    if (cnt) cnt.textContent = selectedVallas.size;
+    bar.style.display = 'flex';
+    const n = selectedVallas.size;
+    const cR = document.getElementById('selectedCountR');
+    const cC = document.getElementById('selectedCountC');
+    if (cR) cR.textContent = n;
+    if (cC) cC.textContent = n;
   } else {
-    btn.style.display = 'none';
+    bar.style.display = 'none';
   }
 }
 
@@ -1597,6 +1693,22 @@ function openModalContratar(codigo) {
           <input type="date" id="ct-fin" oninput="checkContratarForm()">
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Valor mensual (USD)</label>
+          <input type="number" id="ct-valor" placeholder="Ej: 2500" style="width:100%">
+        </div>
+        <div class="form-group">
+          <label>Período</label>
+          <input type="text" id="ct-periodo" placeholder="Ej: 6 MESES">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Valor mensual (USD)</label>
+          <input type="number" id="ct-valor" placeholder="Ej: 2500" oninput="checkContratarForm()" style="width:100%">
+        </div>
+      </div>
 
       <div class="pdf-upload-area" id="pdfUploadArea" onclick="document.getElementById('pdfFileInput').click()">
         <div class="pdf-icon">📎</div>
@@ -1667,11 +1779,15 @@ async function confirmarContratacion(codigo) {
   btn.textContent = '⏳ Procesando...';
 
   try {
+    const valor = document.getElementById('ct-valor')?.value || '';
+    const periodo = document.getElementById('ct-periodo')?.value || '';
+    const vData = DATA.find(x => x.codigo === codigo);
+    const fotoUrl = vData ? (vData.foto || '') : '';
     const res = await fetch(API_URL, {
       method: 'POST',
       body: JSON.stringify({
         action: 'contratar',
-        codigo, cliente, ejecutiva, inicio, fin,
+        codigo, cliente, ejecutiva, inicio, fin, valor, periodo, fotoUrl,
         pdfBase64: _pdfBase64,
         pdfNombre: _pdfFile ? _pdfFile.name : 'orden.pdf'
       })
@@ -2114,7 +2230,7 @@ setInterval(() => {
       const codExp = el.dataset.codigo;
       const vExp = DATA.find(x=>x.codigo===codExp);
       removeBloqueo(codExp);
-      // Check if there's a segunda reserva waiting
+      // Check if segunda reserva is waiting
       if (vExp && vExp.reserva2_cliente) {
         checkAndActivarSegunda(codExp);
       } else {
