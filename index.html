@@ -201,6 +201,19 @@
   .dash-stats-row{display:flex;justify-content:space-around;}
   .liberar-btn{margin-top:12px;width:100%;padding:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:sans-serif;}
   .liberar-btn:hover{background:rgba(239,68,68,.2);}
+
+  .edit-form{background:var(--surface2);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:16px;margin-top:14px;}
+  .edit-form h4{font-size:13px;font-weight:600;margin-bottom:14px;color:var(--accent);}
+  .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .edit-field{display:flex;flex-direction:column;gap:4px;}
+  .edit-field label{font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;}
+  .edit-field input,.edit-field select,.edit-field textarea{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;color:var(--text);font-family:sans-serif;outline:none;}
+  .edit-field input:focus,.edit-field select:focus,.edit-field textarea:focus{border-color:var(--accent);}
+  .edit-field.full{grid-column:span 2;}
+  .btn-edit-save{width:100%;margin-top:12px;padding:10px;background:var(--accent);border:none;border-radius:8px;color:#000;font-size:13px;font-weight:700;cursor:pointer;font-family:sans-serif;}
+  .btn-edit-save:hover{opacity:.85;}
+  .btn-edit-save:disabled{opacity:.4;cursor:not-allowed;}
+  .edit-toggle-btn{width:100%;margin-top:10px;padding:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:6px;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;font-family:sans-serif;}
   @media(max-width:640px){.kanban{grid-template-columns:1fr;}.form-row{grid-template-columns:1fr;}.header-right .stat-pill{display:none;}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -725,9 +738,13 @@ function openModal(codigo) {
       (v.cliente_reserva && v.estado !== 'RESERVADA' ? '<div class="detail-item"><div class="detail-label">Pre-reserva</div><div class="detail-value">' + v.cliente_reserva + ' / ' + v.ejecutiva_reserva + '</div></div>' : '') +
     '</div>' + rSec;
 
-  // Add liberar button to modal
+  // Add liberar + edit buttons to modal
   const existingBody = document.getElementById('modalBody');
   if (existingBody && liberarBtn) existingBody.insertAdjacentHTML('beforeend', liberarBtn);
+  if (existingBody) existingBody.insertAdjacentHTML('beforeend',
+    '<button class="edit-toggle-btn" onclick="toggleEditForm(\'' + v.codigo + '\')">✏️ Editar esta valla (Admin)</button>' +
+    '<div id="editFormContainer" style="display:none"></div>'
+  );
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -988,6 +1005,159 @@ function updateMapMarkers() {
 
 
 
+
+
+// ── EDITAR VALLA (ADMIN) ──────────────────────────────────────
+let _editPinOk = false;
+
+function toggleEditForm(codigo) {
+  const container = document.getElementById('editFormContainer');
+  if (!container) return;
+
+  if (container.style.display !== 'none') {
+    container.style.display = 'none';
+    return;
+  }
+
+  if (!_editPinOk) {
+    const pin = prompt('🔐 PIN de administrador para editar:');
+    if (!pin || pin !== ADMIN_PIN) { showToast('❌ PIN incorrecto', 'error'); return; }
+    _editPinOk = true;
+  }
+
+  const v = DATA.find(x => x.codigo === codigo);
+  if (!v) return;
+
+  const ESTADOS = ['DISPONIBLE','CONTRATADA','RESERVADA','NO UTILIZAR'];
+  const EJECUTIVAS = ['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'];
+  const TIPOS = ['Valla Fija','Valla LED','Pantalla','Túnel','Mural','Icónico','Paso Peatonal con Caja de luz','Paso Peatonal LED','Paso Vehicular LED','Paradero LED','Paradero Vinil','Paradero Backlight','Paradero','Cenefa','Caja de Luz','Cercha'];
+
+  const estadoOpts = ESTADOS.map(e => '<option value="'+e+'"'+(v.estado===e?' selected':'')+'>'+e+'</option>').join('');
+  const execOpts = ['','...'].concat(EJECUTIVAS).map(e => '<option value="'+e+'"'+(v.ejecutiva===e?' selected':'')+'>'+e+'</option>').join('');
+  const tipoOpts = TIPOS.map(t => '<option value="'+t+'"'+(v.tipo===t?' selected':'')+'>'+t+'</option>').join('');
+
+  container.style.display = 'block';
+  container.innerHTML =
+    '<div class="edit-form">' +
+    '<h4>✏️ Editar valla — ' + codigo + '</h4>' +
+    '<div class="edit-grid">' +
+      '<div class="edit-field">' +
+        '<label>Estado</label>' +
+        '<select id="ef-estado">'+estadoOpts+'</select>' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Ejecutiva</label>' +
+        '<select id="ef-ejecutiva">'+execOpts+'</select>' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Cliente</label>' +
+        '<input id="ef-cliente" value="'+(v.cliente||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Tipo</label>' +
+        '<select id="ef-tipo">'+tipoOpts+'</select>' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Fecha inicio</label>' +
+        '<input type="date" id="ef-inicio" value="'+(v.inicio||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Fecha fin (término)</label>' +
+        '<input type="date" id="ef-termino" value="'+(v.termino||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Período</label>' +
+        '<input id="ef-periodo" value="'+(v.periodo||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Valor mensual</label>' +
+        '<input id="ef-valor" value="'+(v.valor||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Propietario</label>' +
+        '<input id="ef-propietario" value="'+(v.propietario||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Arrendatario</label>' +
+        '<input id="ef-arrendatario" value="'+(v.arrendatario||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Medidas</label>' +
+        '<input id="ef-medidas" value="'+(v.medidas||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Lugar / Ciudad</label>' +
+        '<input id="ef-lugar" value="'+(v.lugar||'')+'">' +
+      '</div>' +
+      '<div class="edit-field full">' +
+        '<label>Dirección</label>' +
+        '<input id="ef-direccion" value="'+(v.direccion||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Latitud</label>' +
+        '<input id="ef-lat" value="'+(v.lat||'')+'">' +
+      '</div>' +
+      '<div class="edit-field">' +
+        '<label>Longitud</label>' +
+        '<input id="ef-lon" value="'+(v.lon||'')+'">' +
+      '</div>' +
+      '<div class="edit-field full">' +
+        '<label>Alerta</label>' +
+        '<input id="ef-alerta" value="'+(v.alerta||'')+'" placeholder="Ej: 🟡 VENCE EN 30 DÍAS">' +
+      '</div>' +
+      '<div class="edit-field full">' +
+        '<label>Comentarios</label>' +
+        '<textarea id="ef-comentarios" rows="2">'+(v.comentarios||'')+'</textarea>' +
+      '</div>' +
+      '<div class="edit-field full">' +
+        '<label>Foto URL</label>' +
+        '<input id="ef-foto" value="'+(v.foto||'')+'" placeholder="https://...">' +
+      '</div>' +
+    '</div>' +
+    '<button class="btn-edit-save" onclick="guardarEdicion(\'' + codigo + '\')">💾 Guardar cambios en Sheet</button>' +
+    '</div>';
+}
+
+async function guardarEdicion(codigo) {
+  const btn = document.querySelector('.btn-edit-save');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Guardando...'; }
+
+  const datos = {
+    action: 'editarValla',
+    codigo,
+    estado:       document.getElementById('ef-estado')?.value || '',
+    ejecutiva:    document.getElementById('ef-ejecutiva')?.value || '',
+    cliente:      document.getElementById('ef-cliente')?.value || '',
+    tipo:         document.getElementById('ef-tipo')?.value || '',
+    inicio:       document.getElementById('ef-inicio')?.value || '',
+    termino:      document.getElementById('ef-termino')?.value || '',
+    periodo:      document.getElementById('ef-periodo')?.value || '',
+    valor:        document.getElementById('ef-valor')?.value || '',
+    propietario:  document.getElementById('ef-propietario')?.value || '',
+    arrendatario: document.getElementById('ef-arrendatario')?.value || '',
+    medidas:      document.getElementById('ef-medidas')?.value || '',
+    lugar:        document.getElementById('ef-lugar')?.value || '',
+    direccion:    document.getElementById('ef-direccion')?.value || '',
+    lat:          document.getElementById('ef-lat')?.value || '',
+    lon:          document.getElementById('ef-lon')?.value || '',
+    alerta:       document.getElementById('ef-alerta')?.value || '',
+    comentarios:  document.getElementById('ef-comentarios')?.value || '',
+    foto:         document.getElementById('ef-foto')?.value || ''
+  };
+
+  try {
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(datos) });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ Valla actualizada en Sheet', 'success');
+    _editPinOk = false;
+    closeModal();
+    await loadData(true);
+  } catch(err) {
+    showToast('❌ Error: ' + err.message, 'error');
+    if (btn) { btn.disabled=false; btn.textContent='💾 Guardar cambios en Sheet'; }
+  }
+}
 
 // ── MULTI-SELECT ──────────────────────────────────────────────
 let multiSelectMode = false;
