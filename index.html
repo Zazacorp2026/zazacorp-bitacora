@@ -1785,12 +1785,26 @@ async function confirmarContratacion(codigo) {
     const valor = document.getElementById('ct-valor')?.value || '';
     const periodo = document.getElementById('ct-periodo')?.value || '';
     const vData = DATA.find(x => x.codigo === codigo);
-    const fotoUrl = vData ? (vData.foto || '') : '';
+    const fotoSheet = vData ? (vData.foto || '') : '';
+    const fotoLocal = localStorage.getItem('zz_foto_' + codigo) || '';
+
+    // Determinar fuente de foto para el email
+    let fotoUrl = fotoSheet; // URL HTTP del Sheet (ideal)
+    let fotoBase64 = '';
+    let fotoMime = 'image/jpeg';
+
+    if (!fotoUrl && fotoLocal && fotoLocal.startsWith('data:')) {
+      // Foto solo en localStorage — extraer base64 y mime
+      const match = fotoLocal.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) { fotoMime = match[1]; fotoBase64 = match[2]; }
+    }
+
     const res = await fetch(API_URL, {
       method: 'POST',
       body: JSON.stringify({
         action: 'contratar',
-        codigo, cliente, ejecutiva, inicio, fin, valor, periodo, fotoUrl,
+        codigo, cliente, ejecutiva, inicio, fin, valor, periodo,
+        fotoUrl, fotoBase64, fotoMime,
         pdfBase64: _pdfBase64,
         pdfNombre: _pdfFile ? _pdfFile.name : 'orden.pdf'
       })
