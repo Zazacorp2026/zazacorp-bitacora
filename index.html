@@ -741,13 +741,19 @@ function openModal(codigo) {
   // Add liberar + edit buttons to modal
   const existingBody = document.getElementById('modalBody');
   if (existingBody && liberarBtn) existingBody.insertAdjacentHTML('beforeend', liberarBtn);
-  if (existingBody) existingBody.insertAdjacentHTML('beforeend',
-    '<button class="edit-toggle-btn" onclick="toggleEditForm(\'' + v.codigo + '\')">✏️ Editar esta valla (Admin)</button>' +
-    '<div id="editFormContainer" style="display:none"></div>'
-  );
+  if (existingBody) {
+    const editBtn = document.createElement('button');
+    editBtn.className = 'edit-toggle-btn';
+    editBtn.textContent = '\u270f\ufe0f Editar esta valla (Admin)';
+    const _cod = v.codigo;
+    editBtn.onclick = function() { toggleEditForm(_cod); };
+    const editCont = document.createElement('div');
+    editCont.id = 'editFormContainer';
+    editCont.style.display = 'none';
+    existingBody.appendChild(editBtn);
+    existingBody.appendChild(editCont);
+  }
   document.getElementById('modalOverlay').classList.add('open');
-}
-
 function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
 function closeModalOutside(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
 
