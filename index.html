@@ -214,6 +214,10 @@
   .btn-edit-save:hover{opacity:.85;}
   .btn-edit-save:disabled{opacity:.4;cursor:not-allowed;}
   .edit-toggle-btn{width:100%;margin-top:10px;padding:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:6px;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;font-family:sans-serif;}
+
+  .segunda-reserva-btn{width:100%;margin-top:8px;padding:8px;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.35);border-radius:6px;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:sans-serif;}
+  .segunda-reserva-btn:hover{background:rgba(167,139,250,.25);}
+  .segunda-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(167,139,250,.15);color:#a78bfa;margin-top:4px;}
   @media(max-width:640px){.kanban{grid-template-columns:1fr;}.form-row{grid-template-columns:1fr;}.header-right .stat-pill{display:none;}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -715,6 +719,11 @@ function openModal(codigo) {
   ).join('');
   const fotoControls = fotoLocal ? '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><span style="font-size:10px;color:var(--muted);margin-right:2px">Posición:</span>' + posBtns + '</div>' : '';
   const liberarBtn = (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') ? '<button class="liberar-btn" onclick="liberarValla(\'' + v.codigo + '\')">🔓 Liberar valla (Admin)</button>' : '';
+  // Segunda reserva badge and button
+  const bloqueo = isBlocked(v.codigo) || (v.bloqueo_expira ? {expira: v.bloqueo_expira, ejecutiva: v.bloqueo_ejecutiva} : null);
+  const seg2Cliente = v.reserva2_cliente || '';
+  const seg2Ejec = v.reserva2_ejecutiva || '';
+  const seg2Badge = seg2Cliente ? '<div class="segunda-badge">🔔 2ª reserva en cola: ' + seg2Cliente + ' (' + seg2Ejec + ')</div>' : '';
   document.getElementById('modalBody').innerHTML =
     fotoControls +
     '<div class="modal-photo" style="cursor:pointer" onclick="' + (fotoLocal ? '' : 'triggerFotoUpload(\'' + v.codigo + '\')') + '" title="' + (fotoLocal ? '' : 'Click para subir foto') + '">' +
@@ -742,6 +751,18 @@ function openModal(codigo) {
   const existingBody = document.getElementById('modalBody');
   if (existingBody && liberarBtn) existingBody.insertAdjacentHTML('beforeend', liberarBtn);
   if (existingBody) {
+    // Segunda reserva badge
+    if (seg2Badge) existingBody.insertAdjacentHTML('beforeend', seg2Badge);
+    // Segunda reserva button - only for RESERVADA without existing segunda
+    if (v.estado === 'RESERVADA' && !seg2Cliente) {
+      const seg2Btn = document.createElement('button');
+      seg2Btn.className = 'segunda-reserva-btn';
+      seg2Btn.textContent = '🔔 Agregar segunda reserva (en cola)';
+      const _cod2 = v.codigo;
+      seg2Btn.onclick = function() { openModalSegundaReserva(_cod2); };
+      existingBody.appendChild(seg2Btn);
+    }
+    // Edit button
     const editBtn = document.createElement('button');
     editBtn.className = 'edit-toggle-btn';
     editBtn.textContent = '\u270f\ufe0f Editar esta valla (Admin)';
@@ -754,6 +775,8 @@ function openModal(codigo) {
     existingBody.appendChild(editCont);
   }
   document.getElementById('modalOverlay').classList.add('open');
+}
+
 function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
 function closeModalOutside(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
 
@@ -1012,6 +1035,85 @@ function updateMapMarkers() {
 
 
 
+
+
+// ── SEGUNDA RESERVA ───────────────────────────────────────────
+function openModalSegundaReserva(codigo) {
+  const v = DATA.find(x => x.codigo === codigo);
+  if (!v) return;
+  closeModal();
+
+  setTimeout(() => {
+    document.getElementById('modalTitle').textContent = '🔔 Segunda Reserva en Cola';
+    document.getElementById('modalSubtitle').textContent = codigo + ' · ' + v.lugar + ' · ' + v.tipo;
+
+    document.getElementById('modalBody').innerHTML =
+      '<div style="background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#a78bfa">' +
+      '🔔 Esta reserva entrará en cola. Se activará automáticamente cuando expire la reserva actual (48h).' +
+      '</div>' +
+      '<div class="form-group"><label>Cliente</label><input id="s2-cliente" class="modal-input" placeholder="Nombre del cliente"></div>' +
+      '<div class="form-group" style="margin-top:10px"><label>Ejecutiva</label><select id="s2-ejecutiva" class="modal-input">' +
+      '<option value="">Seleccionar...</option>' +
+      ['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'].map(e=>'<option>'+e+'</option>').join('') +
+      '</select></div>' +
+      '<div class="form-group" style="margin-top:10px"><label>Observaciones (opcional)</label><input id="s2-obs" class="modal-input" placeholder="Notas adicionales..."></div>' +
+      '<button class="btn-contratar-confirm" style="margin-top:14px" onclick="confirmarSegundaReserva(\'' + codigo + '\')">🔔 Registrar segunda reserva</button>';
+
+    document.getElementById('modalOverlay').classList.add('open');
+  }, 200);
+}
+
+async function confirmarSegundaReserva(codigo) {
+  const cliente = document.getElementById('s2-cliente')?.value.trim();
+  const ejecutiva = document.getElementById('s2-ejecutiva')?.value;
+  const obs = document.getElementById('s2-obs')?.value.trim();
+
+  if (!cliente || !ejecutiva) { showToast('Completa cliente y ejecutiva', 'info'); return; }
+
+  const btn = document.querySelector('.btn-contratar-confirm');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Registrando...'; }
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'segundaReserva', codigo, cliente, ejecutiva, observaciones: obs })
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ Segunda reserva registrada en cola', 'success');
+    closeModal();
+    await loadData(true);
+  } catch(err) {
+    showToast('❌ ' + err.message, 'error');
+    if (btn) { btn.disabled=false; btn.textContent='🔔 Registrar segunda reserva'; }
+  }
+}
+
+// Auto-activate segunda reserva when primera expires
+async function checkAndActivarSegunda(codigo) {
+  const v = DATA.find(x => x.codigo === codigo);
+  if (!v || !v.reserva2_cliente) return;
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'activarSegunda', codigo })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      // Update Firebase with new bloqueo
+      await setBloqueoAsync(codigo, {
+        codigo,
+        cliente: json.cliente,
+        ejecutiva: json.ejecutiva,
+        expira: json.expira,
+        registrado: new Date().toISOString()
+      });
+      showToast('🔔 Segunda reserva activada: ' + codigo, 'success');
+      await loadData(true);
+    }
+  } catch(e) {}
+}
 
 // ── EDITAR VALLA (ADMIN) ──────────────────────────────────────
 let _editPinOk = false;
@@ -2009,8 +2111,15 @@ setInterval(() => {
     if (t) {
       el.textContent = '🔒 ' + t;
     } else {
-      removeBloqueo(el.dataset.codigo);
-      render();
+      const codExp = el.dataset.codigo;
+      const vExp = DATA.find(x=>x.codigo===codExp);
+      removeBloqueo(codExp);
+      // Check if there's a segunda reserva waiting
+      if (vExp && vExp.reserva2_cliente) {
+        checkAndActivarSegunda(codExp);
+      } else {
+        render();
+      }
     }
   });
 }, 1000);
