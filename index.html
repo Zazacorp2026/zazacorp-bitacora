@@ -182,8 +182,8 @@
 
   .card-checkbox{position:absolute;top:10px;left:10px;width:20px;height:20px;cursor:pointer;z-index:10;accent-color:#3b82f6;}
   .card.selected-card{outline:2px solid #3b82f6;outline-offset:2px;}
-  .floating-contratar{background:#3b82f6;color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer;font-family:sans-serif;box-shadow:0 4px 20px rgba(59,130,246,.5);transition:all .2s;}
-  .floating-contratar:hover{opacity:.9;transform:scale(1.02);}
+  .floating-contratar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#3b82f6;color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer;font-family:sans-serif;box-shadow:0 4px 20px rgba(59,130,246,.5);z-index:200;display:none;transition:all .2s;}
+  .floating-contratar:hover{opacity:.9;transform:translateX(-50%) scale(1.02);}
   .dashboard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;padding:4px;}
   .dash-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
   .dash-card h4{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:14px;}
@@ -219,12 +219,59 @@
   .segunda-reserva-btn:hover{background:rgba(167,139,250,.25);}
   .segunda-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(167,139,250,.15);color:#a78bfa;margin-top:4px;}
   @media(max-width:640px){.kanban{grid-template-columns:1fr;}.form-row{grid-template-columns:1fr;}.header-right .stat-pill{display:none;}}
+
+  /* ── LOGIN SCREEN ─────────────────────────────────────────── */
+  #loginOverlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;}
+  #loginOverlay.hidden{display:none;}
+  .login-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px 36px;width:100%;max-width:400px;box-shadow:0 24px 60px rgba(0,0,0,.6);}
+  .login-logo{text-align:center;margin-bottom:28px;}
+  .login-logo .zaza{font-family:'DM Mono',monospace;font-size:28px;font-weight:700;color:var(--accent);letter-spacing:3px;}
+  .login-logo .sub{font-size:11px;color:var(--muted);margin-top:4px;letter-spacing:1px;}
+  .login-field{margin-bottom:16px;}
+  .login-field label{display:block;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;}
+  .login-field select,.login-field input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;font-family:'Space Grotesk',sans-serif;outline:none;transition:border-color .2s;}
+  .login-field select:focus,.login-field input:focus{border-color:var(--accent);}
+  .login-btn{width:100%;padding:13px;background:var(--accent);border:none;border-radius:10px;color:#000;font-size:15px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;margin-top:8px;transition:opacity .2s;}
+  .login-btn:hover{opacity:.85;}
+  .login-error{color:#ef4444;font-size:12px;text-align:center;margin-top:10px;min-height:18px;}
+  .user-badge{display:flex;align-items:center;gap:8px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;}
+  .user-badge:hover{background:rgba(245,158,11,.2);}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 </head>
 <body>
+
+<!-- ── LOGIN OVERLAY ───────────────────────────────────────── -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">
+      <img id="loginLogo" style="height:64px;width:auto;margin-bottom:8px" alt="Zazacorp">
+      <div class="sub">BITÁCORA OOH 2026 · ACCESO RESTRINGIDO</div>
+    </div>
+    <div class="login-field">
+      <label>Usuario</label>
+      <select id="loginUser">
+        <option value="">Selecciona tu nombre...</option>
+        <option value="JORGE">Jorge</option>
+        <option value="LORENA">Lorena</option>
+        <option value="RICARDO">Ricardo</option>
+        <option value="SASKYA">Saskya</option>
+        <option value="SHAYRA">Shayra</option>
+        <option value="VERONICA TERAN">Verónica Terán</option>
+        <option value="VERONICA TRIVINO">Verónica Triviño</option>
+        <option value="YESENIA">Yesenia</option>
+        <option value="ZULIA">Zulia</option>
+      </select>
+    </div>
+    <div class="login-field">
+      <label>Contraseña</label>
+      <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Ingresar →</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
 
 <header>
   <div class="logo" style="display:flex;align-items:center;gap:12px">
@@ -238,6 +285,10 @@
     <div class="stat-pill sp-red" id="st-cont">● – CONTR.</div>
     <div class="stat-pill sp-blue" id="st-total">● – TOTAL</div>
     <div class="conn-dot" id="connDot" title="Estado de conexión"></div>
+    <div class="user-badge" id="userBadge" onclick="cerrarSesion()" title="Click para cerrar sesión">
+      <span id="userBadgeName">–</span>
+      <span style="font-size:10px;opacity:.6">✕ salir</span>
+    </div>
   </div>
 </header>
 
@@ -306,6 +357,87 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbz7oqjdh-S_Fqn1svez5rpr
 // ══════════════════════════════════════════════════════════════
 
 
+// ══════════════════════════════════════════════════════════════
+//  SISTEMA DE LOGIN
+// ══════════════════════════════════════════════════════════════
+const USUARIOS = {
+  'JORGE':            'Zaza2026J',
+  'LORENA':           'Zaza2026L',
+  'RICARDO':          'Zaza2026R',
+  'SASKYA':           'Zaza2026S',
+  'SHAYRA':           'Zaza2026Sh',
+  'VERONICA TERAN':   'Zaza2026VT',
+  'VERONICA TRIVINO': 'Zaza2026VTr',
+  'YESENIA':          'Zaza2026Y',
+  'ZULIA':            'Zaza2026Z'
+};
+
+let _usuarioActual = null;
+
+function checkLogin() {
+  const saved = sessionStorage.getItem('zz_usuario');
+  if (saved && USUARIOS[saved]) {
+    _usuarioActual = saved;
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('userBadgeName').textContent = saved.split(' ')[0];
+    return true;
+  }
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  return false;
+}
+
+function doLogin() {
+  const user = document.getElementById('loginUser').value;
+  const pass = document.getElementById('loginPass').value;
+  const err  = document.getElementById('loginError');
+
+  if (!user) { err.textContent = 'Selecciona tu nombre'; return; }
+  if (!pass)  { err.textContent = 'Ingresa tu contraseña'; return; }
+
+  if (USUARIOS[user] && pass === USUARIOS[user]) {
+    sessionStorage.setItem('zz_usuario', user);
+    _usuarioActual = user;
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('userBadgeName').textContent = user.split(' ')[0];
+    err.textContent = '';
+    init(); // Cargar la app después del login
+  } else {
+    err.textContent = '❌ Usuario o contraseña incorrectos';
+    document.getElementById('loginPass').value = '';
+  }
+}
+
+function cerrarSesion() {
+  if (!confirm('¿Cerrar sesión?')) return;
+  sessionStorage.removeItem('zz_usuario');
+  _usuarioActual = null;
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginError').textContent = '';
+}
+
+// Retorna el nombre de ejecutiva del usuario logueado (para pre-llenar formularios)
+function getEjecutivaActual() {
+  return _usuarioActual || '';
+}
+
+// Pre-llena automáticamente un select de ejecutiva con el usuario logueado
+function autoSetEjecutiva(selectId) {
+  const ejec = getEjecutivaActual();
+  if (!ejec) return;
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  // Buscar opción exacta o parcial
+  for (let i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === ejec || sel.options[i].value.startsWith(ejec.split(' ')[0])) {
+      sel.selectedIndex = i;
+      break;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+
 let DATA = [];
 let state = {
   tab: 'inventario',
@@ -322,7 +454,6 @@ let state = {
 async function init() {
   await Promise.all([loadData(), cargarBloqueos()]);
 }
-
 async function forzarRecarga() {
   localStorage.removeItem('zz_cache_v2');
   localStorage.removeItem('zz_cache_v2_meta');
@@ -448,7 +579,7 @@ function getCache() {
 function populateFilters() {
   const ciudades = [...new Set(DATA.map(v => v.lugar).filter(Boolean))].sort();
   const tipos    = [...new Set(DATA.map(v => v.tipo).filter(Boolean))].sort();
-  const ejecs    = [...new Set(DATA.flatMap(v => [v.ejecutiva, v.ejecutiva_reserva]).filter(Boolean))].sort();
+  const ejecs    = [...new Set(DATA.map(v => v.ejecutiva).filter(Boolean))].sort();
 
   const rebuild = (id, opts) => {
     const sel = document.getElementById(id);
@@ -489,10 +620,7 @@ function getFiltered() {
   );
   if (state.filterCiudad)   d = d.filter(v => v.lugar === state.filterCiudad);
   if (state.filterTipo)     d = d.filter(v => v.tipo === state.filterTipo);
-  if (state.filterEjecutiva) d = d.filter(v =>
-    v.ejecutiva === state.filterEjecutiva ||
-    v.ejecutiva_reserva === state.filterEjecutiva
-  );
+  if (state.filterEjecutiva) d = d.filter(v => v.ejecutiva === state.filterEjecutiva);
   return d;
 }
 
@@ -700,7 +828,7 @@ function openModal(codigo) {
       '<div class="form-row">' +
         '<div class="form-group"><label>Cliente</label><input type="text" id="rf-c" placeholder="Nombre del cliente"></div>' +
         '<div class="form-group"><label>Ejecutiva</label><select id="rf-e"><option value="">Seleccionar...</option>' +
-          ['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'].map(e => '<option>' + e + '</option>').join('') +
+          ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e => '<option>' + e + '</option>').join('') +
         '</select></div></div>' +
       '<div class="form-row">' +
         '<div class="form-group"><label>Fecha reserva</label><input type="date" id="rf-f" value="' + new Date().toISOString().split('T')[0] + '"></div>' +
@@ -792,6 +920,10 @@ function openModal(codigo) {
     existingBody.appendChild(editCont);
   }
   document.getElementById('modalOverlay').classList.add('open');
+  // Pre-llenar ejecutiva con el usuario logueado
+  setTimeout(function() {
+    autoSetEjecutiva('rf-e');
+  }, 50);
 }
 
 function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
@@ -1073,12 +1205,13 @@ function openModalMultiReservar() {
       '<div class="form-group"><label>Cliente</label><input type="text" id="mr-cliente" class="modal-input" placeholder="Nombre del cliente"></div>' +
       '<div class="form-group"><label>Ejecutiva</label><select id="mr-ejecutiva" class="modal-input">' +
       '<option value="">Seleccionar...</option>' +
-      ['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'].map(function(e){ return '<option>' + e + '</option>'; }).join('') +
+      ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(function(e){ return '<option>' + e + '</option>'; }).join('') +
       '</select></div>' +
     '</div>' +
     '<button class="btn-contratar-confirm" style="background:var(--accent);color:#000;margin-top:12px" onclick="confirmarMultiReserva()">🔒 Confirmar Reserva Múltiple</button>';
 
   document.getElementById('modalOverlay').classList.add('open');
+  setTimeout(function(){ autoSetEjecutiva('mr-ejecutiva'); }, 50);
 }
 
 async function confirmarMultiReserva() {
@@ -1143,7 +1276,7 @@ function openModalSegundaReserva(codigo) {
       '<div class="form-group"><label>Cliente</label><input id="s2-cliente" class="modal-input" placeholder="Nombre del cliente"></div>' +
       '<div class="form-group" style="margin-top:10px"><label>Ejecutiva</label><select id="s2-ejecutiva" class="modal-input">' +
       '<option value="">Seleccionar...</option>' +
-      ['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'].map(e=>'<option>'+e+'</option>').join('') +
+      ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e=>'<option>'+e+'</option>').join('') +
       '</select></div>' +
       '<div class="form-group" style="margin-top:10px"><label>Observaciones (opcional)</label><input id="s2-obs" class="modal-input" placeholder="Notas adicionales..."></div>' +
       '<button class="btn-contratar-confirm" style="margin-top:14px" onclick="confirmarSegundaReserva(\'' + codigo + '\')">🔔 Registrar segunda reserva</button>';
@@ -1226,7 +1359,7 @@ function toggleEditForm(codigo) {
   if (!v) return;
 
   const ESTADOS = ['DISPONIBLE','CONTRATADA','RESERVADA','NO UTILIZAR'];
-  const EJECUTIVAS = ['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'];
+  const EJECUTIVAS = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'];
   const TIPOS = ['Valla Fija','Valla LED','Pantalla','Túnel','Mural','Icónico','Paso Peatonal con Caja de luz','Paso Peatonal LED','Paso Vehicular LED','Paradero LED','Paradero Vinil','Paradero Backlight','Paradero','Cenefa','Caja de Luz','Cercha'];
 
   const estadoOpts = ESTADOS.map(e => '<option value="'+e+'"'+(v.estado===e?' selected':'')+'>'+e+'</option>').join('');
@@ -1432,7 +1565,7 @@ function openModalMultiContratar() {
           <label>Ejecutiva</label>
           <select id="mct-ejecutiva" onchange="checkMultiForm()">
             <option value="">Seleccionar...</option>
-            ${['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'].map(e=>'<option>'+e+'</option>').join('')}
+            ${['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e=>'<option>'+e+'</option>').join('')}
           </select>
         </div>
       </div>
@@ -1458,6 +1591,7 @@ function openModalMultiContratar() {
       </button>
     </div>`;
   document.getElementById('modalOverlay').classList.add('open');
+  setTimeout(function(){ autoSetEjecutiva('mct-ejecutiva'); }, 50);
 }
 
 function handleMultiPdf(event) {
@@ -1682,7 +1816,7 @@ function openModalContratar(codigo) {
           <label>Ejecutiva</label>
           <select id="ct-ejecutiva" onchange="checkContratarForm()">
             <option value="">Seleccionar...</option>
-            ${['ALEXANDRA','LORENA','LORENA MELO','MIGUEL','RICARDO','SASKYA','SHAYRA','VERONICA','ZULIA'].map(e=>'<option>'+e+'</option>').join('')}
+            ${['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e=>'<option>'+e+'</option>').join('')}
           </select>
         </div>
       </div>
@@ -1727,6 +1861,7 @@ function openModalContratar(codigo) {
     </div>`;
 
   document.getElementById('modalOverlay').classList.add('open');
+  setTimeout(function(){ autoSetEjecutiva('ct-ejecutiva'); }, 50);
 }
 
 function handlePdfUpload(event, codigo) {
@@ -1785,26 +1920,12 @@ async function confirmarContratacion(codigo) {
     const valor = document.getElementById('ct-valor')?.value || '';
     const periodo = document.getElementById('ct-periodo')?.value || '';
     const vData = DATA.find(x => x.codigo === codigo);
-    const fotoSheet = vData ? (vData.foto || '') : '';
-    const fotoLocal = localStorage.getItem('zz_foto_' + codigo) || '';
-
-    // Determinar fuente de foto para el email
-    let fotoUrl = fotoSheet; // URL HTTP del Sheet (ideal)
-    let fotoBase64 = '';
-    let fotoMime = 'image/jpeg';
-
-    if (!fotoUrl && fotoLocal && fotoLocal.startsWith('data:')) {
-      // Foto solo en localStorage — extraer base64 y mime
-      const match = fotoLocal.match(/^data:([^;]+);base64,(.+)$/);
-      if (match) { fotoMime = match[1]; fotoBase64 = match[2]; }
-    }
-
+    const fotoUrl = vData ? (vData.foto || '') : '';
     const res = await fetch(API_URL, {
       method: 'POST',
       body: JSON.stringify({
         action: 'contratar',
-        codigo, cliente, ejecutiva, inicio, fin, valor, periodo,
-        fotoUrl, fotoBase64, fotoMime,
+        codigo, cliente, ejecutiva, inicio, fin, valor, periodo, fotoUrl,
         pdfBase64: _pdfBase64,
         pdfNombre: _pdfFile ? _pdfFile.name : 'orden.pdf'
       })
@@ -2257,10 +2378,16 @@ setInterval(() => {
   });
 }, 1000);
 
+
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 // Set header logo
 document.getElementById('headerLogo').src = 'data:' + LOGO_NARANJA;
-init();
+document.getElementById('loginLogo').src   = 'data:' + LOGO_NARANJA;
+
+// Verificar sesión al cargar — si hay sesión activa, iniciar app; si no, mostrar login
+if (checkLogin()) {
+  init();
+}
 </script>
 </body>
 </html>
