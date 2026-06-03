@@ -728,6 +728,16 @@ function renderCard(v) {
       '<div class="card-dir">' + v.direccion + '</div>' +
       '<div class="card-meta"><span class="meta-tag">' + v.tipo + '</span>' + (v.medidas ? '<span class="meta-tag">' + v.medidas + '</span>' : '') + '<span class="meta-tag">' + v.lugar + '</span></div>' +
       aHtml +
+      (v.estado === 'CONTRATADA' && v.termino ? (function(){
+        const hoy = new Date(); hoy.setHours(0,0,0,0);
+        const fin = new Date(v.termino); fin.setHours(0,0,0,0);
+        const diff = Math.round((fin - hoy) / 86400000);
+        if (diff < 0) return '<div style="font-size:9px;font-weight:700;color:#ef4444;margin-bottom:6px">⚠️ VENCIÓ HACE ' + Math.abs(diff) + ' DÍA' + (Math.abs(diff)!==1?'S':'') + '</div>';
+        const meses = Math.floor(diff / 30), dias = diff % 30;
+        const txt = meses > 0 ? meses + ' mes' + (meses!==1?'es':'') + (dias > 0 ? ' ' + dias + ' día' + (dias!==1?'s':'') : '') : dias + ' día' + (dias!==1?'s':'');
+        const color = diff <= 30 ? '#f59e0b' : diff <= 60 ? '#fb923c' : 'var(--muted)';
+        return '<div style="font-size:9px;color:' + color + ';margin-bottom:6px;font-weight:600">📅 Fin en: ' + txt + '</div>';
+      })() : '') +
       '<div class="card-footer"><div><div class="card-cliente">' + (v.cliente || (v.estado === 'DISPONIBLE' ? '' : '—')) + '</div><div class="card-ejecutiva">' + (v.ejecutiva || '') + '</div></div>' +
       (v.valor ? '<div style="font-family:monospace;font-size:10px;color:var(--muted)">$' + Number(v.valor).toLocaleString() + '</div>' : '') + '</div>' +
       rBtn + '</div></div>';
