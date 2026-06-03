@@ -2034,10 +2034,9 @@ async function exportarPPT() {
 
       // Grid datos
       const details = [
-        {label:'LUGAR',     value: v.lugar       || '—'},
-        {label:'TIPO',      value: v.tipo        || '—'},
-        {label:'PROPIETARIO', value: v.propietario || '—'},
-        {label:'MEDIDAS',   value: v.medidas     || '—'},
+        {label:'LUGAR',   value: v.lugar   || '—'},
+        {label:'TIPO',    value: v.tipo    || '—'},
+        {label:'MEDIDAS', value: v.medidas || '—'},
       ];
       details.forEach((d, i) => {
         const col = i%2, row = Math.floor(i/2);
@@ -2064,13 +2063,6 @@ async function exportarPPT() {
         slide.addText('📍 Ver ubicación en Google Maps →', { x:rx,y:5.78,w:5.5,h:0.3,
           fontSize:10,color:ORANGE,fontFace:'Arial',bold:false,
           hyperlink:{url:'https://www.google.com/maps?q='+v.lat+','+v.lon} });
-      }
-
-      // Valor
-      if (v.valor && Number(v.valor) > 0) {
-        slide.addShape(pres.shapes.LINE, { x:rx,y:6.15,w:5.5,h:0, line:{color:'E5E7EB',width:1} });
-        slide.addText('VALOR REFERENCIAL / MES', { x:rx,y:6.27,w:5.5,h:0.22, fontSize:7,color:LABEL,bold:true,fontFace:'Arial',charSpacing:1 });
-        slide.addText('$'+Number(v.valor).toLocaleString('es-EC',{minimumFractionDigits:2}), { x:rx,y:6.5,w:5.5,h:0.45, fontSize:20,bold:true,color:ORANGE,fontFace:'Arial Black' });
       }
 
       // Logo naranja esquina inferior derecha
@@ -2215,12 +2207,10 @@ async function exportarPPTAlertas() {
         hyperlink:{url:'https://www.google.com/maps?q='+v.lat+','+v.lon} });
     }
 
-    // Panel de vencimiento — donde va el valor en disponibles
+    // Vencimiento del contrato — solo fecha, sin período
     slide.addShape(pres.shapes.LINE, { x:rx,y:6.15,w:5.5,h:0, line:{color:'E5E7EB',width:1} });
     slide.addText('VENCIMIENTO DEL CONTRATO', { x:rx,y:6.27,w:5.5,h:0.22, fontSize:7,color:LABEL,bold:true,fontFace:'Arial',charSpacing:1 });
-    // Fecha término grande en color alerta
-    const terminoText = (v.termino || '—') + (v.periodo ? '  ·  ' + v.periodo : '');
-    slide.addText(terminoText, { x:rx,y:6.5,w:5.5,h:0.45, fontSize:16,bold:true,color:alertColor,fontFace:'Arial Black' });
+    slide.addText(v.termino || '—', { x:rx,y:6.5,w:5.5,h:0.45, fontSize:20,bold:true,color:alertColor,fontFace:'Arial Black' });
 
     // Logo naranja esquina inferior derecha
     slide.addImage({ data: LOGO_NARANJA, x:11.6,y:6.9,w:1.5,h:0.48 });
