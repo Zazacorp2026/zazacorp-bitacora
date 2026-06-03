@@ -728,9 +728,10 @@ function renderCard(v) {
       '<div class="card-dir">' + v.direccion + '</div>' +
       '<div class="card-meta"><span class="meta-tag">' + v.tipo + '</span>' + (v.medidas ? '<span class="meta-tag">' + v.medidas + '</span>' : '') + '<span class="meta-tag">' + v.lugar + '</span></div>' +
       aHtml +
-      (v.estado === 'CONTRATADA' && v.termino ? (function(){
+      (v.estado === 'CONTRATADA' && v.termino && !v.alerta ? (function(){
         const hoy = new Date(); hoy.setHours(0,0,0,0);
-        const fin = new Date(v.termino); fin.setHours(0,0,0,0);
+        const p = v.termino.split('-');
+        const fin = new Date(+p[0], +p[1]-1, +p[2]); // parse local, sin conversión UTC
         const diff = Math.round((fin - hoy) / 86400000);
         if (diff < 0) return '<div style="font-size:9px;font-weight:700;color:#ef4444;margin-bottom:6px">⚠️ VENCIÓ HACE ' + Math.abs(diff) + ' DÍA' + (Math.abs(diff)!==1?'S':'') + '</div>';
         const meses = Math.floor(diff / 30), dias = diff % 30;
