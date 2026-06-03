@@ -771,11 +771,11 @@ function renderKanban(container, data) {
 }
 
 function renderAlerts(container) {
-  const data = DATA.filter(v => v.alerta);
+  const data = getFiltered(); // respeta filtros de ciudad, tipo, ejecutiva
   if (!data.length) { container.innerHTML = '<div class="empty"><div class="icon">✅</div><p>Sin alertas activas</p></div>'; return; }
   container.innerHTML =
     '<div style="display:flex;justify-content:flex-end;margin-bottom:14px">' +
-    '<button onclick="exportarPPTAlertas()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Exportar PPT Alertas</button>' +
+    '<button id="btnExportPPTAlertas" onclick="exportarPPTAlertas()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Exportar PPT Alertas</button>' +
     '</div>' +
     '<div class="alerts-list">' + data.map(v => {
     const foto = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
@@ -2098,6 +2098,9 @@ function renderFotoPlaceholder(slide, pres, LABEL) {
 
 
 async function exportarPPTAlertas() {
+  const btn = document.getElementById('btnExportPPTAlertas');
+  if (btn) { btn.textContent = '⏳ Generando...'; btn.disabled = true; }
+
   // Cargar pptxgenjs si no está disponible
   if (typeof PptxGenJS === 'undefined') {
     await new Promise((resolve, reject) => {
@@ -2115,8 +2118,9 @@ async function exportarPPTAlertas() {
     });
   }
 
-  const alertas = DATA.filter(v => v.alerta);
-  if (!alertas.length) { showToast('No hay alertas activas', 'info'); return; }
+  try {
+  const alertas = getFiltered(); // respeta filtros activos
+  if (!alertas.length) { showToast('No hay alertas con los filtros actuales', 'info'); return; }
 
   const pres = new PptxGenJS();
   pres.layout = 'LAYOUT_WIDE';
@@ -2225,6 +2229,13 @@ async function exportarPPTAlertas() {
   const fecha = new Date().toISOString().split('T')[0];
   await pres.writeFile({ fileName: 'Zazacorp_Alertas_' + fecha + '.pptx' });
   showToast('✓ PPT de alertas descargado con ' + alertas.length + ' vallas', 'success');
+
+  } catch(err) {
+    showToast('❌ Error: ' + err.message, 'error');
+    console.error(err);
+  } finally {
+    if (btn) { btn.textContent = '⬇ Exportar PPT Alertas'; btn.disabled = false; }
+  }
 }
 
 // ── FOTOS ─────────────────────────────────────────────────────
