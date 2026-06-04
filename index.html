@@ -460,6 +460,8 @@ async function forzarRecarga() {
   localStorage.removeItem('zz_cache_v2');
   localStorage.removeItem('zz_cache_v2_meta');
   showToast('↻ Sincronizando con Google Sheets...', 'info');
+  // Forzar sync Sheet → Firebase antes de recargar
+  try { await fetch(API_URL + '?action=syncFirebase', { cache: 'no-store' }); } catch(e) {}
   await fetchFresh();
   showToast('✓ Datos actualizados', 'success');
 }
@@ -479,8 +481,25 @@ async function loadData(force = false) {
 }
 
 async function fetchFresh() {
+  // 1. Firebase primero — rápido, sin límite de concurrencia
   try {
-    // Apps Script v3 — fuente principal
+    const fbRes = await fetch(FB_URL + '/inventario.json', { cache: 'no-store' });
+    if (fbRes.ok) {
+      const fbData = await fbRes.json();
+      if (fbData && fbData.data && Array.isArray(fbData.data) && fbData.data.length > 0) {
+        DATA = fbData.data;
+        setCache(DATA);
+        document.getElementById('connDot').className = 'conn-dot ok';
+        onDataLoaded();
+        return;
+      }
+    }
+  } catch(fbErr) {
+    console.warn('Firebase no disponible, usando Apps Script...', fbErr.message);
+  }
+
+  // 2. Apps Script como fallback
+  try {
     const res = await fetch(API_URL + '?action=getAll', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
@@ -2009,6 +2028,7 @@ async function confirmarContratacion(codigo) {
     if (json.error) throw new Error(json.error);
 
     showToast('✅ Valla contratada — email enviado a administración', 'success');
+    removeBloqueo(codigo); // Limpiar bloqueo de Firebase al contratar
     closeModal();
     _pdfFile = null; _pdfBase64 = null;
     await loadData(true);
