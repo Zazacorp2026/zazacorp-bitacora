@@ -728,6 +728,7 @@ function renderCard(v) {
       '<div class="card-dir">' + v.direccion + '</div>' +
       '<div class="card-meta"><span class="meta-tag">' + v.tipo + '</span>' + (v.medidas ? '<span class="meta-tag">' + v.medidas + '</span>' : '') + '<span class="meta-tag">' + v.lugar + '</span></div>' +
       aHtml +
+      (v.estado === 'CONTRATADA' && v.reserva2_cliente ? '<div style="font-size:9px;color:#818cf8;font-weight:600;margin-bottom:4px">🔄 Pre-reservada: ' + v.reserva2_cliente + '</div>' : '') +
       (v.estado === 'CONTRATADA' && v.termino && !v.alerta ? (function(){
         const hoy = new Date(); hoy.setHours(0,0,0,0);
         const p = v.termino.split('-');
@@ -900,6 +901,24 @@ function openModal(codigo) {
   if (existingBody) {
     // Segunda reserva badge
     if (seg2Badge) existingBody.insertAdjacentHTML('beforeend', seg2Badge);
+    // Pre-reservar cuando termine (solo CONTRATADA)
+    if (v.estado === 'CONTRATADA') {
+      if (v.reserva2_cliente) {
+        // Ya tiene pre-reserva — mostrar badge
+        const preBadge = document.createElement('div');
+        preBadge.style.cssText = 'background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);border-radius:8px;padding:10px 14px;margin-top:8px;font-size:12px;color:#818cf8';
+        preBadge.innerHTML = '🔄 <b>Pre-reserva registrada:</b> ' + v.reserva2_cliente + ' / ' + v.reserva2_ejecutiva + '<br><span style="font-size:10px;color:var(--muted)">Se activará automáticamente al terminar el contrato</span>';
+        existingBody.appendChild(preBadge);
+      } else {
+        const preBtn = document.createElement('button');
+        preBtn.className = 'segunda-reserva-btn';
+        preBtn.style.cssText = 'background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.4);color:#818cf8;margin-top:8px';
+        preBtn.textContent = '🔄 Pre-reservar cuando termine el contrato';
+        const _codPre = v.codigo;
+        preBtn.onclick = function() { openModalPreReserva(_codPre); };
+        existingBody.appendChild(preBtn);
+      }
+    }
     // Segunda reserva button - only for RESERVADA without existing segunda
     if (v.estado === 'RESERVADA' && !seg2Cliente) {
       const seg2Btn = document.createElement('button');
@@ -1320,6 +1339,49 @@ async function confirmarSegundaReserva(codigo) {
   } catch(err) {
     showToast('❌ ' + err.message, 'error');
     if (btn) { btn.disabled=false; btn.textContent='🔔 Registrar segunda reserva'; }
+  }
+}
+
+// ── PRE-RESERVA PARA CONTRATADAS ──────────────────────────────
+function openModalPreReserva(codigo) {
+  const v = DATA.find(x => x.codigo === codigo);
+  if (!v) return;
+  const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA']
+    .map(e => '<option>' + e + '</option>').join('');
+  document.getElementById('modalBody').innerHTML =
+    '<h3 style="margin:0 0 6px;font-size:16px">🔄 Pre-reservar cuando termine</h3>' +
+    '<p style="font-size:11px;color:var(--muted);margin-bottom:16px">La valla <b>' + v.codigo + '</b> quedará reservada automáticamente al vencer el contrato el <b>' + v.termino + '</b></p>' +
+    '<div class="form-group"><label>Cliente</label><input class="modal-input" id="pr-cliente" placeholder="Nombre del cliente" style="text-transform:uppercase"></div>' +
+    '<div class="form-group"><label>Ejecutiva</label><select class="modal-input" id="pr-ejecutiva"><option value="">Seleccionar...</option>' + execOpts + '</select></div>' +
+    '<div class="form-group"><label>Observaciones (opcional)</label><input class="modal-input" id="pr-obs" placeholder="Notas adicionales"></div>' +
+    '<button class="btn-contratar-confirm" style="background:rgba(99,102,241,.9);margin-top:8px" onclick="confirmarPreReserva(\'' + codigo + '\')">🔄 Confirmar pre-reserva</button>';
+  document.getElementById('modalOverlay').classList.add('open');
+  setTimeout(function(){ autoSetEjecutiva('pr-ejecutiva'); }, 50);
+}
+
+async function confirmarPreReserva(codigo) {
+  const cliente   = document.getElementById('pr-cliente')?.value.trim().toUpperCase();
+  const ejecutiva = document.getElementById('pr-ejecutiva')?.value;
+  const obs       = document.getElementById('pr-obs')?.value.trim();
+
+  if (!cliente || !ejecutiva) { showToast('Completa cliente y ejecutiva', 'info'); return; }
+
+  const btn = document.querySelector('.btn-contratar-confirm');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Registrando...'; }
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'preReservar', codigo, cliente, ejecutiva, observaciones: obs })
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ Pre-reserva registrada — se activará el ' + DATA.find(x=>x.codigo===codigo)?.termino, 'success');
+    closeModal();
+    await loadData(true);
+  } catch(err) {
+    showToast('❌ ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Confirmar pre-reserva'; }
   }
 }
 
