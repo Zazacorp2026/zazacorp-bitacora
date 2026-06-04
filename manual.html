@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Zazacorp · Manual de Usuario — Bitácora OOH 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --orange: #F47B20;
+    --orange-light: #FF9A4D;
+    --navy: #0F1B2D;
+    --navy2: #162236;
+    --navy3: #1E2E45;
+    --card: #1A2B40;
+    --card2: #213350;
+    --border: rgba(255,255,255,.08);
+    --text: #E8EDF5;
+    --muted: #7A90A8;
+    --green: #10B981;
+    --yellow: #F59E0B;
+    --red: #EF4444;
+    --purple: #818CF8;
+    --blue: #3B82F6;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--navy);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 260px;
+    background: var(--navy2);
+    border-right: 1px solid var(--border);
+    padding: 32px 0;
+    overflow-y: auto;
+    z-index: 100;
+  }
+
+  .sidebar-logo {
+    padding: 0 24px 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+
+  .sidebar-logo .brand {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--orange);
+    letter-spacing: 2px;
+  }
+
+  .sidebar-logo .sub {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+
+  .nav-section {
+    padding: 0 16px;
+    margin-bottom: 8px;
+  }
+
+  .nav-label {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 8px 8px 4px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: none;
+    transition: all .2s;
+    cursor: pointer;
+  }
+
+  .nav-item:hover, .nav-item.active {
+    background: rgba(244,123,32,.12);
+    color: var(--orange);
+  }
+
+  .nav-item .icon { font-size: 15px; width: 20px; text-align: center; }
+
+  /* ── MAIN ── */
+  .main {
+    margin-left: 260px;
+    min-height: 100vh;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    background: linear-gradient(135deg, var(--navy2) 0%, var(--navy3) 50%, #1A2F4A 100%);
+    padding: 80px 60px 60px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(244,123,32,.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero::after {
+    content: 'BITÁCORA OOH';
+    position: absolute;
+    bottom: -20px; right: 40px;
+    font-family: 'Syne', sans-serif;
+    font-size: 100px;
+    font-weight: 800;
+    color: rgba(255,255,255,.025);
+    letter-spacing: 4px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(244,123,32,.15);
+    border: 1px solid rgba(244,123,32,.3);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--orange);
+    letter-spacing: .5px;
+    margin-bottom: 20px;
+  }
+
+  .hero h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 48px;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #fff 0%, var(--orange-light) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero p {
+    font-size: 16px;
+    color: var(--muted);
+    max-width: 560px;
+    line-height: 1.7;
+  }
+
+  .hero-stats {
+    display: flex;
+    gap: 32px;
+    margin-top: 36px;
+  }
+
+  .hero-stat {
+    text-align: center;
+  }
+
+  .hero-stat .num {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--orange);
+  }
+
+  .hero-stat .lbl {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── CONTENT ── */
+  .content {
+    padding: 48px 60px;
+    max-width: 900px;
+  }
+
+  /* ── SECTION ── */
+  .section {
+    margin-bottom: 64px;
+    scroll-margin-top: 24px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-icon {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .section-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── STEP CARD ── */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .step {
+    display: flex;
+    gap: 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    position: relative;
+    transition: border-color .2s;
+  }
+
+  .step:hover { border-color: rgba(244,123,32,.3); }
+
+  .step-num {
+    width: 32px; height: 32px;
+    background: var(--orange);
+    color: #000;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .step-content h4 {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+
+  .step-content p {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  /* ── TIP / WARNING / INFO ── */
+  .tip, .warning, .info {
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 16px 0;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .tip    { background: rgba(16,185,129,.1);  border-left: 3px solid var(--green);  color: #6EE7B7; }
+  .warning{ background: rgba(239,68,68,.1);   border-left: 3px solid var(--red);    color: #FCA5A5; }
+  .info   { background: rgba(59,130,246,.1);  border-left: 3px solid var(--blue);   color: #93C5FD; }
+  .tip .icon, .warning .icon, .info .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── CREDENTIAL TABLE ── */
+  .cred-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 16px 0;
+  }
+
+  .cred-table th {
+    background: var(--card2);
+    padding: 12px 16px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .cred-table td {
+    padding: 11px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .cred-table tr:last-child td { border-bottom: none; }
+
+  .cred-table td:nth-child(3) {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--orange);
+  }
+
+  /* ── FEATURE GRID ── */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 16px 0;
+  }
+
+  .feature-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    transition: all .2s;
+  }
+
+  .feature-card:hover {
+    border-color: rgba(244,123,32,.3);
+    transform: translateY(-2px);
+  }
+
+  .feature-card .fc-icon { font-size: 24px; margin-bottom: 10px; }
+  .feature-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .feature-card p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  /* ── STATUS BADGES ── */
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 16px 0;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .badge.green  { background:rgba(16,185,129,.15); color:#10B981; border:1px solid rgba(16,185,129,.3); }
+  .badge.yellow { background:rgba(245,158,11,.15); color:#F59E0B; border:1px solid rgba(245,158,11,.3); }
+  .badge.red    { background:rgba(239,68,68,.15);  color:#EF4444; border:1px solid rgba(239,68,68,.3);  }
+  .badge.purple { background:rgba(129,140,248,.15);color:#818CF8; border:1px solid rgba(129,140,248,.3);}
+  .badge.blue   { background:rgba(59,130,246,.15); color:#3B82F6; border:1px solid rgba(59,130,246,.3); }
+
+  /* ── UI MOCKUP ── */
+  .mockup {
+    background: #0D1622;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin: 20px 0;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+  }
+
+  .mockup-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  .mockup-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .mockup-tab {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--card);
+    border: 1px solid var(--border);
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .mockup-tab.active {
+    background: rgba(244,123,32,.2);
+    color: var(--orange);
+    border-color: rgba(244,123,32,.4);
+  }
+
+  .mockup-filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .mockup-filter {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--card);
+    border: 1px solid var(--border);
+    font-family: 'DM Sans', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .mockup-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .mockup-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .mockup-card-img {
+    height: 60px;
+    border-radius: 5px;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #1E3A5F, #2A4D7A);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: rgba(255,255,255,.3);
+  }
+
+  .mockup-card .code { font-size: 9px; color: var(--orange); font-family: 'DM Mono', monospace; margin-bottom: 2px; }
+  .mockup-card .desc { font-size: 9px; color: var(--muted); margin-bottom: 6px; }
+  .mockup-card .btn { background: rgba(16,185,129,.2); border: 1px solid rgba(16,185,129,.3); border-radius: 4px; padding: 4px 8px; font-size: 9px; color: var(--green); text-align: center; }
+
+  /* ── KEYBOARD SHORTCUT ── */
+  kbd {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  /* ── DIVIDER ── */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 48px 0;
+  }
+
+  /* ── FOOTER ── */
+  .footer {
+    background: var(--navy2);
+    border-top: 1px solid var(--border);
+    padding: 32px 60px;
+    margin-left: 260px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-brand {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    color: var(--orange);
+    letter-spacing: 2px;
+    font-size: 16px;
+  }
+
+  .footer-text { font-size: 12px; color: var(--muted); }
+
+  /* ── PRINT ── */
+  @media print {
+    .sidebar { display: none; }
+    .main, .footer { margin-left: 0; }
+    .content { padding: 24px; }
+    .hero { padding: 40px 24px; }
+  }
+
+  /* Scroll indicator */
+  .scroll-top {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    width: 40px; height: 40px;
+    background: var(--orange);
+    color: #000;
+    border: none;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+    display: none;
+    z-index: 200;
+    box-shadow: 0 4px 20px rgba(244,123,32,.4);
+  }
+
+  .ver-tag {
+    display: inline-block;
+    background: rgba(244,123,32,.1);
+    border: 1px solid rgba(244,123,32,.2);
+    color: var(--orange);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="brand">ZAZACORP</div>
+    <div class="sub">MANUAL DE USUARIO · 2026</div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Inicio</div>
+    <a class="nav-item" href="#inicio"><span class="icon">🏠</span> Bienvenida</a>
+    <a class="nav-item" href="#acceso"><span class="icon">🔐</span> Acceso al sistema</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Navegación</div>
+    <a class="nav-item" href="#tabs"><span class="icon">📑</span> Pestañas principales</a>
+    <a class="nav-item" href="#filtros"><span class="icon">🔍</span> Filtros y búsqueda</a>
+    <a class="nav-item" href="#vistas"><span class="icon">⊞</span> Vistas</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Operaciones</div>
+    <a class="nav-item" href="#reservar"><span class="icon">🔒</span> Reservar una valla</a>
+    <a class="nav-item" href="#contratar"><span class="icon">⚡</span> Contratar una valla</a>
+    <a class="nav-item" href="#multiple"><span class="icon">☑️</span> Selección múltiple</a>
+    <a class="nav-item" href="#prereserva"><span class="icon">🔄</span> Pre-reservar</a>
+    <a class="nav-item" href="#segunda"><span class="icon">🔔</span> Segunda reserva</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Herramientas</div>
+    <a class="nav-item" href="#ppt"><span class="icon">📊</span> Exportar PPT</a>
+    <a class="nav-item" href="#alertas"><span class="icon">⚠️</span> Alertas</a>
+    <a class="nav-item" href="#mapa"><span class="icon">🗺️</span> Mapa</a>
+    <a class="nav-item" href="#dashboard"><span class="icon">📈</span> Dashboard</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Referencia</div>
+    <a class="nav-item" href="#correos"><span class="icon">📧</span> Correos automáticos</a>
+    <a class="nav-item" href="#estados"><span class="icon">🎨</span> Estados de vallas</a>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-badge">📖 Manual de Usuario <span class="ver-tag">v2026</span></div>
+    <h1>Bitácora OOH<br>Zazacorp</h1>
+    <p>Guía completa para gestionar el inventario de vallas publicitarias — desde reservas y contrataciones hasta exportación de presentaciones y monitoreo de alertas.</p>
+    <div class="hero-stats">
+      <div class="hero-stat"><div class="num">468</div><div class="lbl">Elementos OOH</div></div>
+      <div class="hero-stat"><div class="num">9</div><div class="lbl">Ejecutivas</div></div>
+      <div class="hero-stat"><div class="num">6</div><div class="lbl">Módulos</div></div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- 1. BIENVENIDA -->
+    <section class="section" id="inicio">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(244,123,32,.15)">🏠</div>
+        <div>
+          <div class="section-title">Bienvenida al sistema</div>
+          <div class="section-num">SECCIÓN 01</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">La <strong style="color:var(--text)">Bitácora OOH Zazacorp 2026</strong> es el sistema central para gestionar todo el inventario de vallas publicitarias. Desde aquí puedes consultar disponibilidad, reservar, contratar, y exportar presentaciones para clientes.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="fc-icon">🟢</div>
+          <h4>Ver disponibilidad en tiempo real</h4>
+          <p>Consulta qué vallas están libres, reservadas o contratadas en cada ciudad.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🔒</div>
+          <h4>Reservar y contratar</h4>
+          <p>Bloquea vallas para clientes y registra contrataciones con orden adjunta.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">📊</div>
+          <h4>Exportar presentaciones</h4>
+          <p>Genera PPT con fotos, ubicación y datos de las vallas seleccionadas.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">⚠️</div>
+          <h4>Monitorear alertas</h4>
+          <p>Visualiza contratos próximos a vencer para anticiparte con nuevos clientes.</p>
+        </div>
+      </div>
+
+      <div class="info">
+        <span class="icon">ℹ️</span>
+        <span>El sistema se sincroniza automáticamente con Google Sheets. Los cambios que hagas se reflejan en segundos para todo el equipo.</span>
+      </div>
+    </section>
+
+    <!-- 2. ACCESO -->
+    <section class="section" id="acceso">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(129,140,248,.15)">🔐</div>
+        <div>
+          <div class="section-title">Acceso al sistema</div>
+          <div class="section-num">SECCIÓN 02</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">El sistema tiene acceso restringido. Solo el equipo autorizado puede ingresar usando sus credenciales personales.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Ingresa a la URL del sistema</h4>
+            <p>Abre tu navegador y ve a: <code style="background:var(--card2);padding:2px 8px;border-radius:4px;font-family:'DM Mono',monospace;font-size:12px;color:var(--orange)">zazacorp2026.github.io/zazacorp-bitacora</code></p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Selecciona tu nombre</h4>
+            <p>En el desplegable "Usuario" elige tu nombre completo de la lista.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Ingresa tu contraseña</h4>
+            <p>Escribe tu contraseña personal y presiona <strong>Ingresar</strong> o la tecla <kbd>Enter</kbd>.</p>
+          </div>
+        </div>
+      </div>
+
+      <p style="font-size:13px;color:var(--muted);margin:20px 0 12px">Credenciales del equipo:</p>
+
+      <table class="cred-table">
+        <thead>
+          <tr><th>Usuario</th><th>Correo</th><th>Contraseña</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Jorge</td><td style="color:var(--muted);font-size:12px">jmora@zazacorp.com.ec</td><td>Zaza2026J</td></tr>
+          <tr><td>Lorena</td><td style="color:var(--muted);font-size:12px">lmelo@zazacorp.com.ec</td><td>Zaza2026L</td></tr>
+          <tr><td>Ricardo</td><td style="color:var(--muted);font-size:12px">ricardo_martinez@zazacorp.com.ec</td><td>Zaza2026R</td></tr>
+          <tr><td>Saskya</td><td style="color:var(--muted);font-size:12px">sfranco@zazacorp.com.ec</td><td>Zaza2026S</td></tr>
+          <tr><td>Shayra</td><td style="color:var(--muted);font-size:12px">sespinoza@zazacorp.com.ec</td><td>Zaza2026Sh</td></tr>
+          <tr><td>Verónica Terán</td><td style="color:var(--muted);font-size:12px">vteran@zazacorp.com.ec</td><td>Zaza2026VT</td></tr>
+          <tr><td>Verónica Triviño</td><td style="color:var(--muted);font-size:12px">vtrivino@zazacorp.com.ec</td><td>Zaza2026VTr</td></tr>
+          <tr><td>Yesenia</td><td style="color:var(--muted);font-size:12px">ydiaz@zazacorp.com.ec</td><td>Zaza2026Y</td></tr>
+          <tr><td>Zulia</td><td style="color:var(--muted);font-size:12px">zramos@zazacorp.com.ec</td><td>Zaza2026Z</td></tr>
+        </tbody>
+      </table>
+
+      <div class="warning">
+        <span class="icon">⚠️</span>
+        <span>No compartas tu contraseña. La sesión es personal y el sistema registra qué ejecutiva realiza cada operación.</span>
+      </div>
+
+      <p style="font-size:13px;color:var(--muted);margin-top:16px">Para <strong style="color:var(--text)">cerrar sesión</strong>: haz clic en tu nombre que aparece en la esquina superior derecha del header y confirma.</p>
+    </section>
+
+    <!-- 3. PESTAÑAS -->
+    <section class="section" id="tabs">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(59,130,246,.15)">📑</div>
+        <div>
+          <div class="section-title">Pestañas principales</div>
+          <div class="section-num">SECCIÓN 03</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">El sistema tiene 6 pestañas. Cada una muestra una vista diferente del inventario.</p>
+
+      <div class="mockup">
+        <div class="mockup-bar">
+          <div class="mockup-dot" style="background:#ef4444"></div>
+          <div class="mockup-dot" style="background:#f59e0b"></div>
+          <div class="mockup-dot" style="background:#10b981"></div>
+          <span style="color:var(--muted);font-size:10px;margin-left:8px;font-family:'DM Sans',sans-serif">zazacorp2026.github.io/zazacorp-bitacora</span>
+        </div>
+        <div class="mockup-tabs">
+          <div class="mockup-tab">📋 Inventario</div>
+          <div class="mockup-tab active">🟢 Disponibles</div>
+          <div class="mockup-tab">🟡 Reservadas</div>
+          <div class="mockup-tab">⚠️ Alertas</div>
+          <div class="mockup-tab">🗺️ Mapa</div>
+          <div class="mockup-tab">📈 Dashboard</div>
+        </div>
+        <div class="mockup-cards">
+          <div class="mockup-card">
+            <div class="mockup-card-img">🏙️</div>
+            <div class="code">FGYQ-A-029</div>
+            <div class="desc">AV. CARLOS JULIO AROSEMENA...</div>
+            <div class="btn">+ Reservar esta valla</div>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-img">🌆</div>
+            <div class="code">FGYQ-A-494</div>
+            <div class="desc">KM. 5.5 VÍA A DAULE...</div>
+            <div class="btn">+ Reservar esta valla</div>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-img">🏢</div>
+            <div class="code">FGYQ-A-530</div>
+            <div class="desc">KM. 6.5 VÍA A DAULE...</div>
+            <div class="btn">+ Reservar esta valla</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="steps" style="margin-top:16px">
+        <div class="step">
+          <div class="step-num" style="background:var(--card2);color:var(--text);font-size:16px;width:36px;height:36px">📋</div>
+          <div class="step-content">
+            <h4>Inventario</h4>
+            <p>Muestra <strong>todas</strong> las vallas del sistema sin importar su estado. Útil para consultas generales y edición.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="background:rgba(16,185,129,.2);color:var(--green);font-size:16px;width:36px;height:36px">🟢</div>
+          <div class="step-content">
+            <h4>Disponibles</h4>
+            <p>Solo vallas libres para reservar o contratar. Aquí trabajarás la mayor parte del tiempo para ofrecer espacio a clientes.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="background:rgba(245,158,11,.2);color:var(--yellow);font-size:16px;width:36px;height:36px">🟡</div>
+          <div class="step-content">
+            <h4>Reservadas</h4>
+            <p>Vallas bloqueadas temporalmente para un cliente. Tienen un tiempo límite de 48 horas para concretar la contratación.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="background:rgba(239,68,68,.2);color:var(--red);font-size:16px;width:36px;height:36px">⚠️</div>
+          <div class="step-content">
+            <h4>Alertas</h4>
+            <p>Vallas contratadas cuyo contrato está próximo a vencer o ya venció. Permite actuar antes de perder el cliente.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="background:rgba(59,130,246,.2);color:var(--blue);font-size:16px;width:36px;height:36px">🗺️</div>
+          <div class="step-content">
+            <h4>Mapa</h4>
+            <p>Vista geográfica de todas las vallas en el mapa. Los puntos cambian de color según el estado.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="background:rgba(129,140,248,.2);color:var(--purple);font-size:16px;width:36px;height:36px">📈</div>
+          <div class="step-content">
+            <h4>Dashboard</h4>
+            <p>Resumen ejecutivo con estadísticas, gráficos de ocupación por ciudad y métricas del inventario.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. FILTROS -->
+    <section class="section" id="filtros">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(16,185,129,.15)">🔍</div>
+        <div>
+          <div class="section-title">Filtros y búsqueda</div>
+          <div class="section-num">SECCIÓN 04</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">Puedes filtrar el inventario por múltiples criterios para encontrar exactamente lo que necesitas.</p>
+
+      <div class="mockup" style="margin-bottom:20px">
+        <div class="mockup-filters">
+          <div class="mockup-filter">🔍 Código, dirección, cliente...</div>
+          <div class="mockup-filter">🏙️ Todas las ciudades ▾</div>
+          <div class="mockup-filter">🏢 Todos los tipos ▾</div>
+          <div class="mockup-filter">👤 Todas las ejecutivas ▾</div>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">🔍</div>
+          <div class="step-content">
+            <h4>Búsqueda libre</h4>
+            <p>Escribe en el campo de texto para buscar por código de valla, dirección, nombre de cliente o ejecutiva. La búsqueda es instantánea.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">🏙️</div>
+          <div class="step-content">
+            <h4>Filtro por ciudad</h4>
+            <p>Selecciona Guayaquil, Quito, Samborondón u otras ciudades para ver solo las vallas de esa zona.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">🏢</div>
+          <div class="step-content">
+            <h4>Filtro por tipo</h4>
+            <p>Filtra entre Valla Fija, Valla LED, Puente, Muppi u otros formatos disponibles en el inventario.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">👤</div>
+          <div class="step-content">
+            <h4>Filtro por ejecutiva</h4>
+            <p>Ve solo las vallas asignadas a una ejecutiva específica. Funciona en todas las pestañas incluyendo Reservadas.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip">
+        <span class="icon">💡</span>
+        <span>Puedes combinar varios filtros al mismo tiempo. Por ejemplo: ciudad Guayaquil + tipo Valla LED + ejecutiva Saskya.</span>
+      </div>
+    </section>
+
+    <!-- 5. VISTAS -->
+    <section class="section" id="vistas">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(245,158,11,.15)">⊞</div>
+        <div>
+          <div class="section-title">Vistas del inventario</div>
+          <div class="section-num">SECCIÓN 05</div>
+        </div>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="fc-icon">🖼️</div>
+          <h4>Galería (predeterminada)</h4>
+          <p>Muestra las vallas como tarjetas con foto. Ideal para presentar opciones a clientes visualmente.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">📋</div>
+          <h4>Tabla</h4>
+          <p>Vista compacta en filas con todos los datos. Útil para revisar muchas vallas rápidamente.</p>
+        </div>
+        <div class="feature-card" style="grid-column:span 2">
+          <div class="fc-icon">📌</div>
+          <h4>Kanban</h4>
+          <p>Organiza las vallas en columnas por estado: Disponible, Reservada, Contratada. Vista tipo tablero para gestión rápida.</p>
+        </div>
+      </div>
+
+      <p style="font-size:13px;color:var(--muted);margin-top:4px">Cambia de vista con los botones <strong style="color:var(--text)">Galería · Tabla · Kanban</strong> en la esquina superior derecha del inventario.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- 6. RESERVAR -->
+    <section class="section" id="reservar">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(245,158,11,.15)">🔒</div>
+        <div>
+          <div class="section-title">Reservar una valla</div>
+          <div class="section-num">SECCIÓN 06</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">La reserva bloquea una valla por <strong style="color:var(--text)">48 horas</strong> mientras se confirma la contratación con el cliente.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Ve a la pestaña Disponibles</h4>
+            <p>Usa los filtros para encontrar la valla que necesitas.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Haz clic en la valla</h4>
+            <p>Abre el detalle completo de la valla con foto, ubicación y datos.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Clic en "+ Reservar esta valla"</h4>
+            <p>Se abre el formulario de reserva. Tu nombre de ejecutiva se completa automáticamente.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Ingresa el nombre del cliente</h4>
+            <p>Escribe el nombre del cliente en mayúsculas. Agrega observaciones si es necesario.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <h4>Confirma la reserva</h4>
+            <p>La valla pasa a estado <span class="badge yellow" style="font-size:10px;padding:2px 8px">🟡 RESERVADA</span> y queda bloqueada 48 horas.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="warning">
+        <span class="icon">⏰</span>
+        <span>Las reservas vencen automáticamente a las 48 horas. Si el cliente confirma, convierte la reserva en contratación antes de que expire.</span>
+      </div>
+
+      <div class="tip">
+        <span class="icon">💡</span>
+        <span>Para cancelar una reserva: abre la valla desde la pestaña Reservadas y haz clic en "Cancelar reserva".</span>
+      </div>
+    </section>
+
+    <!-- 7. CONTRATAR -->
+    <section class="section" id="contratar">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(239,68,68,.15)">⚡</div>
+        <div>
+          <div class="section-title">Contratar una valla</div>
+          <div class="section-num">SECCIÓN 07</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">La contratación es la operación más importante del sistema. Requiere subir la <strong style="color:var(--text)">orden de contratación en PDF</strong>. Al confirmar, se envía un correo automático a todos los involucrados.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Accede a la valla desde Disponibles o Reservadas</h4>
+            <p>Puedes contratar una valla disponible directamente, o convertir una reserva en contratación.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Clic en "⚡ Contratación Inmediata"</h4>
+            <p>Se abre el formulario de contratación.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Completa los datos</h4>
+            <p>Cliente, fecha de inicio, fecha de fin, valor mensual y período (ej: 3 MESES). Tu ejecutiva se completa automáticamente.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Sube el PDF de la orden</h4>
+            <p>Haz clic en el área de PDF y selecciona el archivo. <strong>Este campo es obligatorio</strong>.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <h4>Confirma la contratación</h4>
+            <p>La valla pasa a <span class="badge red" style="font-size:10px;padding:2px 8px">🔴 CONTRATADA</span>. Se envía correo automático con el PDF a todos los destinatarios.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="info">
+        <span class="icon">📧</span>
+        <span>El correo de confirmación llega con la foto de la valla y el PDF adjunto a: la ejecutiva que contrató, Jorge y Yesenia.</span>
+      </div>
+    </section>
+
+    <!-- 8. SELECCIÓN MÚLTIPLE -->
+    <section class="section" id="multiple">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(59,130,246,.15)">☑️</div>
+        <div>
+          <div class="section-title">Selección múltiple</div>
+          <div class="section-num">SECCIÓN 08</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">Permite reservar o contratar varias vallas a la vez para un mismo cliente y período.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Activa el modo selección múltiple</h4>
+            <p>En la pestaña Disponibles, haz clic en el botón <strong>"☑️ Selección múltiple"</strong> que aparece arriba a la derecha.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Selecciona las vallas</h4>
+            <p>Haz clic en cada valla que quieras incluir. Las seleccionadas se marcan con borde azul y una ✓.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Elige la acción</h4>
+            <p>Aparece una barra flotante en la parte inferior con dos opciones:<br>
+            <strong>🔒 Reservar seleccionadas</strong> — bloquea todas 48h<br>
+            <strong>⚡ Contratar seleccionadas</strong> — requiere PDF de orden</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Completa el formulario y confirma</h4>
+            <p>Ingresa el cliente y período una sola vez — aplica a todas las vallas seleccionadas.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip">
+        <span class="icon">💡</span>
+        <span>También puedes exportar a PPT solo las vallas seleccionadas con el botón <strong>"⬇ Exportar PPT"</strong>.</span>
+      </div>
+    </section>
+
+    <!-- 9. PRE-RESERVA -->
+    <section class="section" id="prereserva">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(129,140,248,.15)">🔄</div>
+        <div>
+          <div class="section-title">Pre-reservar cuando termine un contrato</div>
+          <div class="section-num">SECCIÓN 09</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">Si tienes un cliente interesado en una valla que actualmente está contratada, puedes dejar una pre-reserva. Cuando el contrato actual venza, la valla se reserva automáticamente para tu cliente.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Abre la valla CONTRATADA</h4>
+            <p>Ve al inventario general y haz clic en la valla que te interesa.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Clic en "🔄 Pre-reservar cuando termine el contrato"</h4>
+            <p>Aparece este botón en la parte inferior del detalle de la valla.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Ingresa el cliente y ejecutiva</h4>
+            <p>Registra quién será el próximo cliente de esa valla.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Espera el vencimiento automático</h4>
+            <p>Cada día a las 6am, el sistema verifica si algún contrato venció. Cuando eso ocurre, activa tu pre-reserva automáticamente y te llega un correo de confirmación.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="info">
+        <span class="icon">🔵</span>
+        <span>Las vallas con pre-reserva muestran el badge <strong style="color:var(--purple)">🔄 Pre-reservada: CLIENTE</strong> en la tarjeta para que todo el equipo lo sepa.</span>
+      </div>
+    </section>
+
+    <!-- 10. SEGUNDA RESERVA -->
+    <section class="section" id="segunda">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(245,158,11,.15)">🔔</div>
+        <div>
+          <div class="section-title">Segunda reserva en cola</div>
+          <div class="section-num">SECCIÓN 10</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">Similar a la pre-reserva pero para vallas que ya están <strong style="color:var(--text)">RESERVADAS</strong> (no contratadas). Si la reserva actual no se concreta, la tuya entra automáticamente.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Abre una valla RESERVADA</h4>
+            <p>Desde la pestaña Reservadas haz clic en la valla.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Clic en "🔔 Agregar segunda reserva (en cola)"</h4>
+            <p>Registra tu cliente y ejecutiva. Queda en espera.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Si la primera reserva vence</h4>
+            <p>Tu reserva se activa automáticamente con 48 horas de bloqueo.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- 11. PPT -->
+    <section class="section" id="ppt">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(244,123,32,.15)">📊</div>
+        <div>
+          <div class="section-title">Exportar presentación PPT</div>
+          <div class="section-num">SECCIÓN 11</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">Genera presentaciones de PowerPoint profesionales con foto, datos y ubicación de cada valla. Perfectas para enviar a clientes.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="fc-icon">🟢</div>
+          <h4>PPT de Disponibles</h4>
+          <p>Exporta las vallas visibles en la pestaña Disponibles (respeta filtros activos). Botón <strong>"⬇ Exportar PPT"</strong> en la barra superior.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">⚠️</div>
+          <h4>PPT de Alertas</h4>
+          <p>Exporta las vallas próximas a vencer desde la pestaña Alertas. Botón <strong>"⬇ Exportar PPT Alertas"</strong>.</p>
+        </div>
+      </div>
+
+      <div class="steps" style="margin-top:16px">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Aplica los filtros que necesites</h4>
+            <p>El PPT exporta exactamente lo que ves en pantalla. Si filtras por ciudad, solo esas vallas van al PPT.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Haz clic en "⬇ Exportar PPT"</h4>
+            <p>El botón cambia a "⏳ Generando..." mientras procesa. Espera unos segundos.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>El archivo se descarga automáticamente</h4>
+            <p>Nombre del archivo: <code style="background:var(--card2);padding:2px 6px;border-radius:4px;font-family:'DM Mono',monospace;font-size:11px">Zazacorp_Disponibles_2026-06-03.pptx</code></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip">
+        <span class="icon">💡</span>
+        <span>Cada lámina del PPT incluye: foto de la valla, código, dirección, lugar, tipo, medidas, GPS con link a Google Maps y logo Zazacorp.</span>
+      </div>
+    </section>
+
+    <!-- 12. ALERTAS -->
+    <section class="section" id="alertas">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(239,68,68,.15)">⚠️</div>
+        <div>
+          <div class="section-title">Pestaña Alertas</div>
+          <div class="section-num">SECCIÓN 12</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">Las alertas se generan automáticamente desde el Google Sheet. Aparecen vallas cuyo contrato está próximo a vencer o ya venció.</p>
+
+      <div class="badges">
+        <div class="badge yellow">🟡 VENCE EN 30 DÍAS</div>
+        <div class="badge yellow">🟡 VENCE EN 15 DÍAS</div>
+        <div class="badge red">🔴 VENCIÓ HACE 2 DÍAS</div>
+        <div class="badge red">🔴 VENCIÓ HACE 60 DÍAS</div>
+      </div>
+
+      <div class="steps" style="margin-top:12px">
+        <div class="step">
+          <div class="step-num">📋</div>
+          <div class="step-content">
+            <h4>Revisa las alertas diariamente</h4>
+            <p>Identifica qué contratos están por vencer para contactar al cliente a tiempo.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">🔄</div>
+          <div class="step-content">
+            <h4>Registra una pre-reserva si hay interesado</h4>
+            <p>Si ya tienes un cliente para esa valla cuando quede disponible, usa la pre-reserva.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">📊</div>
+          <div class="step-content">
+            <h4>Exporta el PPT de alertas</h4>
+            <p>Usa el botón "⬇ Exportar PPT Alertas" para presentar internamente los contratos por renovar.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="info">
+        <span class="icon">ℹ️</span>
+        <span>Las alertas también aparecen en las tarjetas del inventario general como un badge de color para que sean visibles desde cualquier vista.</span>
+      </div>
+    </section>
+
+    <!-- 13. MAPA -->
+    <section class="section" id="mapa">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(59,130,246,.15)">🗺️</div>
+        <div>
+          <div class="section-title">Mapa interactivo</div>
+          <div class="section-num">SECCIÓN 13</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">Vista geográfica de todo el inventario. Los puntos en el mapa se colorean según el estado de cada valla.</p>
+
+      <div class="badges">
+        <div class="badge green">● Disponible</div>
+        <div class="badge yellow">● Reservada</div>
+        <div class="badge red">● Contratada</div>
+        <div class="badge purple">● Bloqueada</div>
+      </div>
+
+      <div class="tip" style="margin-top:12px">
+        <span class="icon">💡</span>
+        <span>Haz clic en cualquier punto del mapa para ver el detalle de esa valla y acceder a las mismas opciones que en la galería.</span>
+      </div>
+    </section>
+
+    <!-- 14. DASHBOARD -->
+    <section class="section" id="dashboard">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(129,140,248,.15)">📈</div>
+        <div>
+          <div class="section-title">Dashboard ejecutivo</div>
+          <div class="section-num">SECCIÓN 14</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">Vista de resumen con métricas clave del inventario. Ideal para revisiones de equipo y reportes internos.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="fc-icon">📊</div>
+          <h4>Ocupación por ciudad</h4>
+          <p>Porcentaje de vallas disponibles vs contratadas en Guayaquil, Quito, Samborondón y otras ciudades.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">👤</div>
+          <h4>Vallas por ejecutiva</h4>
+          <p>Cuántas vallas tiene contratada cada ejecutiva del equipo.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🏢</div>
+          <h4>Mix de formatos</h4>
+          <p>Distribución de vallas por tipo: Fija, LED, Puente, Muppi, etc.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">⚠️</div>
+          <h4>Alertas activas</h4>
+          <p>Contador de contratos próximos a vencer que requieren atención.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- 15. CORREOS -->
+    <section class="section" id="correos">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(16,185,129,.15)">📧</div>
+        <div>
+          <div class="section-title">Correos automáticos</div>
+          <div class="section-num">SECCIÓN 15</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">El sistema envía correos automáticamente <strong style="color:var(--text)">solo al confirmar una contratación</strong>. No se envían correos por reservas, cancelaciones ni pre-reservas.</p>
+
+      <table class="cred-table">
+        <thead>
+          <tr><th>Evento</th><th>¿Se envía correo?</th><th>Destinatarios</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Contratación individual</td>
+            <td><span style="color:var(--green)">✅ Sí</span></td>
+            <td style="font-size:11px;color:var(--muted)">Ejecutiva + Jorge + Yesenia</td>
+          </tr>
+          <tr>
+            <td>Contratación múltiple</td>
+            <td><span style="color:var(--green)">✅ Sí</span></td>
+            <td style="font-size:11px;color:var(--muted)">Ejecutiva + Jorge + Yesenia</td>
+          </tr>
+          <tr>
+            <td>Pre-reserva activada automáticamente</td>
+            <td><span style="color:var(--green)">✅ Sí</span></td>
+            <td style="font-size:11px;color:var(--muted)">Ejecutiva + Jorge + Yesenia</td>
+          </tr>
+          <tr>
+            <td>Reserva simple</td>
+            <td><span style="color:var(--muted)">❌ No</span></td>
+            <td style="font-size:11px;color:var(--muted)">—</td>
+          </tr>
+          <tr>
+            <td>Pre-reserva registrada</td>
+            <td><span style="color:var(--muted)">❌ No</span></td>
+            <td style="font-size:11px;color:var(--muted)">—</td>
+          </tr>
+          <tr>
+            <td>Segunda reserva</td>
+            <td><span style="color:var(--muted)">❌ No</span></td>
+            <td style="font-size:11px;color:var(--muted)">—</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="tip">
+        <span class="icon">📎</span>
+        <span>Los correos de contratación incluyen: foto de la valla, datos del contrato y el PDF de la orden adjunto.</span>
+      </div>
+    </section>
+
+    <!-- 16. ESTADOS -->
+    <section class="section" id="estados">
+      <div class="section-header">
+        <div class="section-icon" style="background:rgba(244,123,32,.15)">🎨</div>
+        <div>
+          <div class="section-title">Estados y colores de vallas</div>
+          <div class="section-num">SECCIÓN 16</div>
+        </div>
+      </div>
+
+      <p style="color:var(--muted);margin-bottom:20px">Cada valla tiene un color de fondo en el sistema que indica su estado de forma visual.</p>
+
+      <div class="steps">
+        <div class="step" style="border-left:3px solid var(--green)">
+          <div class="step-num" style="background:rgba(16,185,129,.2);color:var(--green)">🟢</div>
+          <div class="step-content">
+            <h4>DISPONIBLE — Verde oscuro</h4>
+            <p>La valla está libre. Puede reservarse o contratarse inmediatamente.</p>
+          </div>
+        </div>
+        <div class="step" style="border-left:3px solid var(--yellow)">
+          <div class="step-num" style="background:rgba(245,158,11,.2);color:var(--yellow)">🟡</div>
+          <div class="step-content">
+            <h4>RESERVADA — Amarillo oscuro</h4>
+            <p>Bloqueada temporalmente. Tiene 48 horas para convertirse en contratación.</p>
+          </div>
+        </div>
+        <div class="step" style="border-left:3px solid var(--red)">
+          <div class="step-num" style="background:rgba(239,68,68,.2);color:var(--red)">🔴</div>
+          <div class="step-content">
+            <h4>CONTRATADA — Rojo oscuro</h4>
+            <p>Tiene un contrato activo. Muestra cliente, ejecutiva, inicio y fin del contrato.</p>
+          </div>
+        </div>
+        <div class="step" style="border-left:3px solid var(--purple)">
+          <div class="step-num" style="background:rgba(129,140,248,.2);color:var(--purple)">🔵</div>
+          <div class="step-content">
+            <h4>NO UTILIZAR — Gris azulado</h4>
+            <p>Valla fuera de servicio, en mantenimiento o no disponible para comercializar.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="info" style="margin-top:16px">
+        <span class="icon">📅</span>
+        <span>Las vallas CONTRATADAS muestran en su tarjeta el countdown: <strong>📅 Fin en: X meses X días</strong> (o <strong>⚠️ VENCIÓ HACE X DÍAS</strong> si el contrato ya expiró).</span>
+      </div>
+    </section>
+
+  </div><!-- /content -->
+</main>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div>
+    <div class="footer-brand">ZAZACORP</div>
+    <div class="footer-text" style="margin-top:4px">Bitácora OOH 2026 · Sistema de Gestión de Inventario</div>
+  </div>
+  <div style="text-align:right">
+    <div class="footer-text">Soporte técnico</div>
+    <div style="font-size:13px;color:var(--orange);margin-top:2px">jmora@zazacorp.com.ec</div>
+  </div>
+</footer>
+
+<!-- SCROLL TOP -->
+<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<script>
+  // Scroll top button
+  window.addEventListener('scroll', function() {
+    document.getElementById('scrollTop').style.display = window.scrollY > 400 ? 'flex' : 'none';
+    document.getElementById('scrollTop').style.alignItems = 'center';
+    document.getElementById('scrollTop').style.justifyContent = 'center';
+  });
+
+  // Active nav item on scroll
+  const sections = document.querySelectorAll('.section');
+  const navItems = document.querySelectorAll('.nav-item');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navItems.forEach(item => item.classList.remove('active'));
+        const id = entry.target.id;
+        const active = document.querySelector('.nav-item[href="#' + id + '"]');
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { threshold: 0.3 });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
