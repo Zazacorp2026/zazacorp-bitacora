@@ -2,8 +2,35 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>ZAZACORP · Bitácora OOH 2026</title>
+
+<!-- PWA Meta Tags -->
+<meta name="application-name" content="ZAZACORP">
+<meta name="description" content="Sistema de gestión de inventario OOH Zazacorp 2026">
+<meta name="theme-color" content="#f59e0b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ZAZACORP">
+<meta name="msapplication-TileColor" content="#0a0c10">
+<meta name="msapplication-TileImage" content="icons/icon-144.png">
+
+<!-- Manifest PWA -->
+<link rel="manifest" href="manifest.json">
+
+<!-- Apple Touch Icons -->
+<link rel="apple-touch-icon" href="icons/icon-152.png">
+<link rel="apple-touch-icon" sizes="72x72" href="icons/icon-72.png">
+<link rel="apple-touch-icon" sizes="96x96" href="icons/icon-96.png">
+<link rel="apple-touch-icon" sizes="128x128" href="icons/icon-128.png">
+<link rel="apple-touch-icon" sizes="144x144" href="icons/icon-144.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+<link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-96.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/icon-72.png">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
   :root{--bg:#0a0c10;--surface:#111318;--surface2:#1a1d24;--border:#252830;--text:#e8eaf0;--muted:#6b7280;--accent:#f59e0b;--green:#10b981;--yellow:#f59e0b;--red:#ef4444;--blue:#3b82f6;}
@@ -1000,7 +1027,7 @@ async function hacerReserva(codigo) {
   btn.textContent = 'Registrando...';
 
   try {
-    const expira = new Date(Date.now() + BLOCK_HOURS * 3600000).toISOString();
+    const expira = calcularExpiraLaboral(BLOCK_HOURS);
     const vd = DATA.find(x => x.codigo === codigo);
 
     // 1. Guardar en Sheet via Apps Script
@@ -1274,7 +1301,7 @@ async function confirmarMultiReserva() {
   if (btn) { btn.disabled=true; btn.textContent='⏳ Reservando...'; }
 
   const codigos = [...selectedVallas];
-  const expira = new Date(Date.now() + 48*3600000).toISOString();
+  const expira = calcularExpiraLaboral(BLOCK_HOURS);
 
   try {
     // Save each reserva to Sheet via Apps Script
@@ -2366,7 +2393,52 @@ function showToast(msg, type = 'info') {
 
 // ── SISTEMA DE BLOQUEO 48H (Firebase Realtime DB) ───────────
 const ADMIN_PIN  = '2026';
-const BLOCK_HOURS = 48;
+const BLOCK_HOURS = 48; // horas laborales (sin contar sábado ni domingo)
+
+/**
+ * Calcula la fecha de expiración de una reserva sumando N horas laborales
+ * (lunes a viernes). Si cae en fin de semana, avanza al lunes.
+ */
+function calcularExpiraLaboral(horasLaborales) {
+  let fecha = new Date();
+
+  // Si hoy es sábado o domingo, arrancar desde el lunes 08:00
+  const diaSemana = fecha.getDay(); // 0=Dom, 1=Lun ... 6=Sáb
+  if (diaSemana === 6) {
+    // Sábado → avanzar 2 días al lunes
+    fecha.setDate(fecha.getDate() + 2);
+    fecha.setHours(8, 0, 0, 0);
+  } else if (diaSemana === 0) {
+    // Domingo → avanzar 1 día al lunes
+    fecha.setDate(fecha.getDate() + 1);
+    fecha.setHours(8, 0, 0, 0);
+  }
+
+  let horasRestantes = horasLaborales;
+
+  while (horasRestantes > 0) {
+    const dia = fecha.getDay();
+    if (dia === 6 || dia === 0) {
+      // Fin de semana: saltar al lunes 08:00
+      const diasSaltar = dia === 6 ? 2 : 1;
+      fecha.setDate(fecha.getDate() + diasSaltar);
+      fecha.setHours(8, 0, 0, 0);
+    } else {
+      // Día laboral: avanzar 1 hora
+      fecha.setTime(fecha.getTime() + 3600000);
+      horasRestantes--;
+      // Si tras avanzar llegamos a fin de semana, saltar
+      const nuevoDia = fecha.getDay();
+      if (nuevoDia === 6 || nuevoDia === 0) {
+        const diasSaltar = nuevoDia === 6 ? 2 : 1;
+        fecha.setDate(fecha.getDate() + diasSaltar);
+        fecha.setHours(8, 0, 0, 0);
+      }
+    }
+  }
+
+  return fecha.toISOString();
+}
 
 // Cache local de bloqueos (se sincroniza con Firebase)
 let _bloqueos = {};
@@ -2510,5 +2582,17 @@ if (checkLogin()) {
   init();
 }
 </script>
+
+<!-- Registro del Service Worker (PWA) -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { scope: '/zazacorp-bitacora/' })
+      .then(reg => console.log('✅ Service Worker registrado:', reg.scope))
+      .catch(err => console.warn('⚠️ Service Worker error:', err));
+  });
+}
+</script>
+
 </body>
 </html>
