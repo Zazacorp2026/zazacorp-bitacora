@@ -144,7 +144,10 @@
   .reserva-info p{font-size:12px;color:var(--text);line-height:1.6;}
   .alerts-list{display:flex;flex-direction:column;gap:9px;}
   .alert-item{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:13px 15px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:border-color .18s;}
-  .alert-item:hover{border-color:#353840;}
+  .alert-item:hover{border-color:var(--accent);}
+  .alert-item.alert-selected{border-color:var(--accent);background:rgba(245,158,11,.07);}
+  .alert-check{color:transparent;font-size:12px;}
+  .alert-item.alert-selected .alert-check{background:var(--accent)!important;border-color:var(--accent)!important;color:#000!important;font-weight:900;}
   .alert-info{flex:1;}
   .alert-codigo{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);margin-bottom:3px;}
   .alert-dir{font-size:13px;font-weight:500;margin-bottom:3px;}
@@ -829,19 +832,41 @@ function renderKanban(container, data) {
   container.innerHTML = '<div class="kanban">' + cols + '</div>';
 }
 
+function toggleAlerta(codigo) {
+  if (selectedAlertas.has(codigo)) selectedAlertas.delete(codigo);
+  else selectedAlertas.add(codigo);
+  // Actualizar visual de la card
+  const card = document.querySelector('.alert-item[data-codigo="' + codigo + '"]');
+  if (card) card.classList.toggle('alert-selected', selectedAlertas.has(codigo));
+  // Actualizar contador en botón exportar
+  const btn = document.getElementById('btnExportPPTAlertas');
+  if (btn) {
+    const n = selectedAlertas.size;
+    btn.textContent = n > 0 ? '⬇ Exportar PPT (' + n + ' seleccionadas)' : '⬇ Exportar PPT Alertas';
+    btn.style.background = n > 0 ? 'rgba(245,158,11,.25)' : 'rgba(245,158,11,.12)';
+  }
+}
+
 function renderAlerts(container) {
-  const data = getFiltered(); // respeta filtros de ciudad, tipo, ejecutiva
+  const data = getFiltered();
   if (!data.length) { container.innerHTML = '<div class="empty"><div class="icon">✅</div><p>Sin alertas activas</p></div>'; return; }
+  // Limpiar selección al re-renderizar
+  selectedAlertas.clear();
   container.innerHTML =
-    '<div style="display:flex;justify-content:flex-end;margin-bottom:14px">' +
-    '<button id="btnExportPPTAlertas" onclick="exportarPPTAlertas()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Exportar PPT Alertas</button>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">' +
+      '<div style="font-size:11px;color:var(--muted)">Haz clic en una alerta para seleccionarla · Sin selección se exportan todas</div>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<button onclick="selectedAlertas.clear();document.querySelectorAll(\'.alert-item\').forEach(c=>c.classList.remove(\'alert-selected\'));var b=document.getElementById(\'btnExportPPTAlertas\');if(b){b.textContent=\'⬇ Exportar PPT Alertas\';b.style.background=\'rgba(245,158,11,.12)\'}" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:5px 10px;cursor:pointer">✕ Limpiar selección</button>' +
+        '<button id="btnExportPPTAlertas" onclick="exportarPPTAlertas()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Exportar PPT Alertas</button>' +
+      '</div>' +
     '</div>' +
     '<div class="alerts-list">' + data.map(v => {
     const foto = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
     const fotoHtml = foto
       ? '<img src="' + foto + '" style="width:90px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid var(--border)">'
       : '<div style="width:90px;height:70px;background:var(--surface2);border-radius:8px;flex-shrink:0;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>';
-    return '<div class="alert-item" onclick="openModal(\'' + v.codigo + '\')">' +
+    return '<div class="alert-item" data-codigo="' + v.codigo + '" onclick="toggleAlerta(\'' + v.codigo + '\')" style="cursor:pointer">' +
+      '<div class="alert-check" style="width:20px;height:20px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:10px;transition:all .15s">✓</div>' +
       fotoHtml +
       '<div class="alert-info" style="margin-left:14px">' +
         '<div class="alert-codigo">' + v.codigo + ' · ' + v.lugar + '</div>' +
@@ -1613,6 +1638,7 @@ async function guardarEdicion(codigo) {
 // ── MULTI-SELECT ──────────────────────────────────────────────
 let multiSelectMode = false;
 let selectedVallas = new Set();
+let selectedAlertas = new Set(); // selección independiente pestaña Alertas
 let _multiPdfFile = null;
 let _multiPdfBase64 = null;
 
@@ -2232,7 +2258,11 @@ async function exportarPPTAlertas() {
   }
 
   try {
-  const alertas = getFiltered(); // respeta filtros activos
+  // Si hay selección, exportar solo las seleccionadas; si no, exportar todas
+  const todasAlertas = getFiltered();
+  const alertas = selectedAlertas.size > 0
+    ? todasAlertas.filter(v => selectedAlertas.has(v.codigo))
+    : todasAlertas;
   if (!alertas.length) { showToast('No hay alertas con los filtros actuales', 'info'); return; }
 
   const pres = new PptxGenJS();
