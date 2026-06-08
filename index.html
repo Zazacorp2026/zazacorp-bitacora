@@ -850,8 +850,7 @@ function toggleAlerta(codigo) {
 function renderAlerts(container) {
   const data = getFiltered();
   if (!data.length) { container.innerHTML = '<div class="empty"><div class="icon">✅</div><p>Sin alertas activas</p></div>'; return; }
-  // Limpiar selección al re-renderizar
-  selectedAlertas.clear();
+  // NO limpiar selectedAlertas aquí — se conserva la selección entre re-renders
   container.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">' +
       '<div style="font-size:11px;color:var(--muted)">Haz clic en una alerta para seleccionarla · Sin selección se exportan todas</div>' +
@@ -876,6 +875,19 @@ function renderAlerts(container) {
       '<span class="alert-badge ' + (v.alerta.includes('VENCIDO') ? 'badge-danger' : 'badge-warning') + '" style="margin-left:14px">' + v.alerta + '</span>' +
     '</div>';
   }).join('') + '</div>';
+
+  // Restaurar estado visual de selección tras el re-render
+  if (selectedAlertas.size > 0) {
+    selectedAlertas.forEach(cod => {
+      const card = container.querySelector('.alert-item[data-codigo="' + cod + '"]');
+      if (card) card.classList.add('alert-selected');
+    });
+    const btn = document.getElementById('btnExportPPTAlertas');
+    if (btn) {
+      btn.textContent = '⬇ Exportar PPT (' + selectedAlertas.size + ' seleccionadas)';
+      btn.style.background = 'rgba(245,158,11,.25)';
+    }
+  }
 }
 
 function renderPag(pages, total) {
