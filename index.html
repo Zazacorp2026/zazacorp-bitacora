@@ -57,6 +57,22 @@
   .search-box:focus{border-color:var(--accent);}
   .search-box::placeholder{color:var(--muted);}
   select.filter{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px;font-family:'Space Grotesk',sans-serif;outline:none;cursor:pointer;}
+  /* Multi-select filtros */
+  .multi-filter{position:relative;display:inline-block;}
+  .mf-btn{background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;padding:7px 10px;font-family:'Space Grotesk',sans-serif;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;transition:border-color .18s;}
+  .mf-btn:hover,.multi-filter.open .mf-btn{border-color:var(--accent);color:var(--accent);}
+  .mf-badge{background:var(--accent);color:#000;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:2px;}
+  .mf-arrow{font-size:9px;transition:transform .18s;}
+  .multi-filter.open .mf-arrow{transform:rotate(180deg);}
+  .mf-drop{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:190px;background:var(--surface);border:1px solid var(--border);border-radius:10px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);padding:6px 0;max-height:260px;overflow-y:auto;}
+  .multi-filter.open .mf-drop{display:block;}
+  .mf-item{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--text);transition:background .12s;}
+  .mf-item:hover{background:var(--surface2);}
+  .mf-item input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;flex-shrink:0;}
+  .mf-item.checked{color:var(--accent);}
+  .mf-sep{height:1px;background:var(--border);margin:4px 0;}
+  .mf-clear{padding:6px 12px;font-size:11px;color:var(--muted);cursor:pointer;text-align:center;transition:color .12s;}
+  .mf-clear:hover{color:var(--accent);}
   .count-badge{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);padding:5px 9px;background:var(--surface);border:1px solid var(--border);border-radius:8px;white-space:nowrap;}
   .view-toggle{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:3px;margin-left:auto;}
   .view-btn{padding:5px 11px;border-radius:5px;cursor:pointer;font-size:11px;color:var(--muted);transition:all .2s;border:none;background:none;font-family:'Space Grotesk',sans-serif;}
@@ -337,9 +353,18 @@
 
 <div class="toolbar">
   <input type="text" class="search-box" placeholder="🔍  Código, dirección, cliente, ejecutiva..." id="searchInput" oninput="applyFilters()">
-  <select class="filter" id="filterCiudad" onchange="applyFilters()"><option value="">Todas las ciudades</option></select>
-  <select class="filter" id="filterTipo" onchange="applyFilters()"><option value="">Todos los tipos</option></select>
-  <select class="filter" id="filterEjecutiva" onchange="applyFilters()"><option value="">Todas las ejecutivas</option></select>
+  <div class="multi-filter" id="mf-ciudad">
+    <button class="mf-btn" onclick="toggleMF('mf-ciudad')">Todas las ciudades <span class="mf-arrow">▾</span></button>
+    <div class="mf-drop"></div>
+  </div>
+  <div class="multi-filter" id="mf-tipo">
+    <button class="mf-btn" onclick="toggleMF('mf-tipo')">Todos los tipos <span class="mf-arrow">▾</span></button>
+    <div class="mf-drop"></div>
+  </div>
+  <div class="multi-filter" id="mf-ejecutiva">
+    <button class="mf-btn" onclick="toggleMF('mf-ejecutiva')">Todas las ejecutivas <span class="mf-arrow">▾</span></button>
+    <div class="mf-drop"></div>
+  </div>
   <span class="count-badge" id="countBadge">–</span>
   <button id="btnExportPPT" onclick="exportarPPT()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
       <button id="btnMultiSelect" onclick="toggleMultiSelect()" style="display:none;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;color:#3b82f6;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Selección múltiple</button>
@@ -477,9 +502,9 @@ let state = {
   tab: 'inventario',
   view: 'grid',
   search: '',
-  filterCiudad: '',
-  filterTipo: '',
-  filterEjecutiva: '',
+  filterCiudad:   new Set(),
+  filterTipo:     new Set(),
+  filterEjecutiva: new Set(),
   page: 1,
   perPage: 48
 };
@@ -633,18 +658,73 @@ function populateFilters() {
   const ciudades = [...new Set(DATA.map(v => v.lugar).filter(Boolean))].sort();
   const tipos    = [...new Set(DATA.map(v => v.tipo).filter(Boolean))].sort();
   const ejecs    = [...new Set(DATA.map(v => v.ejecutiva).filter(Boolean))].sort();
-
-  const rebuild = (id, opts) => {
-    const sel = document.getElementById(id);
-    const cur = sel.value;
-    while (sel.options.length > 1) sel.remove(1);
-    opts.forEach(o => sel.add(new Option(o, o)));
-    sel.value = cur;
-  };
-  rebuild('filterCiudad', ciudades);
-  rebuild('filterTipo', tipos);
-  rebuild('filterEjecutiva', ejecs);
+  buildMF('mf-ciudad',    ciudades, 'filterCiudad',    'Todas las ciudades');
+  buildMF('mf-tipo',      tipos,    'filterTipo',      'Todos los tipos');
+  buildMF('mf-ejecutiva', ejecs,    'filterEjecutiva', 'Todas las ejecutivas');
 }
+
+function buildMF(mfId, opciones, stateKey, placeholder) {
+  const wrap = document.getElementById(mfId);
+  if (!wrap) return;
+  const drop = wrap.querySelector('.mf-drop');
+  drop.innerHTML =
+    '<div class="mf-clear" onclick="clearMF(\'' + mfId + '\',\'' + stateKey + '\')">✕ Limpiar selección</div>' +
+    '<div class="mf-sep"></div>' +
+    opciones.map(o =>
+      '<label class="mf-item' + (state[stateKey].has(o) ? ' checked' : '') + '">' +
+        '<input type="checkbox" value="' + o + '"' + (state[stateKey].has(o) ? ' checked' : '') +
+        ' onchange="toggleMFOption(this,\'' + mfId + '\',\'' + stateKey + '\',\'' + placeholder + '\')">' +
+        o +
+      '</label>'
+    ).join('');
+  updateMFBtn(mfId, stateKey, placeholder);
+}
+
+function toggleMF(mfId) {
+  const wrap = document.getElementById(mfId);
+  const isOpen = wrap.classList.contains('open');
+  // Cerrar todos
+  document.querySelectorAll('.multi-filter.open').forEach(el => el.classList.remove('open'));
+  if (!isOpen) wrap.classList.add('open');
+}
+
+function toggleMFOption(cb, mfId, stateKey, placeholder) {
+  if (cb.checked) state[stateKey].add(cb.value);
+  else state[stateKey].delete(cb.value);
+  cb.closest('.mf-item').classList.toggle('checked', cb.checked);
+  updateMFBtn(mfId, stateKey, placeholder);
+  applyFilters();
+}
+
+function clearMF(mfId, stateKey) {
+  state[stateKey].clear();
+  const wrap = document.getElementById(mfId);
+  wrap.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; cb.closest('.mf-item').classList.remove('checked'); });
+  const placeholders = {filterCiudad:'Todas las ciudades', filterTipo:'Todos los tipos', filterEjecutiva:'Todas las ejecutivas'};
+  updateMFBtn(mfId, stateKey, placeholders[stateKey]);
+  applyFilters();
+}
+
+function updateMFBtn(mfId, stateKey, placeholder) {
+  const wrap = document.getElementById(mfId);
+  if (!wrap) return;
+  const btn  = wrap.querySelector('.mf-btn');
+  const n    = state[stateKey].size;
+  if (n === 0) {
+    btn.innerHTML = placeholder + ' <span class="mf-arrow">▾</span>';
+  } else if (n === 1) {
+    btn.innerHTML = [...state[stateKey]][0] + ' <span class="mf-arrow">▾</span>';
+  } else {
+    btn.innerHTML = placeholder.split(' ')[0] + ' <span class="mf-badge">' + n + '</span> <span class="mf-arrow">▾</span>';
+  }
+}
+
+// Cerrar dropdowns al hacer clic fuera
+document.addEventListener('click', e => {
+  if (!e.target.closest('.multi-filter')) {
+    document.querySelectorAll('.multi-filter.open').forEach(el => el.classList.remove('open'));
+  }
+});
 
 function updateStats() {
   const dispCount = DATA.filter(v => v.estado==='DISPONIBLE' && !isBlocked(v.codigo)).length;
@@ -671,9 +751,9 @@ function getFiltered() {
     (v.lugar||'').toLowerCase().includes(s) ||
     (v.cliente_reserva||'').toLowerCase().includes(s)
   );
-  if (state.filterCiudad)   d = d.filter(v => v.lugar === state.filterCiudad);
-  if (state.filterTipo)     d = d.filter(v => v.tipo === state.filterTipo);
-  if (state.filterEjecutiva) d = d.filter(v => v.ejecutiva === state.filterEjecutiva);
+  if (state.filterCiudad.size)    d = d.filter(v => state.filterCiudad.has(v.lugar));
+  if (state.filterTipo.size)      d = d.filter(v => state.filterTipo.has(v.tipo));
+  if (state.filterEjecutiva.size) d = d.filter(v => state.filterEjecutiva.has(v.ejecutiva));
   return d;
 }
 
@@ -699,9 +779,7 @@ function setView(v, btn) {
 
 function applyFilters() {
   state.search = document.getElementById('searchInput').value;
-  state.filterCiudad = document.getElementById('filterCiudad').value;
-  state.filterTipo = document.getElementById('filterTipo').value;
-  state.filterEjecutiva = document.getElementById('filterEjecutiva').value;
+  // filterCiudad/Tipo/Ejecutiva se actualizan directamente desde toggleMFOption
   state.page = 1; render();
 }
 
