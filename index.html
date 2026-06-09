@@ -2705,6 +2705,7 @@ function isBlocked(codigo) {
 
 // Refrescar bloqueos cada 10 segundos
 setInterval(async () => {
+  if (state.tab === 'led') return; // No interferir con el módulo LED
   await cargarBloqueos();
 }, 10000);
 
