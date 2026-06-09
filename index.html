@@ -2824,7 +2824,10 @@ function buildLEDUI(container, data) {
         '<div class="led-player-name">' + (player.name || player.playerId) + '</div>' +
         (player.sn ? '<div class="led-player-sn">SN: ' + player.sn + '</div>' : '') +
       '</div>' +
-      '<span style="font-size:10px;color:' + (player.isOnline ? '#4ade80' : '#6b7280') + '">' + (player.isOnline ? '● EN LÍNEA' : '● OFFLINE') + '</span>' +
+      '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">' +
+        '<span style="font-size:10px;color:' + (player.isOnline ? '#4ade80' : '#6b7280') + '">' + (player.isOnline ? '● EN LÍNEA' : '● OFFLINE') + '</span>' +
+        (player.account ? '<span style="font-size:9px;color:var(--muted);background:var(--surface2);border-radius:4px;padding:1px 5px">' + player.account + '</span>' : '') +
+      '</div>' +
     '</div>';
 
     // Barra de capacidad
