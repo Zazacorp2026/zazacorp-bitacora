@@ -1803,6 +1803,7 @@ async function confirmarMultiContratacion() {
     showToast('✅ ' + codigos.length + ' vallas contratadas — email enviado', 'success');
     closeModal();
     multiSelectMode = false;
+    codigos.forEach(c => removeBloqueo(c)); // limpiar bloqueos Firebase de todas las vallas
     selectedVallas.clear();
     updateFloatingBtn();
     const msBtn = document.getElementById('btnMultiSelect');
