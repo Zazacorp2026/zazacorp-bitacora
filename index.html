@@ -441,7 +441,7 @@
 // ══════════════════════════════════════════════════════════════
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/1j_JXZeeKbrF3Anqj65uEaF2s_fFDhvSw1jY3RipXc3k/export?format=csv&gid=521906580';
 const FB_URL  = 'https://zazacorp-bitacora-default-rtdb.firebaseio.com';
-const API_URL = 'https://script.google.com/macros/s/AKfycbz7oqjdh-S_Fqn1svez5rprXrWsA_UtB8tqmLwvQoMcurIfThjYw8FWYa-LLCLdIx-TUw/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyTlN29P6a_52u7vmAk9hwGCFNb2hCPjHeIdnQsVTkYdaEiVDmcz1lTkI-3slIVbcptkw/exec';
 // ══════════════════════════════════════════════════════════════
 
 
@@ -2786,7 +2786,7 @@ function buildLEDUI(container, data) {
   const totalSpotsSold = contratos.filter(c => c.activo).reduce((s, c) => s + c.spots, 0);
 
   let html = '';
-  if (vnnoxError) html += '<div class="led-vnnox-error">⚠️ VNNOX no disponible temporalmente — mostrando datos registrados en Bitácora</div>';
+  if (vnnoxError) html += '<div class="led-vnnox-error">⚠️ VNNOX: ' + vnnoxError + '</div>';
 
   html += '<div class="led-stats-bar">' +
     '<div class="led-stat"><b>' + players.length + '</b>Pantallas VNNOX</div>' +
