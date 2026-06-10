@@ -263,6 +263,7 @@
 
   .card-checkbox{position:absolute;top:10px;left:10px;width:20px;height:20px;cursor:pointer;z-index:10;accent-color:#3b82f6;}
   .card.selected-card{outline:2px solid #3b82f6;outline-offset:2px;}
+  .card.selected-card-inv{outline:2px solid #a78bfa;outline-offset:2px;background:rgba(139,92,246,.06);}
   .floating-contratar{background:#3b82f6;color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer;font-family:sans-serif;box-shadow:0 4px 20px rgba(59,130,246,.5);transition:all .2s;}
   .floating-contratar:hover{opacity:.9;transform:scale(1.02);}
   .dashboard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;padding:4px;}
@@ -403,6 +404,7 @@
   <button id="btnExportPPT" onclick="exportarPPT()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
   <button id="btnInvPPT" onclick="exportarPPTInventario()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
   <button id="btnInvExcel" onclick="exportarExcelInventario()" style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.35);border-radius:8px;color:#4ade80;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(74,222,128,.18)'" onmouseout="this.style.background='rgba(74,222,128,.08)'">⬇ Exportar Excel</button>
+  <button id="btnMultiSelectInv" onclick="toggleMultiSelectInv()" style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.35);border-radius:8px;color:#a78bfa;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Seleccionar</button>
       <button id="btnMultiSelect" onclick="toggleMultiSelect()" style="display:none;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;color:#3b82f6;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Selección múltiple</button>
       <button id="btnMultiSelectRes" onclick="toggleMultiSelect()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Selección para contratar</button>
   <div class="view-toggle" id="viewToggle">
@@ -817,8 +819,11 @@ function switchTab(t) {
   if (msBtnRes) msBtnRes.style.display = t === 'reservadas' ? 'block' : 'none';
   const invPPT   = document.getElementById('btnInvPPT');
   const invExcel = document.getElementById('btnInvExcel');
+  const invSel   = document.getElementById('btnMultiSelectInv');
   if (invPPT)   invPPT.style.display   = t === 'inventario' ? 'block' : 'none';
   if (invExcel) invExcel.style.display = t === 'inventario' ? 'block' : 'none';
+  if (invSel)   invSel.style.display   = t === 'inventario' ? 'block' : 'none';
+  if (t !== 'inventario') { multiSelectInvMode = false; selectedInv.clear(); }
   if (t !== 'disponibles' && t !== 'reservadas') { multiSelectMode = false; selectedVallas.clear(); updateFloatingBtn(); }
   if (t === 'reservadas' && !multiSelectMode) { selectedVallas.clear(); }
   render();
@@ -901,12 +906,14 @@ function renderCard(v) {
         : '');
   const isDisp = v.estado === 'DISPONIBLE' || v.estado === 'RESERVADA';
   const isSelected = selectedVallas.has(v.codigo);
+  const isSelectedInv = selectedInv.has(v.codigo);
   const chk = (multiSelectMode && isDisp) ? '<input type="checkbox" class="card-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();toggleValla(event,\'' + v.codigo + '\')">': '';
-  const selClass = isSelected ? ' selected-card' : '';
+  const chkInv = (multiSelectInvMode && state.tab === 'inventario') ? '<input type="checkbox" class="card-checkbox" ' + (isSelectedInv ? 'checked' : '') + ' onclick="event.stopPropagation();toggleInvCard(event,\'' + v.codigo + '\')">': '';
+  const selClass = isSelected ? ' selected-card' : (isSelectedInv ? ' selected-card-inv' : '');
   const onclk = (multiSelectMode && isDisp) ? 'toggleValla(event,\'' + v.codigo + '\')' : 'openModal(\'' + v.codigo + '\')';
-  const cardOnClick = (multiSelectMode && isDisp) ? 'selValla(event,this)' : 'openModal(\'' + v.codigo + '\')';
+  const cardOnClick = multiSelectInvMode && state.tab === 'inventario' ? 'toggleInvCard(event,\'' + v.codigo + '\')' : ((multiSelectMode && isDisp) ? 'selValla(event,this)' : 'openModal(\'' + v.codigo + '\')');
   return '<div class="card' + selClass + '" data-codigo="' + v.codigo + '" onclick="' + cardOnClick + '">' +
-    chk +
+    (chkInv || chk) +
     '<div class="card-photo">' + fHtml + '</div>' +
     '<div class="card-body">' +
       '<div class="card-header"><div class="card-codigo">' + v.codigo + '</div><div class="estado-badge ' + (bloqueo ? 'eb-RESERVADA' : ec(v.estado)) + '">' + (bloqueo ? 'RESERVADA' : v.estado) + '</div></div>' +
@@ -1786,6 +1793,8 @@ async function guardarEdicion(codigo) {
 let multiSelectMode = false;
 let selectedVallas = new Set();
 let selectedAlertas = new Set(); // selección independiente pestaña Alertas
+let multiSelectInvMode = false;
+let selectedInv = new Set(); // selección independiente pestaña Inventario
 let _multiPdfFile = null;
 let _multiPdfBase64 = null;
 
@@ -2224,6 +2233,38 @@ function calcularPeriodoContrato() {
   checkContratarForm();
 }
 
+function toggleMultiSelectInv() {
+  multiSelectInvMode = !multiSelectInvMode;
+  selectedInv.clear();
+  const btn = document.getElementById('btnMultiSelectInv');
+  if (btn) {
+    btn.textContent = multiSelectInvMode ? '✕ Cancelar selección' : '☐ Seleccionar';
+    btn.style.background   = multiSelectInvMode ? 'rgba(239,68,68,.12)' : 'rgba(139,92,246,.12)';
+    btn.style.borderColor  = multiSelectInvMode ? 'rgba(239,68,68,.35)' : 'rgba(139,92,246,.35)';
+    btn.style.color        = multiSelectInvMode ? '#ef4444' : '#a78bfa';
+  }
+  // Actualizar label de botones de export
+  updateInvExportBtns();
+  render();
+}
+
+function toggleInvCard(event, codigo) {
+  event.stopPropagation();
+  if (selectedInv.has(codigo)) selectedInv.delete(codigo);
+  else selectedInv.add(codigo);
+  const card = event.target.closest ? event.target.closest('.card') : null;
+  if (card) card.classList.toggle('selected-card-inv', selectedInv.has(codigo));
+  updateInvExportBtns();
+}
+
+function updateInvExportBtns() {
+  const n    = selectedInv.size;
+  const ppt  = document.getElementById('btnInvPPT');
+  const exc  = document.getElementById('btnInvExcel');
+  if (ppt)  ppt.textContent  = n > 0 ? '⬇ Exportar PPT (' + n + ')' : '⬇ Exportar PPT';
+  if (exc)  exc.textContent  = n > 0 ? '⬇ Exportar Excel (' + n + ')' : '⬇ Exportar Excel';
+}
+
 function checkContratarForm() {
   const cliente  = document.getElementById('ct-cliente')?.value.trim();
   const ejecutiva = document.getElementById('ct-ejecutiva')?.value;
@@ -2306,7 +2347,11 @@ async function exportarPPTInventario() {
   }
 
   try {
-    const vallas = getFiltered();
+    // Si hay selección, exportar solo las seleccionadas; si no, exportar todas
+    const todasVallas = getFiltered();
+    const vallas = selectedInv.size > 0
+      ? todasVallas.filter(v => selectedInv.has(v.codigo))
+      : todasVallas;
     if (!vallas.length) { showToast('No hay vallas con los filtros actuales', 'info'); return; }
 
     const pres = new PptxGenJS();
@@ -2433,14 +2478,17 @@ async function exportarExcelInventario() {
       });
     }
 
-    // Obtener datos frescos del Sheet
+    // Si hay selección, exportar solo las seleccionadas; si no, pedir al Sheet todas
+    const todasIds = selectedInv.size > 0 ? [...selectedInv] : null;
+
     btn.textContent = '⏳ Generando Excel...';
     const res  = await fetch(API_URL + '?action=exportarInventario', { cache: 'no-store' });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error al obtener datos');
 
-    const rows = json.rows;
-    if (!rows.length) { showToast('No hay datos en el inventario', 'info'); return; }
+    let rows = json.rows;
+    if (todasIds) rows = rows.filter(r => todasIds.includes(r.codigo));
+    if (!rows.length) { showToast('No hay datos para exportar', 'info'); return; }
 
     // Construir hoja de Excel
     const headers = ['Lugar','Código','Dirección','Tipo','Medidas','Latitud','Longitud','Link Google Maps','Foto URL'];
