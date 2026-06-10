@@ -2436,8 +2436,15 @@ async function exportarPPTInventario() {
       }
 
       // GPS
-
-      // Logo esquina inferior derecha
+      if (hasCoords) {
+        slide.addShape(pres.shapes.RECTANGLE, { x:rx,y:5.0,w:5.5,h:0.7, fill:{color:'F4F6F8'},line:{color:'E5E7EB',width:1} });
+        slide.addShape(pres.shapes.OVAL, { x:rx+0.15,y:5.12,w:0.44,h:0.44, fill:{color:ORANGE},line:{color:ORANGE} });
+        slide.addText('UBICACIÓN GPS', { x:rx+0.72,y:5.06,w:4.6,h:0.22, fontSize:7,color:LABEL,bold:true,fontFace:'Arial',charSpacing:1 });
+        slide.addText(v.lat+'°,   '+v.lon+'°', { x:rx+0.72,y:5.28,w:4.6,h:0.3, fontSize:12,color:DARK,fontFace:'Courier New',bold:true });
+        slide.addText('📍 Ver ubicación en Google Maps →', { x:rx,y:5.78,w:5.5,h:0.3,
+          fontSize:10,color:ORANGE,fontFace:'Arial',
+          hyperlink:{url:'https://www.google.com/maps?q='+v.lat+','+v.lon} });
+      }
       slide.addImage({ data: LOGO_NARANJA, x:11.6,y:6.9,w:1.5,h:0.48 });
     }
 
