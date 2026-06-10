@@ -2260,8 +2260,14 @@ async function exportarPPTInventario() {
   if (typeof PptxGenJS === 'undefined') {
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
-      s.onload = resolve; s.onerror = reject;
+      s.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+      s.onload = resolve;
+      s.onerror = () => {
+        const s2 = document.createElement('script');
+        s2.src = 'https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+        s2.onload = resolve; s2.onerror = reject;
+        document.head.appendChild(s2);
+      };
       document.head.appendChild(s);
     });
   }
@@ -2274,21 +2280,34 @@ async function exportarPPTInventario() {
     pres.layout = 'LAYOUT_WIDE';
     pres.title  = 'ZAZANEXUS · Inventario OOH';
 
-    const ORANGE = 'F47B20', WHITE = 'FFFFFF', NAVY = '1A2B4A', LABEL = '8A9BB5';
+    const NAVY   = '1A2B4A';
+    const ORANGE = 'F47B20';
+    const WHITE  = 'FFFFFF';
+    const DARK   = '1A2B4A';
+    const LABEL  = '8A9BB5';
+    const GREEN  = '10B981';
 
     // Portada
     const cover = pres.addSlide();
     cover.addImage({ data: COVER_IMG, x:0, y:0, w:13.3, h:7.5 });
 
-    // Estado a color
-    const estadoColor = { 'DISPONIBLE':'10B981', 'RESERVADA':'F59E0B', 'CONTRATADA':'EF4444' };
+    // Badge por estado
+    const badgeCfg = {
+      'DISPONIBLE': { bg:'E8F5EE', border:GREEN,  text:'VALLA DISPONIBLE',  color:GREEN  },
+      'RESERVADA':  { bg:'FEF3C7', border:'F59E0B', text:'VALLA RESERVADA', color:'B45309' },
+      'CONTRATADA': { bg:'FEE2E2', border:'EF4444', text:'VALLA CONTRATADA', color:'B91C1C' },
+    };
 
     for (const v of vallas) {
       const slide = pres.addSlide();
       slide.background = { color: WHITE };
+
+      // Panel izquierdo naranja
       slide.addShape(pres.shapes.RECTANGLE, { x:0,y:0,w:7.3,h:7.5, fill:{color:ORANGE},line:{color:ORANGE} });
+      // Franja blanca
       slide.addShape(pres.shapes.RECTANGLE, { x:0,y:0,w:0.35,h:7.5, fill:{color:WHITE},line:{color:WHITE} });
 
+      // Foto
       const foto = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
       if (foto && (foto.startsWith('http') || foto.startsWith('data:'))) {
         try {
@@ -2297,40 +2316,63 @@ async function exportarPPTInventario() {
         } catch(e) { renderFotoPlaceholder(slide, pres, LABEL); }
       } else { renderFotoPlaceholder(slide, pres, LABEL); }
 
-      slide.addText('zazacorp.com.ec', { x:0.7,y:7.08,w:4,h:0.28, fontSize:9,color:WHITE,fontFace:'Arial' });
+      const hasCoords = v.lat && v.lon && String(v.lat).trim() && Math.abs(parseFloat(v.lat)) < 10;
+      slide.addText('zazacorp.com.ec', { x:0.7,y:7.08,w:4,h:0.28, fontSize:9,color:'FFFFFF',fontFace:'Arial' });
 
       // Panel derecho
-      slide.addShape(pres.shapes.RECTANGLE, { x:7.3,y:0,w:6,h:7.5, fill:{color:NAVY},line:{color:NAVY} });
-      const col = estadoColor[v.estado] || LABEL;
-      slide.addShape(pres.shapes.RECTANGLE, { x:7.3,y:0,w:6,h:0.38, fill:{color:col},line:{color:col} });
-      slide.addText(v.estado || '', { x:7.35,y:0.04,w:5.9,h:0.3, fontSize:10,bold:true,color:WHITE,fontFace:'Arial',align:'center' });
+      const rx = 7.55;
+      const badge = badgeCfg[v.estado] || badgeCfg['DISPONIBLE'];
+      slide.addShape(pres.shapes.RECTANGLE, { x:rx,y:0.35,w:2.4,h:0.35, fill:{color:badge.bg},line:{color:badge.border,width:1} });
+      slide.addText(badge.text, { x:rx,y:0.35,w:2.4,h:0.35, fontSize:8,bold:true,color:badge.color,align:'center',fontFace:'Arial',charSpacing:1 });
 
-      const rx = 7.6, rw = 5.5;
-      const rows = [
-        ['CÓDIGO',     v.codigo||''],
-        ['CIUDAD',     v.lugar||''],
-        ['TIPO',       v.tipo||''],
-        ['MEDIDAS',    v.medidas||''],
-        ['DIRECCIÓN',  v.direccion||''],
-        ['EJECUTIVA',  v.ejecutiva||''],
-        ['CLIENTE',    v.cliente||''],
-        ['INICIO',     v.inicio||''],
-        ['FIN',        v.termino||''],
-        ['VALOR',      v.valor ? '$'+Number(v.valor).toLocaleString() : ''],
+      // Código
+      slide.addText(v.codigo, { x:rx,y:0.82,w:5.5,h:0.85, fontSize:34,bold:true,color:DARK,fontFace:'Arial Black' });
+
+      // Línea
+      slide.addShape(pres.shapes.LINE, { x:rx,y:1.78,w:5.5,h:0, line:{color:'E5E7EB',width:1} });
+
+      // Grid datos
+      const details = [
+        {label:'LUGAR',   value: v.lugar   || '—'},
+        {label:'TIPO',    value: v.tipo    || '—'},
+        {label:'MEDIDAS', value: v.medidas || '—'},
       ];
-      let ry = 0.55;
-      rows.forEach(([lbl, val]) => {
-        if (!val) return;
-        slide.addText(lbl, { x:rx,y:ry,w:1.4,h:0.22, fontSize:7,bold:true,color:LABEL,fontFace:'Arial' });
-        slide.addText(val, { x:rx+1.45,y:ry,w:rw-1.45,h:0.22, fontSize:8.5,color:WHITE,fontFace:'Arial' });
-        ry += 0.28;
+      details.forEach((d, i) => {
+        const col = i%2, row = Math.floor(i/2);
+        const dx = rx + col*2.8, dy = 2.0 + row*0.75;
+        slide.addText(d.label, { x:dx,y:dy,w:2.6,h:0.22, fontSize:7,color:LABEL,bold:true,fontFace:'Arial',charSpacing:1 });
+        slide.addText(d.value, { x:dx,y:dy+0.23,w:2.6,h:0.35, fontSize:13,bold:true,color:DARK,fontFace:'Arial' });
       });
+
+      // Línea
+      slide.addShape(pres.shapes.LINE, { x:rx,y:3.6,w:5.5,h:0, line:{color:'E5E7EB',width:1} });
+
+      // Dirección
+      slide.addText('DIRECCIÓN', { x:rx,y:3.72,w:5.5,h:0.22, fontSize:7,color:LABEL,bold:true,fontFace:'Arial',charSpacing:1 });
+      const dir = v.direccion || '—';
+      slide.addText(dir.length>100?dir.substring(0,97)+'…':dir, { x:rx,y:3.97,w:5.5,h:0.9, fontSize:11,color:DARK,fontFace:'Arial',wrap:true,valign:'top' });
+
+      // GPS
+      if (hasCoords) {
+        slide.addShape(pres.shapes.RECTANGLE, { x:rx,y:5.0,w:5.5,h:0.7, fill:{color:'F4F6F8'},line:{color:'E5E7EB',width:1} });
+        slide.addShape(pres.shapes.OVAL, { x:rx+0.15,y:5.12,w:0.44,h:0.44, fill:{color:ORANGE},line:{color:ORANGE} });
+        slide.addText('UBICACIÓN GPS', { x:rx+0.72,y:5.06,w:4.6,h:0.22, fontSize:7,color:LABEL,bold:true,fontFace:'Arial',charSpacing:1 });
+        slide.addText(v.lat+'°,   '+v.lon+'°', { x:rx+0.72,y:5.28,w:4.6,h:0.3, fontSize:12,color:DARK,fontFace:'Courier New',bold:true });
+        slide.addText('📍 Ver ubicación en Google Maps →', { x:rx,y:5.78,w:5.5,h:0.3,
+          fontSize:10,color:ORANGE,fontFace:'Arial',
+          hyperlink:{url:'https://www.google.com/maps?q='+v.lat+','+v.lon} });
+      }
+
+      // Logo esquina inferior derecha
+      slide.addImage({ data: LOGO_NARANJA, x:11.6,y:6.9,w:1.5,h:0.48 });
     }
 
-    await pres.writeFile({ fileName: 'ZAZANEXUS_Inventario_' + new Date().toISOString().split('T')[0] + '.pptx' });
-    showToast('✅ PPT generado — ' + vallas.length + ' vallas', 'success');
+    const fecha = new Date().toISOString().split('T')[0];
+    await pres.writeFile({ fileName: 'ZAZANEXUS_Inventario_' + fecha + '.pptx' });
+    showToast('✓ PPT descargado con ' + vallas.length + ' vallas', 'success');
   } catch(e) {
     showToast('❌ Error: ' + e.message, 'error');
+    console.error(e);
   } finally {
     btn.textContent = '⬇ Exportar PPT'; btn.disabled = false;
   }
