@@ -2381,39 +2381,66 @@ async function exportarPPTInventario() {
 // ── Exportar Excel Inventario ────────────────────────────────
 async function exportarExcelInventario() {
   const btn = document.getElementById('btnInvExcel');
-  btn.textContent = '⏳ Generando...'; btn.disabled = true;
+  btn.textContent = '⏳ Obteniendo datos...'; btn.disabled = true;
 
   try {
-    const vallas = getFiltered();
-    if (!vallas.length) { showToast('No hay vallas con los filtros actuales', 'info'); return; }
+    // Cargar SheetJS si no está disponible
+    if (typeof XLSX === 'undefined') {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+        s.onload = resolve;
+        s.onerror = () => {
+          const s2 = document.createElement('script');
+          s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+          s2.onload = resolve; s2.onerror = reject;
+          document.head.appendChild(s2);
+        };
+        document.head.appendChild(s);
+      });
+    }
 
-    // Construir CSV con BOM para Excel
-    const cols = ['Código','Ciudad','Tipo','Medidas','Dirección','Estado','Cliente','Ejecutiva',
-                  'Inicio','Fin Contrato','Valor Mensual','Período','Arrendatario','Propietario','Lat','Lon'];
-    const esc  = v => '"' + String(v||'').replace(/"/g,'""') + '"';
-    const rows = [cols.map(esc).join(',')];
+    // Obtener datos frescos del Sheet
+    btn.textContent = '⏳ Generando Excel...';
+    const res  = await fetch(API_URL + '?action=exportarInventario', { cache: 'no-store' });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error al obtener datos');
 
-    vallas.forEach(v => {
-      rows.push([
-        v.codigo, v.lugar, v.tipo, v.medidas, v.direccion,
-        v.estado, v.cliente, v.ejecutiva,
-        v.inicio, v.termino, v.valor, v.periodo,
-        v.arrendatario, v.propietario, v.lat, v.lon
-      ].map(esc).join(','));
+    const rows = json.rows;
+    if (!rows.length) { showToast('No hay datos en el inventario', 'info'); return; }
+
+    // Construir hoja de Excel
+    const headers = ['Lugar','Código','Dirección','Tipo','Medidas','Latitud','Longitud','Link Google Maps','Foto URL'];
+    const wsData  = [headers];
+
+    rows.forEach(r => {
+      wsData.push([
+        r.lugar, r.codigo, r.direccion, r.tipo, r.medidas,
+        r.lat, r.lon, r.maps, r.foto
+      ]);
     });
 
-    const bom  = '\uFEFF';
-    const blob = new Blob([bom + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = 'ZAZANEXUS_Inventario_' + new Date().toISOString().split('T')[0] + '.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    const wb  = XLSX.utils.book_new();
+    const ws  = XLSX.utils.aoa_to_sheet(wsData);
 
-    showToast('✅ Excel generado — ' + vallas.length + ' vallas', 'success');
+    // Ancho de columnas
+    ws['!cols'] = [
+      {wch:18},{wch:16},{wch:45},{wch:16},{wch:10},
+      {wch:12},{wch:12},{wch:50},{wch:60}
+    ];
+
+    // Estilo encabezado (SheetJS Community no tiene estilos completos, pero sí freeze)
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventario OOH');
+
+    const fecha = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, 'ZAZANEXUS_Inventario_' + fecha + '.xlsx');
+
+    showToast('✅ Excel generado — ' + rows.length + ' vallas', 'success');
   } catch(e) {
     showToast('❌ Error: ' + e.message, 'error');
+    console.error(e);
   } finally {
     btn.textContent = '⬇ Exportar Excel'; btn.disabled = false;
   }
