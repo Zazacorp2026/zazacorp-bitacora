@@ -404,6 +404,7 @@
   <button id="btnInvPPT" onclick="exportarPPTInventario()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
   <button id="btnInvExcel" onclick="exportarExcelInventario()" style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.35);border-radius:8px;color:#4ade80;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(74,222,128,.18)'" onmouseout="this.style.background='rgba(74,222,128,.08)'">⬇ Exportar Excel</button>
       <button id="btnMultiSelect" onclick="toggleMultiSelect()" style="display:none;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;color:#3b82f6;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Selección múltiple</button>
+      <button id="btnMultiSelectRes" onclick="toggleMultiSelect()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Selección para contratar</button>
   <div class="view-toggle" id="viewToggle">
     <button class="view-btn active" onclick="setView('grid',this)">⊞ Galería</button>
     <button class="view-btn" onclick="setView('table',this)">≡ Tabla</button>
@@ -422,8 +423,8 @@
 </div>
 
 <div id="floatingBar" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:none;gap:10px;z-index:200">
-  <button class="floating-contratar" style="background:#f59e0b;color:#000" onclick="openModalMultiReservar()">🔒 Reservar seleccionadas (<span id="selectedCountR">0</span>)</button>
-  <button class="floating-contratar" style="background:#3b82f6;color:#fff" onclick="openModalMultiContratar()">⚡ Contratar seleccionadas (<span id="selectedCountC">0</span>)</button>
+  <button id="floatBtnReservar" class="floating-contratar" style="background:#f59e0b;color:#000" onclick="openModalMultiReservar()">🔒 Reservar seleccionadas (<span id="selectedCountR">0</span>)</button>
+  <button id="floatBtnContratar" class="floating-contratar" style="background:#3b82f6;color:#fff" onclick="openModalMultiContratar()">⚡ Contratar seleccionadas (<span id="selectedCountC">0</span>)</button>
 </div>
 
 <div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
@@ -812,11 +813,14 @@ function switchTab(t) {
   if (pptBtn) pptBtn.style.display = t === 'disponibles' ? 'block' : 'none';
   const msBtn = document.getElementById('btnMultiSelect');
   if (msBtn) msBtn.style.display = t === 'disponibles' ? 'block' : 'none';
+  const msBtnRes = document.getElementById('btnMultiSelectRes');
+  if (msBtnRes) msBtnRes.style.display = t === 'reservadas' ? 'block' : 'none';
   const invPPT   = document.getElementById('btnInvPPT');
   const invExcel = document.getElementById('btnInvExcel');
   if (invPPT)   invPPT.style.display   = t === 'inventario' ? 'block' : 'none';
   if (invExcel) invExcel.style.display = t === 'inventario' ? 'block' : 'none';
-  if (t !== 'disponibles') { multiSelectMode = false; selectedVallas.clear(); updateFloatingBtn(); }
+  if (t !== 'disponibles' && t !== 'reservadas') { multiSelectMode = false; selectedVallas.clear(); updateFloatingBtn(); }
+  if (t === 'reservadas' && !multiSelectMode) { selectedVallas.clear(); }
   render();
 }
 
@@ -1789,12 +1793,21 @@ function toggleMultiSelect() {
   multiSelectMode = !multiSelectMode;
   selectedVallas.clear();
   updateFloatingBtn();
+  // Botón disponibles
   const btn = document.getElementById('btnMultiSelect');
   if (btn) {
     btn.textContent = multiSelectMode ? '✕ Cancelar selección' : '☐ Selección múltiple';
     btn.style.background = multiSelectMode ? 'rgba(239,68,68,.12)' : 'rgba(59,130,246,.12)';
     btn.style.borderColor = multiSelectMode ? 'rgba(239,68,68,.35)' : 'rgba(59,130,246,.35)';
     btn.style.color = multiSelectMode ? '#ef4444' : '#3b82f6';
+  }
+  // Botón reservadas
+  const btnRes = document.getElementById('btnMultiSelectRes');
+  if (btnRes) {
+    btnRes.textContent = multiSelectMode ? '✕ Cancelar selección' : '☐ Selección para contratar';
+    btnRes.style.background = multiSelectMode ? 'rgba(239,68,68,.12)' : 'rgba(245,158,11,.12)';
+    btnRes.style.borderColor = multiSelectMode ? 'rgba(239,68,68,.35)' : 'rgba(245,158,11,.4)';
+    btnRes.style.color = multiSelectMode ? '#ef4444' : 'var(--accent)';
   }
   render();
 }
@@ -1826,6 +1839,16 @@ function updateFloatingBtn() {
     const cC = document.getElementById('selectedCountC');
     if (cR) cR.textContent = n;
     if (cC) cC.textContent = n;
+    // En reservadas: solo mostrar botón contratar
+    const btnRes  = document.getElementById('floatBtnReservar');
+    const btnCont = document.getElementById('floatBtnContratar');
+    if (state.tab === 'reservadas') {
+      if (btnRes)  btnRes.style.display  = 'none';
+      if (btnCont) btnCont.style.display = 'block';
+    } else {
+      if (btnRes)  btnRes.style.display  = 'block';
+      if (btnCont) btnCont.style.display = 'block';
+    }
   } else {
     bar.style.display = 'none';
   }
