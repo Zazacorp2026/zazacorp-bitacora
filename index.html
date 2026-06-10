@@ -671,6 +671,16 @@ function loadFromCache() {
 function onDataLoaded() {
   populateFilters();
   updateStats();
+  // Mostrar botones según el tab activo
+  const t = state.tab;
+  const invPPT   = document.getElementById('btnInvPPT');
+  const invExcel = document.getElementById('btnInvExcel');
+  const pptBtn   = document.getElementById('btnExportPPT');
+  const msBtn    = document.getElementById('btnMultiSelect');
+  if (invPPT)   invPPT.style.display   = t === 'inventario' ? 'block' : 'none';
+  if (invExcel) invExcel.style.display = t === 'inventario' ? 'block' : 'none';
+  if (pptBtn)   pptBtn.style.display   = t === 'disponibles' ? 'block' : 'none';
+  if (msBtn)    msBtn.style.display    = t === 'disponibles' ? 'block' : 'none';
   render();
 }
 
