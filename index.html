@@ -1045,6 +1045,7 @@ function goPage(p) { state.page = p; render(); window.scrollTo(0,0); }
 
 // ── MODAL ────────────────────────────────────────────────────
 function openModal(codigo) {
+  _fotoZoom = 1; _fotoDx = 0; _fotoDy = 0; // resetear zoom al abrir
   const v = DATA.find(x => String(x.codigo).trim() === String(codigo).trim());
   if (!v) return;
 
@@ -1085,26 +1086,29 @@ function openModal(codigo) {
   document.getElementById('modalTitle').textContent = v.direccion.substring(0,70) + (v.direccion.length > 70 ? '…' : '');
   document.getElementById('modalSubtitle').textContent = v.codigo + ' · ' + v.lugar + ' · ' + v.tipo;
   const fotoLocal = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
-  const fotoPos = localStorage.getItem('zz_fotopos_' + v.codigo) || 'center';
-  const posOpts = ['top','center','bottom'];
-  const posLabels = {'top':'Arriba','center':'Centro','bottom':'Abajo'};
-  const posBtns = posOpts.map(p =>
-    '<button onclick="setFotoPos(\'' + v.codigo + '\',\'' + p + '\')" style="padding:3px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-family:inherit;border:1px solid ' + (fotoPos===p ? 'var(--accent)' : 'var(--border)') + ';background:' + (fotoPos===p ? 'rgba(245,158,11,.2)' : 'var(--surface)') + ';color:' + (fotoPos===p ? 'var(--accent)' : 'var(--muted)') + '">' + posLabels[p] + '</button>'
-  ).join('');
-  const fotoControls = fotoLocal ? '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><span style="font-size:10px;color:var(--muted);margin-right:2px">Posición:</span>' + posBtns + '</div>' : '';
   const liberarBtn = (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') ? '<button class="liberar-btn" onclick="liberarValla(\'' + v.codigo + '\')">🔓 Liberar valla (Admin)</button>' : '';
-  // Segunda reserva badge and button
   const bloqueo = isBlocked(v.codigo) || (v.bloqueo_expira ? {expira: v.bloqueo_expira, ejecutiva: v.bloqueo_ejecutiva} : null);
   const seg2Cliente = v.reserva2_cliente || '';
   const seg2Ejec = v.reserva2_ejecutiva || '';
   const seg2Badge = seg2Cliente ? '<div class="segunda-badge">🔔 2ª reserva en cola: ' + seg2Cliente + ' (' + seg2Ejec + ')</div>' : '';
+
+  // Visor con zoom + arrastre
+  const fotoVisor = fotoLocal
+    ? `<div id="fotoVisorWrap" style="position:relative;overflow:hidden;border-radius:10px;background:#111;height:320px;cursor:grab;user-select:none" onwheel="zoomFoto(event)" onmousedown="startDragFoto(event)" title="Rueda: zoom · Arrastrar: mover">
+        <img id="modalFotoImg" src="${fotoLocal}" alt="foto" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(1);transition:transform .1s;width:100%;height:100%;object-fit:contain;transform-origin:center center;pointer-events:none">
+        <div style="position:absolute;bottom:8px;right:8px;display:flex;gap:5px;z-index:10">
+          <button onclick="event.stopPropagation();ajustarZoom(0.2)" style="background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#fff;font-size:14px;width:28px;height:28px;cursor:pointer;line-height:1">+</button>
+          <button onclick="event.stopPropagation();resetZoom()" style="background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#fff;font-size:11px;width:28px;height:28px;cursor:pointer;line-height:1">⟳</button>
+          <button onclick="event.stopPropagation();ajustarZoom(-0.2)" style="background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#fff;font-size:14px;width:28px;height:28px;cursor:pointer;line-height:1">−</button>
+        </div>
+      </div>`
+    : `<div class="modal-photo" style="cursor:pointer" onclick="triggerFotoUpload('${v.codigo}')" title="Click para subir foto">
+        <div class="photo-placeholder"><div class="icon" style="font-size:44px">📷</div><p style="font-size:11px;margin-top:6px">Click para subir foto</p></div>
+      </div>`;
+
   document.getElementById('modalBody').innerHTML =
-    fotoControls +
-    '<div class="modal-photo" style="cursor:pointer" onclick="' + (fotoLocal ? '' : 'triggerFotoUpload(\'' + v.codigo + '\')') + '" title="' + (fotoLocal ? '' : 'Click para subir foto') + '">' +
-    (fotoLocal ? '<img id="modalFotoImg" src="' + fotoLocal + '" alt="foto" style="width:100%;height:100%;object-fit:cover;object-position:' + fotoPos + '">' : '<div class="photo-placeholder"><div class="icon" style="font-size:44px">📷</div><p style="font-size:11px;margin-top:6px;cursor:pointer" onclick="triggerFotoUpload(\'' + v.codigo + '\')">Click para subir foto</p></div>') +
-    (!fotoLocal ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.7);border-radius:5px;padding:3px 8px;font-size:10px;color:#fff">📷 Subir foto</div>' : '') +
-    '</div>' +
-    '<div class="detail-grid">' +
+    fotoVisor +
+    '<div class="detail-grid" style="margin-top:14px">' +
       '<div class="detail-item"><div class="detail-label">Estado</div><div class="detail-value"><span class="estado-badge ' + ec(v.estado) + '">' + v.estado + '</span></div></div>' +
       '<div class="detail-item"><div class="detail-label">Propietario</div><div class="detail-value">' + (v.propietario || '—') + '</div></div>' +
       '<div class="detail-item"><div class="detail-label">Medidas</div><div class="detail-value mono">' + (v.medidas || '—') + '</div></div>' +
@@ -2263,6 +2267,58 @@ function updateInvExportBtns() {
   const exc  = document.getElementById('btnInvExcel');
   if (ppt)  ppt.textContent  = n > 0 ? '⬇ Exportar PPT (' + n + ')' : '⬇ Exportar PPT';
   if (exc)  exc.textContent  = n > 0 ? '⬇ Exportar Excel (' + n + ')' : '⬇ Exportar Excel';
+}
+
+// ── Visor de foto con zoom y arrastre ────────────────────────
+let _fotoZoom = 1, _fotoDx = 0, _fotoDy = 0;
+let _dragging = false, _dragStartX = 0, _dragStartY = 0, _dragOx = 0, _dragOy = 0;
+
+function _applyFotoTransform() {
+  const img = document.getElementById('modalFotoImg');
+  if (!img) return;
+  img.style.transform = 'translate(calc(-50% + ' + _fotoDx + 'px), calc(-50% + ' + _fotoDy + 'px)) scale(' + _fotoZoom + ')';
+}
+
+function zoomFoto(e) {
+  e.preventDefault();
+  _fotoZoom = Math.min(5, Math.max(0.5, _fotoZoom + (e.deltaY < 0 ? 0.15 : -0.15)));
+  _applyFotoTransform();
+}
+
+function ajustarZoom(delta) {
+  _fotoZoom = Math.min(5, Math.max(0.5, _fotoZoom + delta));
+  _applyFotoTransform();
+}
+
+function resetZoom() {
+  _fotoZoom = 1; _fotoDx = 0; _fotoDy = 0;
+  _applyFotoTransform();
+}
+
+function startDragFoto(e) {
+  if (e.button !== 0) return;
+  _dragging = true;
+  _dragStartX = e.clientX; _dragStartY = e.clientY;
+  _dragOx = _fotoDx; _dragOy = _fotoDy;
+  const wrap = document.getElementById('fotoVisorWrap');
+  if (wrap) wrap.style.cursor = 'grabbing';
+  document.addEventListener('mousemove', moveDragFoto);
+  document.addEventListener('mouseup', endDragFoto);
+}
+
+function moveDragFoto(e) {
+  if (!_dragging) return;
+  _fotoDx = _dragOx + (e.clientX - _dragStartX);
+  _fotoDy = _dragOy + (e.clientY - _dragStartY);
+  _applyFotoTransform();
+}
+
+function endDragFoto() {
+  _dragging = false;
+  const wrap = document.getElementById('fotoVisorWrap');
+  if (wrap) wrap.style.cursor = 'grab';
+  document.removeEventListener('mousemove', moveDragFoto);
+  document.removeEventListener('mouseup', endDragFoto);
 }
 
 function checkContratarForm() {
