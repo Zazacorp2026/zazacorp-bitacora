@@ -799,9 +799,8 @@ function getFiltered() {
   // Treat blocked (48h) as RESERVADA for filtering purposes
   if (state.tab === 'disponibles') {
     if (state.filterMesDisp) {
-      // Disponibles actuales + contratadas que terminan en el mes seleccionado
+      // Solo mostrar las que terminan en el mes seleccionado
       d = d.filter(v => {
-        if (v.estado === 'DISPONIBLE' && !isBlocked(v.codigo)) return true;
         if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
           return v.termino.substring(0, 7) === state.filterMesDisp;
         }
