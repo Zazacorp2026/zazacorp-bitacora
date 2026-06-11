@@ -402,6 +402,11 @@
   </div>
   <span class="count-badge" id="countBadge">–</span>
   <button id="btnExportPPT" onclick="exportarPPT()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
+  <div id="filtroMesWrap" style="display:none;align-items:center;gap:6px">
+    <span style="font-size:11px;color:var(--muted);white-space:nowrap">📅 Disponibles en:</span>
+    <input type="month" id="filtroMesDisp" onchange="aplicarFiltroMes(this.value)" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:11px;padding:6px 8px;font-family:'Space Grotesk',sans-serif;cursor:pointer">
+    <button id="btnClearMes" onclick="limpiarFiltroMes()" style="display:none;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;padding:4px 8px;cursor:pointer">✕</button>
+  </div>
   <button id="btnInvPPT" onclick="exportarPPTInventario()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
   <button id="btnInvExcel" onclick="exportarExcelInventario()" style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.35);border-radius:8px;color:#4ade80;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(74,222,128,.18)'" onmouseout="this.style.background='rgba(74,222,128,.08)'">⬇ Exportar Excel</button>
   <button id="btnMultiSelectInv" onclick="toggleMultiSelectInv()" style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.35);border-radius:8px;color:#a78bfa;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Seleccionar</button>
@@ -544,6 +549,7 @@ let state = {
   filterCiudad:   new Set(),
   filterTipo:     new Set(),
   filterEjecutiva: new Set(),
+  filterMesDisp: '', // mes futuro para disponibilidad (YYYY-MM)
   page: 1,
   perPage: 48
 };
@@ -788,7 +794,20 @@ function getFiltered() {
   let d = DATA.slice();
   const s = state.search.toLowerCase().trim();
   // Treat blocked (48h) as RESERVADA for filtering purposes
-  if (state.tab === 'disponibles')  d = d.filter(v => v.estado === 'DISPONIBLE' && !isBlocked(v.codigo));
+  if (state.tab === 'disponibles') {
+    if (state.filterMesDisp) {
+      // Disponibles actuales + contratadas que terminan en el mes seleccionado
+      d = d.filter(v => {
+        if (v.estado === 'DISPONIBLE' && !isBlocked(v.codigo)) return true;
+        if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
+          return v.termino.substring(0, 7) === state.filterMesDisp;
+        }
+        return false;
+      });
+    } else {
+      d = d.filter(v => v.estado === 'DISPONIBLE' && !isBlocked(v.codigo));
+    }
+  }
   else if (state.tab === 'reservadas') d = d.filter(v => v.estado === 'RESERVADA' || (v.estado === 'DISPONIBLE' && isBlocked(v.codigo)));
   else if (state.tab === 'alertas') d = d.filter(v => v.alerta);
   if (s) d = d.filter(v =>
@@ -813,6 +832,9 @@ function switchTab(t) {
   document.getElementById('viewToggle').style.display = (t === 'alertas' || t === 'mapa' || t === 'led') ? 'none' : '';
   const pptBtn = document.getElementById('btnExportPPT');
   if (pptBtn) pptBtn.style.display = t === 'disponibles' ? 'block' : 'none';
+  const mesWrap = document.getElementById('filtroMesWrap');
+  if (mesWrap) mesWrap.style.display = t === 'disponibles' ? 'flex' : 'none';
+  if (t !== 'disponibles') { limpiarFiltroMes(true); }
   const msBtn = document.getElementById('btnMultiSelect');
   if (msBtn) msBtn.style.display = t === 'disponibles' ? 'block' : 'none';
   const msBtnRes = document.getElementById('btnMultiSelectRes');
@@ -834,6 +856,23 @@ function setView(v, btn) {
   document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   render();
+}
+
+function aplicarFiltroMes(val) {
+  state.filterMesDisp = val || '';
+  state.page = 1;
+  const btn = document.getElementById('btnClearMes');
+  if (btn) btn.style.display = val ? 'block' : 'none';
+  render();
+}
+
+function limpiarFiltroMes(silent) {
+  state.filterMesDisp = '';
+  const inp = document.getElementById('filtroMesDisp');
+  if (inp) inp.value = '';
+  const btn = document.getElementById('btnClearMes');
+  if (btn) btn.style.display = 'none';
+  if (!silent) { state.page = 1; render(); }
 }
 
 function applyFilters() {
@@ -907,6 +946,11 @@ function renderCard(v) {
   const isDisp = v.estado === 'DISPONIBLE' || v.estado === 'RESERVADA';
   const isSelected = selectedVallas.has(v.codigo);
   const isSelectedInv = selectedInv.has(v.codigo);
+  // Badge especial para próximas disponibilidades
+  const esProximaDisp = state.tab === 'disponibles' && state.filterMesDisp && (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino && v.termino.substring(0,7) === state.filterMesDisp;
+  const badgeEstado = esProximaDisp
+    ? '<span class="estado-badge" style="background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.4);font-size:9px">📅 LIBRE EN ' + new Date(v.termino + 'T12:00:00').toLocaleDateString('es', {month:'short',year:'numeric'}).toUpperCase() + '</span>'
+    : '<span class="estado-badge ' + ec(v.estado) + '">' + v.estado + '</span>';
   const chk = (multiSelectMode && isDisp) ? '<input type="checkbox" class="card-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();toggleValla(event,\'' + v.codigo + '\')">': '';
   const chkInv = (multiSelectInvMode && state.tab === 'inventario') ? '<input type="checkbox" class="card-checkbox" ' + (isSelectedInv ? 'checked' : '') + ' onclick="event.stopPropagation();toggleInvCard(event,\'' + v.codigo + '\')">': '';
   const selClass = isSelected ? ' selected-card' : (isSelectedInv ? ' selected-card-inv' : '');
@@ -916,7 +960,7 @@ function renderCard(v) {
     (chkInv || chk) +
     '<div class="card-photo">' + fHtml + '</div>' +
     '<div class="card-body">' +
-      '<div class="card-header"><div class="card-codigo">' + v.codigo + '</div><div class="estado-badge ' + (bloqueo ? 'eb-RESERVADA' : ec(v.estado)) + '">' + (bloqueo ? 'RESERVADA' : v.estado) + '</div></div>' +
+      '<div class="card-header"><div class="card-codigo">' + v.codigo + '</div>' + (esProximaDisp ? badgeEstado : '<div class="estado-badge ' + (bloqueo ? 'eb-RESERVADA' : ec(v.estado)) + '">' + (bloqueo ? 'RESERVADA' : v.estado) + '</div>') + '</div>' +
       '<div class="card-dir">' + v.direccion + '</div>' +
       '<div class="card-meta"><span class="meta-tag">' + v.tipo + '</span>' + (v.medidas ? '<span class="meta-tag">' + v.medidas + '</span>' : '') + '<span class="meta-tag">' + v.lugar + '</span></div>' +
       aHtml +
