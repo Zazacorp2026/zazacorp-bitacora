@@ -1041,7 +1041,7 @@ function renderAlerts(container) {
   // NO limpiar selectedAlertas aquí — se conserva la selección entre re-renders
   container.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">' +
-      '<div style="font-size:11px;color:var(--muted)">Haz clic en una alerta para seleccionarla · Sin selección se exportan todas</div>' +
+      '<div style="font-size:11px;color:var(--muted)">Clic en una alerta para ver el detalle completo · Usa el check ✓ para seleccionar varias y exportar · Sin selección se exportan todas</div>' +
       '<div style="display:flex;gap:8px;align-items:center">' +
         '<button onclick="selectedAlertas.clear();document.querySelectorAll(\'.alert-item\').forEach(c=>c.classList.remove(\'alert-selected\'));var b=document.getElementById(\'btnExportPPTAlertas\');if(b){b.textContent=\'⬇ Exportar PPT Alertas\';b.style.background=\'rgba(245,158,11,.12)\'}" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:5px 10px;cursor:pointer">✕ Limpiar selección</button>' +
         '<button id="btnExportPPTAlertas" onclick="exportarPPTAlertas()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Exportar PPT Alertas</button>' +
@@ -1052,8 +1052,8 @@ function renderAlerts(container) {
     const fotoHtml = foto
       ? '<img src="' + foto + '" style="width:90px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid var(--border)">'
       : '<div style="width:90px;height:70px;background:var(--surface2);border-radius:8px;flex-shrink:0;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>';
-    return '<div class="alert-item" data-codigo="' + v.codigo + '" onclick="toggleAlerta(\'' + v.codigo + '\')" style="cursor:pointer">' +
-      '<div class="alert-check" style="width:20px;height:20px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:10px;transition:all .15s">✓</div>' +
+    return '<div class="alert-item" data-codigo="' + v.codigo + '" onclick="openModal(\'' + v.codigo + '\')" style="cursor:pointer">' +
+      '<div class="alert-check" onclick="event.stopPropagation();toggleAlerta(\'' + v.codigo + '\')" style="width:20px;height:20px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:10px;transition:all .15s;cursor:pointer" title="Seleccionar para exportar">✓</div>' +
       fotoHtml +
       '<div class="alert-info" style="margin-left:14px">' +
         '<div class="alert-codigo">' + v.codigo + ' · ' + v.lugar + '</div>' +
@@ -1783,7 +1783,7 @@ function toggleEditForm(codigo) {
       '</div>' +
       '<div class="edit-field full">' +
         '<label>Alerta</label>' +
-        '<input id="ef-alerta" value="'+(v.alerta||'')+'" placeholder="Ej: 🟡 VENCE EN 30 DÍAS">' +
+        '<input value="'+(v.alerta||'Sin alerta — se calcula automáticamente según la fecha de fin')+'" disabled style="opacity:.65;cursor:not-allowed" title="Se calcula automáticamente a partir de la Fecha fin. Para cambiarla, edita la Fecha fin (término).">' +
       '</div>' +
       '<div class="edit-field full">' +
         '<label>Comentarios</label>' +
@@ -1820,7 +1820,6 @@ async function guardarEdicion(codigo) {
     direccion:    document.getElementById('ef-direccion')?.value || '',
     lat:          document.getElementById('ef-lat')?.value || '',
     lon:          document.getElementById('ef-lon')?.value || '',
-    alerta:       document.getElementById('ef-alerta')?.value || '',
     comentarios:  document.getElementById('ef-comentarios')?.value || '',
     foto:         document.getElementById('ef-foto')?.value || ''
   };
