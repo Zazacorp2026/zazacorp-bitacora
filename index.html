@@ -348,6 +348,7 @@
         <option value="VERONICA TRIVINO">Verónica Triviño</option>
         <option value="YESENIA">Yesenia</option>
         <option value="ZULIA">Zulia</option>
+        <option value="DIANA">Diana (Solo lectura)</option>
       </select>
     </div>
     <div class="login-field">
@@ -475,8 +476,14 @@ const USUARIOS = {
   'VERONICA TERAN':   'Zaza2026VT',
   'VERONICA TRIVINO': 'Zaza2026VTr',
   'YESENIA':          'Zaza2026Y',
-  'ZULIA':            'Zaza2026Z'
+  'ZULIA':            'Zaza2026Z',
+  'DIANA':            'Zaza2026D'
 };
+
+// Usuarios con acceso de solo lectura — pueden ver el inventario completo,
+// pero NO pueden reservar, contratar, editar, liberar ni realizar ninguna
+// acción que modifique el estado de una valla.
+const READONLY_USERS = new Set(['DIANA']);
 
 let _usuarioActual = null;
 
@@ -504,13 +511,19 @@ function doLogin() {
     sessionStorage.setItem('zz_usuario', user);
     _usuarioActual = user;
     document.getElementById('loginOverlay').classList.add('hidden');
-    document.getElementById('userBadgeName').textContent = user.split(' ')[0];
+    const displayName = user.split(' ')[0] + (isReadOnly() ? ' 👁️' : '');
+    document.getElementById('userBadgeName').textContent = displayName;
     err.textContent = '';
     init(); // Cargar la app después del login
   } else {
     err.textContent = '❌ Usuario o contraseña incorrectos';
     document.getElementById('loginPass').value = '';
   }
+}
+
+// Devuelve true si el usuario actual es de solo lectura
+function isReadOnly() {
+  return READONLY_USERS.has(_usuarioActual);
 }
 
 function cerrarSesion() {
@@ -838,15 +851,15 @@ function switchTab(t) {
   if (mesWrap) mesWrap.style.display = t === 'disponibles' ? 'flex' : 'none';
   if (t !== 'disponibles') { limpiarFiltroMes(true); }
   const msBtn = document.getElementById('btnMultiSelect');
-  if (msBtn) msBtn.style.display = t === 'disponibles' ? 'block' : 'none';
+  if (msBtn) msBtn.style.display = (!isReadOnly() && t === 'disponibles') ? 'block' : 'none';
   const msBtnRes = document.getElementById('btnMultiSelectRes');
-  if (msBtnRes) msBtnRes.style.display = t === 'reservadas' ? 'block' : 'none';
+  if (msBtnRes) msBtnRes.style.display = (!isReadOnly() && t === 'reservadas') ? 'block' : 'none';
   const invPPT   = document.getElementById('btnInvPPT');
   const invExcel = document.getElementById('btnInvExcel');
   const invSel   = document.getElementById('btnMultiSelectInv');
   if (invPPT)   invPPT.style.display   = t === 'inventario' ? 'block' : 'none';
   if (invExcel) invExcel.style.display = t === 'inventario' ? 'block' : 'none';
-  if (invSel)   invSel.style.display   = t === 'inventario' ? 'block' : 'none';
+  if (invSel)   invSel.style.display   = (!isReadOnly() && t === 'inventario') ? 'block' : 'none';
   if (t !== 'inventario') { multiSelectInvMode = false; selectedInv.clear(); }
   if (t !== 'disponibles' && t !== 'reservadas') { multiSelectMode = false; selectedVallas.clear(); updateFloatingBtn(); }
   if (t === 'reservadas' && !multiSelectMode) { selectedVallas.clear(); }
@@ -935,7 +948,8 @@ function renderCard(v) {
     };
   }
   const efectivoReservada = v.estado === 'RESERVADA' || bloqueo;
-  const rBtn = v.estado === 'DISPONIBLE'
+  const rBtn = isReadOnly() ? '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px;opacity:.7">👁️ Solo lectura</div>'
+    : v.estado === 'DISPONIBLE'
     ? bloqueo
       ? '<div class="countdown" data-countdown="' + bloqueo.expira + '" data-codigo="' + v.codigo + '">🔒 calculando...</div>' +
         '<div style="font-size:10px;color:var(--muted);margin-top:4px">Reservada por ' + bloqueo.ejecutiva + ' para ' + bloqueo.cliente + '</div>' +
@@ -1173,10 +1187,11 @@ function openModal(codigo) {
 
   // Add liberar + edit buttons to modal
   const existingBody = document.getElementById('modalBody');
-  if (existingBody && liberarBtn) existingBody.insertAdjacentHTML('beforeend', liberarBtn);
+  if (existingBody && liberarBtn && !isReadOnly()) existingBody.insertAdjacentHTML('beforeend', liberarBtn);
   if (existingBody) {
     // Segunda reserva badge
     if (seg2Badge) existingBody.insertAdjacentHTML('beforeend', seg2Badge);
+    if (!isReadOnly()) {
     // Pre-reservar cuando termine (solo CONTRATADA)
     if (v.estado === 'CONTRATADA') {
       if (v.reserva2_cliente) {
@@ -1214,7 +1229,9 @@ function openModal(codigo) {
       contBtn.onclick = function() { closeModal(); setTimeout(function(){ openModalContratar(_codC); }, 200); };
       existingBody.appendChild(contBtn);
     }
+    } // end !isReadOnly()
     // Edit button
+    if (!isReadOnly()) {
     const editBtn = document.createElement('button');
     editBtn.className = 'edit-toggle-btn';
     editBtn.textContent = '\u270f\ufe0f Editar esta valla (Admin)';
@@ -1225,6 +1242,7 @@ function openModal(codigo) {
     editCont.style.display = 'none';
     existingBody.appendChild(editBtn);
     existingBody.appendChild(editCont);
+    }
   }
   document.getElementById('modalOverlay').classList.add('open');
   // Pre-llenar ejecutiva con el usuario logueado
