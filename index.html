@@ -326,8 +326,9 @@
   #zb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:9000;display:none;align-items:center;justify-content:center;padding:18px;overflow:hidden;}
   #zb-overlay.open{display:flex;}
   #zb-modal{background:var(--surface,#0d1117);border:1.5px solid var(--accent);border-radius:20px;padding:14px 28px 26px;max-width:380px;width:100%;text-align:center;position:relative;z-index:10;}
-  .zb-mascota{width:140px;height:auto;margin:-46px auto 6px;animation:zbBounce .7s cubic-bezier(.34,1.56,.64,1);display:block;filter:drop-shadow(0 10px 18px rgba(0,0,0,.45));}
-  @keyframes zbBounce{0%{transform:translateY(40px) scale(.6);opacity:0;}60%{transform:translateY(-8px) scale(1.08);opacity:1;}100%{transform:translateY(0) scale(1);}}
+  .zb-mascota{width:130px;height:auto;margin:-46px auto 6px;border-radius:18px;animation:zbEntrada .7s cubic-bezier(.34,1.56,.64,1), zbFlotar 2.4s ease-in-out .7s infinite;display:block;filter:drop-shadow(0 10px 18px rgba(0,0,0,.45));}
+  @keyframes zbEntrada{0%{transform:translateY(40px) scale(.6);opacity:0;}60%{transform:translateY(-8px) scale(1.08);opacity:1;}100%{transform:translateY(0) scale(1);}}
+  @keyframes zbFlotar{0%,100%{transform:translateY(0) rotate(0deg);}50%{transform:translateY(-8px) rotate(-2deg);}}
   .zb-title{color:#fff;font-size:17px;font-weight:700;margin-bottom:6px;line-height:1.4;}
   .zb-sub{color:var(--muted);font-size:13px;margin-bottom:16px;line-height:1.5;}
   .zb-detail{background:rgba(255,255,255,.05);border:.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:18px;text-align:left;}
