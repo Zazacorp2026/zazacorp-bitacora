@@ -48,6 +48,7 @@
   .conn-dot{width:8px;height:8px;border-radius:50%;background:#6b7280;transition:background .3s;}
   .conn-dot.ok{background:#10b981;}
   .conn-dot.err{background:#ef4444;}
+  .conn-dot.warn{background:#f59e0b;}
   .tabs{display:flex;gap:2px;padding:14px 24px 0;border-bottom:1px solid var(--border);background:var(--surface);}
   .tab{padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;border-radius:8px 8px 0 0;border:1px solid transparent;border-bottom:none;color:var(--muted);transition:all .2s;}
   .tab:hover{color:var(--text);background:var(--surface2);}
@@ -617,7 +618,7 @@ async function loadData(force = false) {
   await fetchFresh();
 }
 
-async function fetchFresh() {
+async function fetchFresh(esReintento) {
   // 1. Firebase primero — rápido, sin límite de concurrencia
   try {
     const fbRes = await fetch(FB_URL + '/inventario.json', { cache: 'no-store' });
@@ -656,6 +657,17 @@ async function fetchFresh() {
       document.getElementById('connDot').className = 'conn-dot ok';
       onDataLoaded();
     } catch(err2) {
+      // Reintento automático UNA vez: Apps Script suele tener "arranque en
+      // frío" la primera vez que se llama después de un rato sin uso, lo
+      // que puede hacer fallar este primer intento aunque todo esté bien.
+      // En vez de mostrar el error de una, se reintenta solo (como hacía
+      // antes el usuario manualmente con el botón Sincronizar).
+      if (!esReintento) {
+        console.warn('Primer intento de carga falló, reintentando en 2s...');
+        document.getElementById('connDot').className = 'conn-dot warn';
+        await new Promise(r => setTimeout(r, 2000));
+        return fetchFresh(true);
+      }
       document.getElementById('connDot').className = 'conn-dot err';
       const cached = getCache();
       if (cached && cached.length) {
@@ -1123,10 +1135,29 @@ function renderPag(pages, total) {
 function goPage(p) { state.page = p; render(); window.scrollTo(0,0); }
 
 // ── MODAL ────────────────────────────────────────────────────
+let _modalCodigoActual = null;
+
 function openModal(codigo) {
   _fotoZoom = 1; _fotoDx = 0; _fotoDy = 0; // resetear zoom al abrir
   const v = DATA.find(x => String(x.codigo).trim() === String(codigo).trim());
   if (!v) return;
+  _modalCodigoActual = codigo;
+
+  // Re-validar en segundo plano contra Firebase/Sheet en cuanto se abre el
+  // modal: la lista pudo quedar desactualizada hasta 30s (caché local) y
+  // mientras tanto otro proceso (trigger de liberación automática, otra
+  // ejecutiva, etc.) puede haber cambiado el estado real de esta valla.
+  // Si cambió, se refresca el modal solo, en vez de dejar que el usuario
+  // intente reservar/contratar sobre un estado que ya no existe.
+  const estadoAlAbrir = v.estado;
+  fetchFresh().then(() => {
+    if (_modalCodigoActual !== codigo) return; // el usuario ya cerró/cambió de valla
+    const vFresca = DATA.find(x => String(x.codigo).trim() === String(codigo).trim());
+    if (vFresca && vFresca.estado !== estadoAlAbrir) {
+      showToast('⚠️ El estado de esta valla cambió, se actualizó la vista', 'info');
+      openModal(codigo);
+    }
+  }).catch(() => {});
 
   const mUrl = v.lat && v.lon && v.lat.trim() && v.lon.trim()
     ? 'https://www.google.com/maps?q=' + v.lat + ',' + v.lon : null;
@@ -1270,7 +1301,7 @@ function openModal(codigo) {
   }, 50);
 }
 
-function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+function closeModal() { _modalCodigoActual = null; document.getElementById('modalOverlay').classList.remove('open'); }
 function closeModalOutside(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
 
 // ── RESERVAS ─────────────────────────────────────────────────
