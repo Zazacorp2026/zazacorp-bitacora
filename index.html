@@ -985,7 +985,7 @@ function renderCard(v) {
       ? '<div class="countdown" data-countdown="' + bloqueo.expira + '" data-codigo="' + v.codigo + '">🔒 calculando...</div>' +
         '<div style="font-size:10px;color:var(--muted);margin-top:4px">Reservada por ' + bloqueo.ejecutiva + ' para ' + bloqueo.cliente + '</div>' +
         '<button class="btn-cancelar" onclick="event.stopPropagation();cancelarReservaBloqueo(\'' + v.codigo + '\')">🔐 Cancelar (admin)</button>'
-      : '<button class="reserve-btn" onclick="event.stopPropagation();openModal(\'' + v.codigo + '\')">+ Reservar esta valla</button>' +
+      : '<button class="reserve-btn" onclick="event.stopPropagation();openModal(\'' + v.codigo + '\')">+ Reservar este elemento</button>' +
         '<button class="contratar-btn" onclick="event.stopPropagation();openModalContratar(\'' + v.codigo + '\')">⚡ Contratación Inmediata</button>'
     : (v.estado === 'RESERVADA' && bloqueo
         ? '<div class="countdown" data-countdown="' + bloqueo.expira + '" data-codigo="' + v.codigo + '">🔒 calculando...</div>'
@@ -1174,7 +1174,7 @@ function openModal(codigo) {
       '<input type="password" class="admin-pin-input" id="adminPin" placeholder="PIN" maxlength="6">' +
       '<button class="btn-desbloquear-admin" onclick="desbloquearAdmin(\'' + v.codigo + '\')">🔓 Desbloquear ahora</button></div>';
   } else if (v.estado === 'DISPONIBLE') {
-    rSec = '<div class="reserve-form"><h4>🟢 Reservar esta valla</h4>' +
+    rSec = '<div class="reserve-form"><h4>🟢 Reservar este elemento</h4>' +
       '<div class="form-row">' +
         '<div class="form-group"><label>Cliente</label><input type="text" id="rf-c" placeholder="Nombre del cliente"></div>' +
         '<div class="form-group"><label>Ejecutiva</label><select id="rf-e"><option value="">Seleccionar...</option>' +
