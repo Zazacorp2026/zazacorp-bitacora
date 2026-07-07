@@ -2299,6 +2299,25 @@ function openModalContratar(codigo) {
         </div>
       </div>
 
+      <div class="form-row">
+        <div class="form-group">
+          <label>Agencia contratante</label>
+          <input type="text" id="ct-agencia" placeholder="Nombre de agencia o 'Cliente directo'" oninput="checkContratarForm()">
+        </div>
+        <div class="form-group">
+          <label>Comisión de agencia</label>
+          <select id="ct-comision" onchange="toggleComisionManual()">
+            <option value="">Seleccionar...</option>
+            <option value="0%">0%</option>
+            <option value="10%">10%</option>
+            <option value="15%">15%</option>
+            <option value="20%">20%</option>
+            <option value="manual">Manual...</option>
+          </select>
+          <input type="text" id="ct-comision-manual" placeholder="Ej: 12%" style="display:none;margin-top:6px" oninput="checkContratarForm()">
+        </div>
+      </div>
+
       <div class="pdf-upload-area" id="pdfUploadArea" onclick="document.getElementById('pdfFileInput').click()">
         <div class="pdf-icon">📎</div>
         <p><strong>Click para subir la Orden de Contratación</strong></p>
@@ -2446,15 +2465,30 @@ function endDragFoto() {
   document.removeEventListener('mouseup', endDragFoto);
 }
 
+function toggleComisionManual() {
+  const sel = document.getElementById('ct-comision');
+  const manual = document.getElementById('ct-comision-manual');
+  manual.style.display = sel.value === 'manual' ? 'block' : 'none';
+  checkContratarForm();
+}
+
+function getComisionValor() {
+  const sel = document.getElementById('ct-comision')?.value;
+  if (sel === 'manual') return document.getElementById('ct-comision-manual')?.value.trim() || '';
+  return sel || '';
+}
+
 function checkContratarForm() {
   const cliente  = document.getElementById('ct-cliente')?.value.trim();
   const ejecutiva = document.getElementById('ct-ejecutiva')?.value;
   const inicio   = document.getElementById('ct-inicio')?.value;
   const fin      = document.getElementById('ct-fin')?.value;
+  const agencia  = document.getElementById('ct-agencia')?.value.trim();
+  const comision = getComisionValor();
   const btn      = document.getElementById('btnContratar');
   if (!btn) return;
 
-  const ok = cliente && ejecutiva && inicio && fin && _pdfBase64;
+  const ok = cliente && ejecutiva && inicio && fin && agencia && comision && _pdfBase64;
   btn.disabled = !ok;
   btn.textContent = ok ? '⚡ Confirmar Contratación' : '📎 Sube el PDF para continuar';
 }
@@ -2464,8 +2498,10 @@ async function confirmarContratacion(codigo) {
   const ejecutiva = document.getElementById('ct-ejecutiva').value;
   const inicio    = document.getElementById('ct-inicio').value;
   const fin       = document.getElementById('ct-fin').value;
+  const agencia   = document.getElementById('ct-agencia').value.trim();
+  const comision  = getComisionValor();
 
-  if (!cliente || !ejecutiva || !inicio || !fin || !_pdfBase64) {
+  if (!cliente || !ejecutiva || !inicio || !fin || !agencia || !comision || !_pdfBase64) {
     showToast('Completa todos los campos y sube el PDF', 'info');
     return;
   }
@@ -2485,6 +2521,7 @@ async function confirmarContratacion(codigo) {
       body: JSON.stringify({
         action: 'contratar',
         codigo, cliente, ejecutiva, inicio, fin, valor, periodo, valorTotal, fotoUrl,
+        agenciaContratante: agencia, comisionAgencia: comision,
         pdfBase64: _pdfBase64,
         pdfNombre: _pdfFile ? _pdfFile.name : 'orden.pdf'
       })
