@@ -1435,6 +1435,15 @@ let _mapFilter = '';
 let _mapEstado = '';
 
 function renderMapa(container) {
+  // Si el mapa ya está inicializado y su contenedor sigue siendo el mismo
+  // en el DOM, no reconstruir el HTML (eso dejaba el mapa "huérfano"
+  // apuntando a un <div> ya eliminado, y se veía negro al re-renderizar
+  // por ejemplo durante un refresco de datos en segundo plano).
+  if (_mapInstance && container.contains(document.getElementById('mapContainer'))) {
+    updateMapMarkers();
+    return;
+  }
+
   container.innerHTML = `
     <div class="map-filter-bar">
       <select class="filter" id="mapEstadoFilter" onchange="updateMapMarkers()">
@@ -1465,7 +1474,7 @@ function renderMapa(container) {
   // Init map centered on Ecuador (solo la primera vez: recrearlo en cada
   // refresco de datos reseteaba el zoom/posición que el usuario ya tenía)
   setTimeout(() => {
-    if (_mapInstance) { updateMapMarkers(); return; }
+    if (_mapInstance) { _mapInstance.remove(); _mapInstance = null; }
     _mapInstance = L.map('mapContainer', { zoomControl: true }).setView([-1.8312, -78.1834], 7);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -2000,7 +2009,11 @@ function openModalMultiContratar() {
 
   document.getElementById('modalBody').innerHTML = `
     <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#60a5fa;max-height:120px;overflow-y:auto">
-      ${vallas.map(v => '<div style="padding:4px 0;display:flex;align-items:center;gap:8px">📍 <strong>' + v.codigo + '</strong> — ' + v.direccion.substring(0,40) + '… <input type="number" class="mct-valor-valla" data-codigo="' + v.codigo + '" placeholder="$/mes" style="width:80px;margin-left:auto;padding:3px 6px;font-size:11px" oninput="checkMultiForm()"></div>').join('')}
+      ${vallas.map(v => '<div style="padding:4px 0;display:flex;align-items:center;gap:8px">📍 <strong>' + v.codigo + '</strong> — ' + v.direccion.substring(0,40) + '… <input type="number" class="mct-valor-valla" data-codigo="' + v.codigo + '" placeholder="Valor mensual" style="width:110px;margin-left:auto;padding:3px 6px;font-size:11px" oninput="actualizarTotalesMulti()"></div>').join('')}
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.15);font-size:12px;display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;justify-content:space-between"><span>Suma mensual (todas las vallas):</span><strong id="mct-suma-mensual">$0.00</strong></div>
+        <div style="display:flex;justify-content:space-between;color:#4ade80;font-size:14px"><span>Valor total contratación múltiple:</span><strong id="mct-total-multi">$0.00</strong></div>
+      </div>
     </div>
     <div class="contratar-form">
       <h4>⚡ Datos de Contratación (aplica a todas las vallas)</h4>
@@ -2020,11 +2033,11 @@ function openModalMultiContratar() {
       <div class="form-row">
         <div class="form-group">
           <label>Fecha inicio</label>
-          <input type="date" id="mct-inicio" value="${today}" oninput="checkMultiForm()">
+          <input type="date" id="mct-inicio" value="${today}" oninput="actualizarTotalesMulti()">
         </div>
         <div class="form-group">
           <label>Fecha fin</label>
-          <input type="date" id="mct-fin" oninput="checkMultiForm()">
+          <input type="date" id="mct-fin" oninput="actualizarTotalesMulti()">
         </div>
       </div>
       <div class="form-row">
@@ -2080,6 +2093,24 @@ function getMultiComision() {
   return sel || '';
 }
 
+function calcularMesesMulti() {
+  const inicio = document.getElementById('mct-inicio')?.value;
+  const fin = document.getElementById('mct-fin')?.value;
+  if (!inicio || !fin || fin <= inicio) return 0;
+  const diffDias = Math.round((new Date(fin+'T00:00:00') - new Date(inicio+'T00:00:00')) / 86400000);
+  return diffDias < 30 ? diffDias / 30 : Math.round((diffDias/30)*2)/2;
+}
+
+function actualizarTotalesMulti() {
+  const inputs = [...document.querySelectorAll('.mct-valor-valla')];
+  const suma = inputs.reduce((acc, inp) => acc + (parseFloat(inp.value) || 0), 0);
+  const meses = calcularMesesMulti();
+  const total = suma * meses;
+  document.getElementById('mct-suma-mensual').textContent = '$' + suma.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('mct-total-multi').textContent = '$' + total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  checkMultiForm();
+}
+
 function checkMultiForm() {
   const c = document.getElementById('mct-cliente')?.value.trim();
   const e = document.getElementById('mct-ejecutiva')?.value;
@@ -2087,11 +2118,13 @@ function checkMultiForm() {
   const f = document.getElementById('mct-fin')?.value;
   const agencia = document.getElementById('mct-agencia')?.value.trim();
   const comision = getMultiComision();
+  const valores = [...document.querySelectorAll('.mct-valor-valla')];
+  const todosConValor = valores.length > 0 && valores.every(inp => parseFloat(inp.value) > 0);
   const btn = document.getElementById('btnMultiContratar');
   if (!btn) return;
-  const ok = c && e && i && f && agencia && comision && _multiPdfBase64;
+  const ok = c && e && i && f && agencia && comision && todosConValor && _multiPdfBase64;
   btn.disabled = !ok;
-  btn.textContent = ok ? '⚡ Confirmar Contratación Múltiple' : '📎 Sube el PDF para continuar';
+  btn.textContent = ok ? '⚡ Confirmar Contratación Múltiple' : (!todosConValor ? '💲 Completa el valor mensual de cada valla' : '📎 Sube el PDF para continuar');
 }
 
 async function confirmarMultiContratacion() {
@@ -2106,6 +2139,7 @@ async function confirmarMultiContratacion() {
   document.querySelectorAll('.mct-valor-valla').forEach(inp => {
     if (inp.value) valoresPorCodigo[inp.dataset.codigo] = parseFloat(inp.value) || '';
   });
+  const sumaMensual = Object.values(valoresPorCodigo).reduce((a,b) => a + (parseFloat(b)||0), 0);
   // Mismo cálculo de período que la contratación individual (30 días = 1 mes, medios meses)
   let periodo = '';
   if (inicio && fin && fin > inicio) {
@@ -2125,6 +2159,7 @@ async function confirmarMultiContratacion() {
         action: 'contratarMultiple',
         codigos, cliente, ejecutiva, inicio, fin, periodo,
         agenciaContratante: agencia, comisionAgencia: comision, valoresPorCodigo,
+        sumaMensual: sumaMensual, valorTotalMulti: sumaMensual * (calcularMesesMulti() || 0),
         pdfBase64: _multiPdfBase64,
         pdfNombre: _multiPdfFile ? _multiPdfFile.name : 'orden.pdf'
       })
