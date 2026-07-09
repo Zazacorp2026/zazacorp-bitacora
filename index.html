@@ -3553,7 +3553,7 @@ function buildLEDUI(container, data) {
         const mats = materiales.filter(m => m.idContrato === c.id && m.vigente);
         const diasRestantes = Math.ceil((new Date(c.fin) - new Date()) / 86400000);
         const colorDias = diasRestantes <= 7 ? '#f87171' : diasRestantes <= 15 ? '#fbbf24' : '#4ade80';
-        const porOtro = c.contratadoPor && c.contratadoPor.toUpperCase() !== 'ZAZACORP';
+        const esZaza = c.contratadoPor && c.contratadoPor.toUpperCase() === 'ZAZACORP';
         htmlGrupos += '<div class="led-contrato-item" onclick="openModalDetalleContratoLED(\'' + c.id + '\')" style="cursor:pointer">' +
           '<div class="led-contrato-header">' +
             (esAdmin ? '<span style="font-size:10px;color:var(--muted);margin-right:4px">#'+(c.orden||idx+1)+'</span>' : '') +
@@ -3563,7 +3563,7 @@ function buildLEDUI(container, data) {
             ' · <span style="color:' + colorDias + '">' + diasRestantes + ' días</span>' +
           '</div>' +
           (c.contratadoPor ? '<div style="margin-top:4px"><span style="font-size:10px;padding:2px 7px;border-radius:4px;' +
-            (porOtro ? 'background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4)' : 'background:var(--surface2);color:var(--muted)') +
+            (esZaza ? 'background:rgba(34,197,94,.18);color:#4ade80;border:1px solid rgba(34,197,94,.4)' : 'background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4)') +
             '">' + c.contratadoPor + '</span></div>' : '');
         for (let mIdx = 0; mIdx < 2; mIdx++) {
           const m = mats[mIdx];
@@ -3573,7 +3573,9 @@ function buildLEDUI(container, data) {
           '</div>';
         }
         htmlGrupos += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" onclick="event.stopPropagation()">' +
-          '<button onclick="openModalMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + c.inicio + '\',\'' + c.fin + '\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer"' + (mats.length>=2?' disabled title="Máximo 2 materiales"':'') + '>+ Material (' + mats.length + '/2)</button>' +
+          '<button onclick="openModalMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + c.inicio + '\',\'' + c.fin + '\')" style="font-size:10px;border-radius:5px;padding:3px 8px;cursor:pointer;' +
+            (mats.length===0 ? 'background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171' : mats.length===1 ? 'background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:#fbbf24' : 'background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#4ade80') +
+            '"' + (mats.length>=2?' disabled title="Máximo 2 materiales"':'') + '>Material (' + mats.length + '/2)</button>' +
           (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar</button>' : '') +
           (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden-1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
           (esAdmin && idx < playerContratos.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden+1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
@@ -3581,7 +3583,7 @@ function buildLEDUI(container, data) {
         htmlGrupos += '</div>';
       });
       for (let s = playerContratos.length; s < 15; s++) {
-        htmlGrupos += '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">+ Contratación</div>';
+        htmlGrupos += '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">Ingresar nueva contratación</div>';
       }
       htmlGrupos += '</div>'; // led-slots-grid
       htmlGrupos += '</div>'; // led-player-card
@@ -3669,11 +3671,6 @@ function openModalDetalleContratoLED(id) {
         <div class="form-group"><label>Comisión agencia</label><input type="text" id="det-comision" value="${c.comisionAgencia||''}" ${ro}></div>
       </div>
       <div class="form-group"><label>Contratado por</label><input type="text" id="det-contratadopor" value="${c.contratadoPor||''}" ${ro}></div>
-      <div class="form-row">
-        <div class="form-group"><label>Valor 15 días</label><input type="number" id="det-valor15" value="${c.valor15||''}" ${ro}></div>
-        <div class="form-group"><label>Valor 7 días</label><input type="number" id="det-valor7" value="${c.valor7||''}" ${ro}></div>
-      </div>
-      <div class="form-group" style="margin-bottom:10px"><label>Valor 1 día</label><input type="number" id="det-valor1" value="${c.valor1||''}" ${ro}></div>
       ${esAdmin ? '<button onclick="confirmarDetalleContratoLED(\''+id+'\')" style="width:100%;margin-top:8px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer">💾 Guardar cambios</button>' : ''}
     </div>`;
   document.getElementById('modalOverlay').classList.add('open');
@@ -3690,10 +3687,7 @@ async function confirmarDetalleContratoLED(id) {
       valorTotal: document.getElementById('det-total').value,
       agenciaContratante: document.getElementById('det-agencia').value.trim(),
       comisionAgencia: document.getElementById('det-comision').value.trim(),
-      contratadoPor: document.getElementById('det-contratadopor').value.trim(),
-      valor15: document.getElementById('det-valor15').value,
-      valor7: document.getElementById('det-valor7').value,
-      valor1: document.getElementById('det-valor1').value
+      contratadoPor: document.getElementById('det-contratadopor').value.trim()
     })});
     const json = await res.json();
     if (json.error) throw new Error(json.error);
@@ -3767,8 +3761,8 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
         <div class="form-group"><label>Valor mensual (USD)</label><input type="number" id="led-valor" placeholder="Ej: 1200" oninput="calcLEDTotal()"></div>
         <div class="form-group"><label>Valor total (USD)</label><input type="text" id="led-total" readonly style="background:var(--surface2);color:#4ade80;font-weight:700"></div>
       </div>
-      <div class="form-group" style="margin-top:6px"><label>Programa VNNOX (nombre)</label><input type="text" id="led-programa" placeholder="Ej: MALL DEL SOL PANTALLA DIC"></div>
-      <h4>💼 Agencia y valores cortos</h4>
+      <div class="form-group" style="margin-top:6px;display:none"><label>Programa VNNOX (nombre)</label><input type="text" id="led-programa" placeholder="Ej: MALL DEL SOL PANTALLA DIC"></div>
+      <h4>💼 Agencia/Comisión/Contratante</h4>
       <div class="form-row">
         <div class="form-group"><label>Agencia contratante</label><input type="text" id="led-agencia" placeholder="Nombre de agencia o 'Cliente directo'" oninput="checkLEDForm()"></div>
         <div class="form-group"><label>Comisión de agencia</label>
@@ -3790,11 +3784,6 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
         </select>
         <input type="text" id="led-contratadopor-manual" placeholder="Especificar" style="display:none;margin-top:6px" oninput="checkLEDForm()">
       </div>
-      <div class="form-row">
-        <div class="form-group"><label>Valor 15 días (USD)</label><input type="number" id="led-valor15" placeholder="Opcional"></div>
-        <div class="form-group"><label>Valor 7 días (USD)</label><input type="number" id="led-valor7" placeholder="Opcional"></div>
-      </div>
-      <div class="form-group" style="margin-bottom:10px"><label>Valor 1 día (USD)</label><input type="number" id="led-valor1" placeholder="Opcional"></div>
       <div class="pdf-upload-area" id="ledPdfUploadArea" onclick="document.getElementById('ledPdfFileInput').click()">
         📎 <span id="ledPdfFileName">Click para subir la Orden de Contratación (PDF, obligatorio)</span>
       </div>
@@ -3889,9 +3878,7 @@ async function confirmarContratoLED() {
   const agenciaContratante = document.getElementById('led-agencia').value.trim();
   const comisionAgencia = getLEDComision();
   const contratadoPor = getLEDContratadoPor();
-  const valor15 = document.getElementById('led-valor15').value;
-  const valor7  = document.getElementById('led-valor7').value;
-  const valor1  = document.getElementById('led-valor1').value;
+  const valor15 = '', valor7 = '', valor1 = '';
 
   const btn = document.getElementById('btnLEDConfirmar');
   btn.disabled = true; btn.textContent = '⏳ Registrando...';
