@@ -3525,7 +3525,9 @@ function buildLEDUI(container, data) {
       const spotsUsados     = playerContratos.reduce((s, c) => s + c.spots, 0);
       const pct             = Math.min(100, Math.round(spotsUsados / SPOTS_DIA_CLIENT * 100));
       const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
-      const fotoLED = (DATA.find(v => (v.direccion||'').toUpperCase().includes((player.name||'').toUpperCase()) || (player.name||'').toUpperCase().includes((v.codigo||'').toUpperCase())) || {}).foto;
+      const elemBitacora = DATA.find(v => v.playerVnnoxId && v.playerVnnoxId.trim() === player.playerId)
+        || DATA.find(v => (v.direccion||'').toUpperCase().includes((player.name||'').toUpperCase()) || (player.name||'').toUpperCase().includes((v.codigo||'').toUpperCase()));
+      const fotoLED = (elemBitacora || {}).foto;
 
       htmlGrupos += '<div class="led-player-card">';
       htmlGrupos += '<div class="led-banner">' +
