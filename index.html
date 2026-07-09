@@ -1439,6 +1439,7 @@ async function cancelarReserva(codigo) {
 
 // ── MAPA ─────────────────────────────────────────────────────
 let _mapInstance = null;
+let _mapaYaEncuadrado = false;
 let _mapFilter = '';
 let _mapEstado = '';
 
@@ -1490,6 +1491,7 @@ function renderMapa(container) {
   // refresco de datos reseteaba el zoom/posición que el usuario ya tenía)
   setTimeout(() => {
     if (_mapInstance) { _mapInstance.remove(); _mapInstance = null; }
+    _mapaYaEncuadrado = false;
     _mapInstance = L.map('mapContainer', { zoomControl: true }).setView([-1.8312, -78.1834], 7);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -1580,11 +1582,14 @@ function updateMapMarkers() {
     _markers.push(marker);
   });
 
-  // Auto-fit bounds if markers exist
-  if (filtered.length > 0 && filtered.length < 200) {
+  // Auto-fit bounds SOLO la primera vez que se cargan marcadores en este
+  // mapa (no en cada refresco de datos en segundo plano, que era lo que
+  // te reseteaba el zoom/posición constantemente).
+  if (!_mapaYaEncuadrado && filtered.length > 0 && filtered.length < 200) {
     try {
       const group = L.featureGroup(_markers);
       _mapInstance.fitBounds(group.getBounds().pad(0.1));
+      _mapaYaEncuadrado = true;
     } catch(e) {}
   }
 }
@@ -3511,12 +3516,15 @@ function buildLEDUI(container, data) {
         '<div class="led-grid">';
 
     grupo.forEach(player => {
-      const playerContratos = contratos.filter(c => c.playerId === player.playerId && c.activo);
+      const playerContratos = contratos.filter(c => c.playerId === player.playerId && c.activo).sort((a,b)=>(a.orden||999)-(b.orden||999));
       const spotsUsados     = playerContratos.reduce((s, c) => s + c.spots, 0);
       const pct             = Math.min(100, Math.round(spotsUsados / SPOTS_DIA_CLIENT * 100));
+      const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
+      const fotoLED = (DATA.find(v => (v.direccion||'').toUpperCase().includes((player.name||'').toUpperCase()) || (player.name||'').toUpperCase().includes((v.codigo||'').toUpperCase())) || {}).foto;
 
       htmlGrupos += '<div class="led-player-card">';
       htmlGrupos += '<div class="led-player-header">' +
+        (fotoLED ? '<img src="'+fotoLED+'" style="width:36px;height:36px;border-radius:6px;object-fit:cover">' : '') +
         '<div class="led-online-dot ' + (player.isOnline ? 'online' : 'offline') + '"></div>' +
         '<div>' +
           '<div class="led-player-name">' + (player.name || player.playerId) + '</div>' +
@@ -3528,17 +3536,21 @@ function buildLEDUI(container, data) {
         '</div>' +
       '</div>';
 
+      htmlGrupos += '<div style="font-size:11px;color:var(--muted);margin:4px 0">' +
+        playerContratos.length + ' de 15 espacios ocupados · <span style="color:var(--accent);font-weight:700">' + (15-playerContratos.length) + ' disponibles</span></div>';
+
       htmlGrupos += '<div class="led-capacity-label"><span>Spots vendidos hoy</span><span>' + spotsUsados.toLocaleString() + ' / ' + SPOTS_DIA_CLIENT.toLocaleString() + ' (' + pct + '%)</span></div>' +
         '<div class="led-capacity-bar"><div class="led-capacity-fill" style="width:' + pct + '%"></div></div>';
 
       if (playerContratos.length > 0) {
         htmlGrupos += '<div class="led-contratos-list">';
-        playerContratos.forEach(c => {
+        playerContratos.forEach((c, idx) => {
           const mats = materiales.filter(m => m.idContrato === c.id && m.vigente);
           const diasRestantes = Math.ceil((new Date(c.fin) - new Date()) / 86400000);
           const colorDias = diasRestantes <= 7 ? '#f87171' : diasRestantes <= 15 ? '#fbbf24' : '#4ade80';
           htmlGrupos += '<div class="led-contrato-item">' +
             '<div class="led-contrato-header">' +
+              (esAdmin ? '<span style="font-size:10px;color:var(--muted);margin-right:4px">#'+(c.orden||idx+1)+'</span>' : '') +
               '<span class="led-contrato-cliente">' + c.cliente + '</span>' +
               '<span class="led-contrato-spots">' + c.spots + ' spots/día</span>' +
             '</div>' +
@@ -3546,6 +3558,8 @@ function buildLEDUI(container, data) {
               c.ejecutiva + ' · ' + c.inicio + ' → ' + c.fin +
               ' · <span style="color:' + colorDias + '">' + diasRestantes + ' días</span>' +
               (c.valorMensual ? ' · $' + Number(c.valorMensual).toLocaleString() + '/mes' : '') +
+              (c.agenciaContratante ? ' · Agencia: '+c.agenciaContratante : '') +
+              (c.contratadoPor ? ' · Por: '+c.contratadoPor : '') +
             '</div>';
           if (mats.length > 0) {
             htmlGrupos += '<div class="led-materiales">' +
@@ -3557,7 +3571,9 @@ function buildLEDUI(container, data) {
           }
           htmlGrupos += '<div style="display:flex;gap:8px;margin-top:6px">' +
             '<button onclick="openModalMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">+ Material</button>' +
-            '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Cancelar</button>' +
+            (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar (admin)</button>' : '') +
+            (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden-1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
+            (esAdmin && idx < playerContratos.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden+1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
           '</div>';
           htmlGrupos += '</div>';
         });
@@ -3566,7 +3582,9 @@ function buildLEDUI(container, data) {
         htmlGrupos += '<div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center">Sin contratos activos</div>';
       }
 
-      htmlGrupos += '<button class="led-add-btn" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">+ Agregar contrato en esta pantalla</button>';
+      htmlGrupos += playerContratos.length >= 15
+        ? '<div style="text-align:center;font-size:11px;color:#f87171;margin-top:8px">Sin espacios disponibles</div>'
+        : '<button class="led-add-btn" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">+ Agregar cliente</button>';
       htmlGrupos += '</div>';
     });
 
@@ -3581,6 +3599,15 @@ const SPOTS_DIA_CLIENT = 5940;
 function verMaterialLED(link) {
   if (link && link.startsWith('http')) window.open(link, '_blank');
   else showToast('Sin link de VNNOX registrado', 'info');
+}
+
+async function moverOrdenLED(id, nuevoOrden) {
+  try {
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'editarContratoLED', id, orden: nuevoOrden }) });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    renderLED(document.getElementById('mainContent'));
+  } catch(e) { showToast('❌ ' + e.message, 'error'); }
 }
 
 async function cancelarContratoLED(id) {
@@ -3634,6 +3661,33 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
         <div class="form-group"><label>Valor total (USD)</label><input type="text" id="led-total" readonly style="background:var(--surface2);color:#4ade80;font-weight:700"></div>
       </div>
       <div class="form-group" style="margin-top:6px"><label>Programa VNNOX (nombre)</label><input type="text" id="led-programa" placeholder="Ej: MALL DEL SOL PANTALLA DIC"></div>
+      <h4>💼 Agencia y valores cortos</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Agencia contratante</label><input type="text" id="led-agencia" placeholder="Nombre de agencia o 'Cliente directo'" oninput="checkLEDForm()"></div>
+        <div class="form-group"><label>Comisión de agencia</label>
+          <select id="led-comision" onchange="toggleLEDComisionManual()">
+            <option value="">Seleccionar...</option>
+            <option value="0%">0%</option><option value="10%">10%</option>
+            <option value="15%">15%</option><option value="20%">20%</option>
+            <option value="manual">Manual...</option>
+          </select>
+          <input type="text" id="led-comision-manual" placeholder="Ej: 12%" style="display:none;margin-top:6px" oninput="checkLEDForm()">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Contratado por</label>
+        <select id="led-contratadopor" onchange="toggleLEDContratadoPorManual()">
+          <option value="">Seleccionar...</option>
+          <option value="Zazacorp">Zazacorp</option><option value="ALAC">ALAC</option>
+          <option value="Vea">Vea</option><option value="Otros">Otros</option>
+        </select>
+        <input type="text" id="led-contratadopor-manual" placeholder="Especificar" style="display:none;margin-top:6px" oninput="checkLEDForm()">
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Valor 15 días (USD)</label><input type="number" id="led-valor15" placeholder="Opcional"></div>
+        <div class="form-group"><label>Valor 7 días (USD)</label><input type="number" id="led-valor7" placeholder="Opcional"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px"><label>Valor 1 día (USD)</label><input type="number" id="led-valor1" placeholder="Opcional"></div>
       <button id="btnLEDConfirmar" onclick="confirmarContratoLED()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer">📺 Registrar Contrato LED</button>
     </div>`;
   document.getElementById('modal').style.display = 'flex';
@@ -3641,6 +3695,23 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
     document.getElementById('led-player').value = prePlayerId;
     autoSetEjecutiva('led-ejecutiva');
   }
+}
+
+function toggleLEDComisionManual() {
+  document.getElementById('led-comision-manual').style.display = document.getElementById('led-comision').value === 'manual' ? 'block' : 'none';
+  checkLEDForm();
+}
+function getLEDComision() {
+  const sel = document.getElementById('led-comision')?.value;
+  return sel === 'manual' ? (document.getElementById('led-comision-manual')?.value.trim() || '') : (sel || '');
+}
+function toggleLEDContratadoPorManual() {
+  document.getElementById('led-contratadopor-manual').style.display = document.getElementById('led-contratadopor').value === 'Otros' ? 'block' : 'none';
+  checkLEDForm();
+}
+function getLEDContratadoPor() {
+  const sel = document.getElementById('led-contratadopor')?.value;
+  return sel === 'Otros' ? (document.getElementById('led-contratadopor-manual')?.value.trim() || '') : (sel || '');
 }
 
 function updateLEDPlayerName() {
@@ -3655,14 +3726,12 @@ function calcLEDTotal() {
   const fin    = document.getElementById('led-fin')?.value;
   const valor  = parseFloat(document.getElementById('led-valor')?.value) || 0;
   if (inicio && fin && fin > inicio) {
-    const d1   = new Date(inicio + 'T00:00:00');
-    const d2   = new Date(fin + 'T00:00:00');
-    let meses  = (d2.getFullYear()-d1.getFullYear())*12 + (d2.getMonth()-d1.getMonth());
-    if (d2.getDate() >= d1.getDate()) meses++;
-    if (meses < 1) meses = 1;
+    const diffDias = Math.round((new Date(fin+'T00:00:00') - new Date(inicio+'T00:00:00')) / 86400000);
+    const meses = diffDias < 30 ? diffDias/30 : Math.round((diffDias/30)*2)/2;
+    const mesesTxt = (meses % 1 === 0) ? meses.toString() : meses.toFixed(1);
     const per = document.getElementById('led-periodo');
     const tot = document.getElementById('led-total');
-    if (per) per.value = meses + (meses===1?' MES':' MESES');
+    if (per) per.value = mesesTxt + (meses===1?' MES':' MESES');
     if (tot) tot.value = valor > 0 ? '$ ' + (valor*meses).toLocaleString('en-US',{minimumFractionDigits:2}) : '';
   }
   checkLEDForm();
@@ -3673,7 +3742,10 @@ function checkLEDForm() {
              document.getElementById('led-cliente')?.value?.trim() &&
              document.getElementById('led-ejecutiva')?.value &&
              document.getElementById('led-inicio')?.value &&
-             document.getElementById('led-fin')?.value;
+             document.getElementById('led-fin')?.value &&
+             document.getElementById('led-agencia')?.value?.trim() &&
+             getLEDComision() &&
+             getLEDContratadoPor();
   const btn = document.getElementById('btnLEDConfirmar');
   if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; }
 }
@@ -3691,6 +3763,12 @@ async function confirmarContratoLED() {
   const valorMensual = document.getElementById('led-valor').value;
   const valorTotal   = document.getElementById('led-total').value.replace(/[$,\s]/g,'');
   const programaVNNOX= document.getElementById('led-programa').value;
+  const agenciaContratante = document.getElementById('led-agencia').value.trim();
+  const comisionAgencia = getLEDComision();
+  const contratadoPor = getLEDContratadoPor();
+  const valor15 = document.getElementById('led-valor15').value;
+  const valor7  = document.getElementById('led-valor7').value;
+  const valor1  = document.getElementById('led-valor1').value;
 
   const btn = document.getElementById('btnLEDConfirmar');
   btn.disabled = true; btn.textContent = '⏳ Registrando...';
@@ -3698,7 +3776,8 @@ async function confirmarContratoLED() {
   try {
     const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({
       action:'registrarContratoLED', playerId, nombrePantalla, cliente, ejecutiva,
-      spots, periodo, inicio, fin, valorMensual, valorTotal, programaVNNOX
+      spots, periodo, inicio, fin, valorMensual, valorTotal, programaVNNOX,
+      agenciaContratante, comisionAgencia, contratadoPor, valor15, valor7, valor1
     })});
     const json = await res.json();
     if (json.error) throw new Error(json.error);
