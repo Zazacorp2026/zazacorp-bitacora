@@ -3690,7 +3690,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
       <div class="form-group" style="margin-bottom:10px"><label>Valor 1 día (USD)</label><input type="number" id="led-valor1" placeholder="Opcional"></div>
       <button id="btnLEDConfirmar" onclick="confirmarContratoLED()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer">📺 Registrar Contrato LED</button>
     </div>`;
-  document.getElementById('modal').style.display = 'flex';
+  document.getElementById('modalOverlay').classList.add('open');
   if (prePlayerId) {
     document.getElementById('led-player').value = prePlayerId;
     autoSetEjecutiva('led-ejecutiva');
@@ -3810,7 +3810,7 @@ function openModalMaterialLED(idContrato, playerId, pantalla, cliente) {
       </div>
       <button onclick="confirmarMaterialLED('${idContrato}','${playerId}','${pantalla}','${cliente}')" style="width:100%;margin-top:14px;padding:12px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-weight:700;font-size:13px;cursor:pointer">🎬 Registrar Material</button>
     </div>`;
-  document.getElementById('modal').style.display = 'flex';
+  document.getElementById('modalOverlay').classList.add('open');
 }
 
 async function confirmarMaterialLED(idContrato, playerId, pantalla, cliente) {
