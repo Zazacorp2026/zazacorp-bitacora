@@ -3570,7 +3570,7 @@ function buildLEDUI(container, data) {
             '</div>';
           }
           htmlGrupos += '<div style="display:flex;gap:8px;margin-top:6px">' +
-            '<button onclick="openModalMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">+ Material</button>' +
+            '<button onclick="openModalMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + c.inicio + '\',\'' + c.fin + '\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer"' + (mats.length>=2?' disabled title="Máximo 2 materiales"':'') + '>+ Material (' + mats.length + '/2)</button>' +
             (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar (admin)</button>' : '') +
             (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden-1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
             (esAdmin && idx < playerContratos.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden+1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
@@ -3603,7 +3603,7 @@ function verMaterialLED(link) {
 
 async function moverOrdenLED(id, nuevoOrden) {
   try {
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'editarContratoLED', id, orden: nuevoOrden }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'editarContratoLED', id, orden: nuevoOrden, solicitante: _usuarioActual }) });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     renderLED(document.getElementById('mainContent'));
@@ -3613,7 +3613,7 @@ async function moverOrdenLED(id, nuevoOrden) {
 async function cancelarContratoLED(id) {
   if (!confirm('¿Cancelar este contrato LED?')) return;
   try {
-    const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'editarContratoLED', id, estado:'CANCELADO' }) });
+    const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'editarContratoLED', id, estado:'CANCELADO', solicitante: _usuarioActual }) });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     showToast('✅ Contrato cancelado', 'success');
@@ -3688,13 +3688,28 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
         <div class="form-group"><label>Valor 7 días (USD)</label><input type="number" id="led-valor7" placeholder="Opcional"></div>
       </div>
       <div class="form-group" style="margin-bottom:10px"><label>Valor 1 día (USD)</label><input type="number" id="led-valor1" placeholder="Opcional"></div>
+      <div class="pdf-upload-area" id="ledPdfUploadArea" onclick="document.getElementById('ledPdfFileInput').click()">
+        📎 <span id="ledPdfFileName">Click para subir la Orden de Contratación (PDF, obligatorio)</span>
+      </div>
+      <input type="file" id="ledPdfFileInput" accept="application/pdf" style="display:none" onchange="handleLEDPdfFile(event)">
       <button id="btnLEDConfirmar" onclick="confirmarContratoLED()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer">📺 Registrar Contrato LED</button>
     </div>`;
+  _ledPdfBase64 = null; _ledPdfFile = null;
   document.getElementById('modalOverlay').classList.add('open');
   if (prePlayerId) {
     document.getElementById('led-player').value = prePlayerId;
     autoSetEjecutiva('led-ejecutiva');
   }
+}
+
+let _ledPdfBase64 = null, _ledPdfFile = null;
+function handleLEDPdfFile(e) {
+  const file = e.target.files[0]; if (!file) return;
+  _ledPdfFile = file;
+  document.getElementById('ledPdfFileName').textContent = '✓ ' + file.name;
+  const reader = new FileReader();
+  reader.onload = ev => { _ledPdfBase64 = ev.target.result.split(',')[1]; checkLEDForm(); };
+  reader.readAsDataURL(file);
 }
 
 function toggleLEDComisionManual() {
@@ -3745,7 +3760,8 @@ function checkLEDForm() {
              document.getElementById('led-fin')?.value &&
              document.getElementById('led-agencia')?.value?.trim() &&
              getLEDComision() &&
-             getLEDContratadoPor();
+             getLEDContratadoPor() &&
+             _ledPdfBase64;
   const btn = document.getElementById('btnLEDConfirmar');
   if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; }
 }
@@ -3777,7 +3793,8 @@ async function confirmarContratoLED() {
     const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({
       action:'registrarContratoLED', playerId, nombrePantalla, cliente, ejecutiva,
       spots, periodo, inicio, fin, valorMensual, valorTotal, programaVNNOX,
-      agenciaContratante, comisionAgencia, contratadoPor, valor15, valor7, valor1
+      agenciaContratante, comisionAgencia, contratadoPor, valor15, valor7, valor1,
+      pdfBase64: _ledPdfBase64, pdfNombre: _ledPdfFile ? _ledPdfFile.name : 'orden.pdf'
     })});
     const json = await res.json();
     if (json.error) throw new Error(json.error);
@@ -3791,7 +3808,7 @@ async function confirmarContratoLED() {
 }
 
 // ── Modal: Registrar Material LED ─────────────────────────────
-function openModalMaterialLED(idContrato, playerId, pantalla, cliente) {
+function openModalMaterialLED(idContrato, playerId, pantalla, cliente, cIni, cFin) {
   document.getElementById('modalTitle').textContent = '🎬 Registrar Material';
   document.getElementById('modalSubtitle').textContent = cliente + ' · ' + pantalla;
   document.getElementById('modalBody').innerHTML = `
@@ -3804,6 +3821,11 @@ function openModalMaterialLED(idContrato, playerId, pantalla, cliente) {
         <div class="form-group"><label>Versión</label><input type="text" id="mat-version" value="V1" placeholder="V1, V2..."></div>
         <div class="form-group"><label>Duración (seg)</label><input type="number" id="mat-duracion" value="10" min="1"></div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label>Desde</label><input type="date" id="mat-inicio" min="${cIni}" max="${cFin}" value="${cIni}"></div>
+        <div class="form-group"><label>Hasta</label><input type="date" id="mat-fin" min="${cIni}" max="${cFin}" value="${cFin}"></div>
+      </div>
+      <div class="empty-sub" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Debe estar dentro del período del contrato (${cIni} a ${cFin}). Máximo 2 materiales por contrato.</div>
       <div class="form-group" style="margin-top:6px">
         <label>Link en VNNOX (opcional)</label>
         <input type="url" id="mat-link" placeholder="https://us.vnnox.com/...">
@@ -3818,11 +3840,15 @@ async function confirmarMaterialLED(idContrato, playerId, pantalla, cliente) {
   const version  = document.getElementById('mat-version').value.trim() || 'V1';
   const duracion = document.getElementById('mat-duracion').value;
   const linkVNNOX= document.getElementById('mat-link').value.trim();
+  const inicioMaterial = document.getElementById('mat-inicio').value;
+  const finMaterial    = document.getElementById('mat-fin').value;
   if (!nombre) { showToast('Ingresa el nombre del material', 'info'); return; }
+  if (!inicioMaterial || !finMaterial) { showToast('Ingresa las fechas de uso del material', 'info'); return; }
   try {
     const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({
       action:'registrarMaterialLED', idContrato, playerId, pantalla, cliente,
-      nombre, version, duracion, linkVNNOX
+      nombre, version, duracion, linkVNNOX, inicioMaterial, finMaterial,
+      solicitante: _usuarioActual
     })});
     const json = await res.json();
     if (json.error) throw new Error(json.error);
