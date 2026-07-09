@@ -177,7 +177,12 @@
   .alert-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;white-space:nowrap;margin-left:12px;}
   /* ── Módulo LED ── */
   .led-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px;margin-top:12px;}
-  .led-player-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;transition:border-color .2s;}
+  .led-player-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;transition:border-color .2s;display:flex;gap:16px;align-items:flex-start;}
+  .led-banner{width:230px;flex-shrink:0;}
+  .led-banner img{width:100%;height:120px;object-fit:cover;border-radius:10px;margin-bottom:8px;}
+  .led-slots-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0;}
+  .led-slot-empty{border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;min-height:70px;color:var(--muted);font-size:12px;cursor:pointer;}
+  .led-slot-empty:hover{border-color:var(--accent);color:var(--accent);}
   .led-player-card:hover{border-color:rgba(245,158,11,.4);}
   .led-player-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
   .led-online-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
@@ -3523,69 +3528,59 @@ function buildLEDUI(container, data) {
       const fotoLED = (DATA.find(v => (v.direccion||'').toUpperCase().includes((player.name||'').toUpperCase()) || (player.name||'').toUpperCase().includes((v.codigo||'').toUpperCase())) || {}).foto;
 
       htmlGrupos += '<div class="led-player-card">';
-      htmlGrupos += '<div class="led-player-header">' +
-        (fotoLED ? '<img src="'+fotoLED+'" style="width:36px;height:36px;border-radius:6px;object-fit:cover">' : '') +
-        '<div class="led-online-dot ' + (player.isOnline ? 'online' : 'offline') + '"></div>' +
-        '<div>' +
-          '<div class="led-player-name">' + (player.name || player.playerId) + '</div>' +
-          (player.sn ? '<div class="led-player-sn">SN: ' + player.sn + '</div>' : '') +
+      htmlGrupos += '<div class="led-banner">' +
+        (fotoLED ? '<img src="'+fotoLED+'">' : '') +
+        '<div class="led-player-header" style="padding:0">' +
+          '<div class="led-online-dot ' + (player.isOnline ? 'online' : 'offline') + '"></div>' +
+          '<div>' +
+            '<div class="led-player-name">' + (player.name || player.playerId) + '</div>' +
+            (player.sn ? '<div class="led-player-sn">SN: ' + player.sn + '</div>' : '') +
+          '</div>' +
         '</div>' +
-        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">' +
-          '<span style="font-size:10px;color:' + (player.isOnline ? '#4ade80' : '#6b7280') + '">' + (player.isOnline ? '● EN LÍNEA' : '● OFFLINE') + '</span>' +
-          (player.account ? '<span style="font-size:9px;color:var(--muted);background:var(--surface2);border-radius:4px;padding:1px 5px">' + player.account + '</span>' : '') +
+        '<div style="margin:6px 0"><span style="font-size:10px;color:' + (player.isOnline ? '#4ade80' : '#6b7280') + '">' + (player.isOnline ? '● EN LÍNEA' : '● OFFLINE') + '</span>' +
+          (player.account ? ' <span style="font-size:9px;color:var(--muted);background:var(--surface2);border-radius:4px;padding:1px 5px">' + player.account + '</span>' : '') +
         '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin:4px 0">' +
+          playerContratos.length + ' de 15 ocupados · <span style="color:var(--accent);font-weight:700">' + (15-playerContratos.length) + ' disponibles</span></div>' +
+        '<div class="led-capacity-label"><span>Spots hoy</span><span>' + pct + '%</span></div>' +
+        '<div class="led-capacity-bar"><div class="led-capacity-fill" style="width:' + pct + '%"></div></div>' +
       '</div>';
 
-      htmlGrupos += '<div style="font-size:11px;color:var(--muted);margin:4px 0">' +
-        playerContratos.length + ' de 15 espacios ocupados · <span style="color:var(--accent);font-weight:700">' + (15-playerContratos.length) + ' disponibles</span></div>';
-
-      htmlGrupos += '<div class="led-capacity-label"><span>Spots vendidos hoy</span><span>' + spotsUsados.toLocaleString() + ' / ' + SPOTS_DIA_CLIENT.toLocaleString() + ' (' + pct + '%)</span></div>' +
-        '<div class="led-capacity-bar"><div class="led-capacity-fill" style="width:' + pct + '%"></div></div>';
-
-      if (playerContratos.length > 0) {
-        htmlGrupos += '<div class="led-contratos-list">';
-        playerContratos.forEach((c, idx) => {
-          const mats = materiales.filter(m => m.idContrato === c.id && m.vigente);
-          const diasRestantes = Math.ceil((new Date(c.fin) - new Date()) / 86400000);
-          const colorDias = diasRestantes <= 7 ? '#f87171' : diasRestantes <= 15 ? '#fbbf24' : '#4ade80';
-          htmlGrupos += '<div class="led-contrato-item">' +
-            '<div class="led-contrato-header">' +
-              (esAdmin ? '<span style="font-size:10px;color:var(--muted);margin-right:4px">#'+(c.orden||idx+1)+'</span>' : '') +
-              '<span class="led-contrato-cliente">' + c.cliente + '</span>' +
-              '<span class="led-contrato-spots">' + c.spots + ' spots/día</span>' +
-            '</div>' +
-            '<div class="led-contrato-meta">' +
-              c.ejecutiva + ' · ' + c.inicio + ' → ' + c.fin +
-              ' · <span style="color:' + colorDias + '">' + diasRestantes + ' días</span>' +
-              (c.valorMensual ? ' · $' + Number(c.valorMensual).toLocaleString() + '/mes' : '') +
-              (c.agenciaContratante ? ' · Agencia: '+c.agenciaContratante : '') +
-              (c.contratadoPor ? ' · Por: '+c.contratadoPor : '') +
-            '</div>';
-          if (mats.length > 0) {
-            htmlGrupos += '<div class="led-materiales">' +
-              mats.map(m =>
-                '<span class="led-material-tag" title="' + (m.linkVNNOX || 'Sin link') + '" onclick="verMaterialLED(\'' + m.linkVNNOX + '\')">' +
-                m.nombre + (m.version !== 'V1' ? ' ' + m.version : '') + '</span>'
-              ).join('') +
-            '</div>';
-          }
-          htmlGrupos += '<div style="display:flex;gap:8px;margin-top:6px">' +
-            '<button onclick="openModalMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + c.inicio + '\',\'' + c.fin + '\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer"' + (mats.length>=2?' disabled title="Máximo 2 materiales"':'') + '>+ Material (' + mats.length + '/2)</button>' +
-            (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar (admin)</button>' : '') +
-            (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden-1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
-            (esAdmin && idx < playerContratos.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden+1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
+      htmlGrupos += '<div class="led-slots-grid">';
+      playerContratos.forEach((c, idx) => {
+        const mats = materiales.filter(m => m.idContrato === c.id && m.vigente);
+        const diasRestantes = Math.ceil((new Date(c.fin) - new Date()) / 86400000);
+        const colorDias = diasRestantes <= 7 ? '#f87171' : diasRestantes <= 15 ? '#fbbf24' : '#4ade80';
+        htmlGrupos += '<div class="led-contrato-item">' +
+          '<div class="led-contrato-header">' +
+            (esAdmin ? '<span style="font-size:10px;color:var(--muted);margin-right:4px">#'+(c.orden||idx+1)+'</span>' : '') +
+            '<span class="led-contrato-cliente">' + c.cliente + '</span>' +
+          '</div>' +
+          '<div class="led-contrato-meta">' +
+            c.inicio + ' → ' + c.fin +
+            ' · <span style="color:' + colorDias + '">' + diasRestantes + ' días</span>' +
           '</div>';
-          htmlGrupos += '</div>';
-        });
+        if (mats.length > 0) {
+          htmlGrupos += '<div class="led-materiales">' +
+            mats.map(m =>
+              '<span class="led-material-tag" title="Click para editar" onclick="openModalEditarMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + m.nombre + '\',\'' + m.version + '\',' + m.duracion + ',\'' + (m.linkVNNOX||'') + '\',\'' + m.inicioMaterial + '\',\'' + m.finMaterial + '\')">' +
+              m.nombre + (m.version !== 'V1' ? ' ' + m.version : '') + '</span>'
+            ).join('') +
+          '</div>';
+        }
+        htmlGrupos += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">' +
+          '<button onclick="openModalMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + c.inicio + '\',\'' + c.fin + '\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer"' + (mats.length>=2?' disabled title="Máximo 2 materiales"':'') + '>+ Material (' + mats.length + '/2)</button>' +
+          (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar</button>' : '') +
+          (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden-1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
+          (esAdmin && idx < playerContratos.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden+1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
+        '</div>';
         htmlGrupos += '</div>';
-      } else {
-        htmlGrupos += '<div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center">Sin contratos activos</div>';
+      });
+      for (let s = playerContratos.length; s < 15; s++) {
+        htmlGrupos += '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">+ Contratación</div>';
       }
-
-      htmlGrupos += playerContratos.length >= 15
-        ? '<div style="text-align:center;font-size:11px;color:#f87171;margin-top:8px">Sin espacios disponibles</div>'
-        : '<button class="led-add-btn" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">+ Agregar cliente</button>';
-      htmlGrupos += '</div>';
+      htmlGrupos += '</div>'; // led-slots-grid
+      htmlGrupos += '</div>'; // led-player-card
     });
 
     htmlGrupos += '</div></div>'; // cerrar led-grid + led-tipo-section
@@ -3595,6 +3590,53 @@ function buildLEDUI(container, data) {
 }
 
 const SPOTS_DIA_CLIENT = 5940;
+
+function openModalEditarMaterialLED(idContrato, playerId, pantalla, cliente, nombre, version, duracion, linkVNNOX, mIni, mFin) {
+  document.getElementById('modalTitle').textContent = '✏️ Editar Material';
+  document.getElementById('modalSubtitle').textContent = cliente + ' · ' + pantalla;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="contratar-form">
+      <div class="empty-sub" style="font-size:11px;margin-bottom:8px">Solo la ejecutiva que contrató o el administrador pueden editar. Al guardar, la versión anterior queda en el histórico del Sheet con su fecha/hora de apagado.</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Nombre del material</label>
+        <input type="text" id="mate-nombre" value="${nombre}" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Versión</label><input type="text" id="mate-version" value="${version}"></div>
+        <div class="form-group"><label>Duración (seg)</label><input type="number" id="mate-duracion" value="${duracion}" min="1"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Desde</label><input type="date" id="mate-inicio" value="${mIni}"></div>
+        <div class="form-group"><label>Hasta</label><input type="date" id="mate-fin" value="${mFin}"></div>
+      </div>
+      <div class="form-group" style="margin-top:6px">
+        <label>Link en VNNOX (opcional)</label>
+        <input type="url" id="mate-link" value="${linkVNNOX}" placeholder="https://us.vnnox.com/...">
+      </div>
+      <button onclick="confirmarEditarMaterialLED('${idContrato}','${nombre}')" style="width:100%;margin-top:14px;padding:12px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-weight:700;font-size:13px;cursor:pointer">💾 Guardar nueva versión</button>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+async function confirmarEditarMaterialLED(idContrato, nombreOriginal) {
+  const nombre   = document.getElementById('mate-nombre').value.trim();
+  const version  = document.getElementById('mate-version').value.trim() || 'V1';
+  const duracion = document.getElementById('mate-duracion').value;
+  const linkVNNOX= document.getElementById('mate-link').value.trim();
+  const inicioMaterial = document.getElementById('mate-inicio').value;
+  const finMaterial    = document.getElementById('mate-fin').value;
+  try {
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
+      action:'editarMaterialLED', idContrato, nombreOriginal, nombre, version, duracion, linkVNNOX,
+      inicioMaterial, finMaterial, solicitante: _usuarioActual
+    })});
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ Material actualizado', 'success');
+    closeModal();
+    renderLED(document.getElementById('mainContent'));
+  } catch(e) { showToast('❌ ' + e.message, 'error'); }
+}
 
 function verMaterialLED(link) {
   if (link && link.startsWith('http')) window.open(link, '_blank');
