@@ -3551,24 +3551,26 @@ function buildLEDUI(container, data) {
         const mats = materiales.filter(m => m.idContrato === c.id && m.vigente);
         const diasRestantes = Math.ceil((new Date(c.fin) - new Date()) / 86400000);
         const colorDias = diasRestantes <= 7 ? '#f87171' : diasRestantes <= 15 ? '#fbbf24' : '#4ade80';
-        htmlGrupos += '<div class="led-contrato-item">' +
+        const porOtro = c.contratadoPor && c.contratadoPor.toUpperCase() !== 'ZAZACORP';
+        htmlGrupos += '<div class="led-contrato-item" onclick="openModalDetalleContratoLED(\'' + c.id + '\')" style="cursor:pointer">' +
           '<div class="led-contrato-header">' +
             (esAdmin ? '<span style="font-size:10px;color:var(--muted);margin-right:4px">#'+(c.orden||idx+1)+'</span>' : '') +
             '<span class="led-contrato-cliente">' + c.cliente + '</span>' +
           '</div>' +
-          '<div class="led-contrato-meta">' +
-            c.inicio + ' → ' + c.fin +
+          '<div class="led-contrato-meta">Período: ' + c.inicio + ' → ' + c.fin +
             ' · <span style="color:' + colorDias + '">' + diasRestantes + ' días</span>' +
-          '</div>';
-        if (mats.length > 0) {
-          htmlGrupos += '<div class="led-materiales">' +
-            mats.map(m =>
-              '<span class="led-material-tag" title="Click para editar" onclick="openModalEditarMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + m.nombre + '\',\'' + m.version + '\',' + m.duracion + ',\'' + (m.linkVNNOX||'') + '\',\'' + m.inicioMaterial + '\',\'' + m.finMaterial + '\')">' +
-              m.nombre + (m.version !== 'V1' ? ' ' + m.version : '') + '</span>'
-            ).join('') +
+          '</div>' +
+          (c.contratadoPor ? '<div style="margin-top:4px"><span style="font-size:10px;padding:2px 7px;border-radius:4px;' +
+            (porOtro ? 'background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4)' : 'background:var(--surface2);color:var(--muted)') +
+            '">' + c.contratadoPor + '</span></div>' : '');
+        for (let mIdx = 0; mIdx < 2; mIdx++) {
+          const m = mats[mIdx];
+          htmlGrupos += '<div style="font-size:10px;color:var(--muted);margin-top:4px;display:flex;justify-content:space-between;align-items:center">' +
+            '<span>Material ' + (mIdx+1) + ': ' + (m ? m.nombre + ' (' + m.version + ')' : '—') + '</span>' +
+            (m ? '<span onclick="event.stopPropagation();openModalEditarMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + m.nombre + '\',\'' + m.version + '\',' + m.duracion + ',\'' + (m.linkVNNOX||'') + '\',\'' + m.inicioMaterial + '\',\'' + m.finMaterial + '\')" style="color:#60a5fa;cursor:pointer">Editar</span>' : '') +
           '</div>';
         }
-        htmlGrupos += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">' +
+        htmlGrupos += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" onclick="event.stopPropagation()">' +
           '<button onclick="openModalMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + c.inicio + '\',\'' + c.fin + '\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer"' + (mats.length>=2?' disabled title="Máximo 2 materiales"':'') + '>+ Material (' + mats.length + '/2)</button>' +
           (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar</button>' : '') +
           (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden-1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
@@ -3633,6 +3635,67 @@ async function confirmarEditarMaterialLED(idContrato, nombreOriginal) {
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     showToast('✅ Material actualizado', 'success');
+    closeModal();
+    renderLED(document.getElementById('mainContent'));
+  } catch(e) { showToast('❌ ' + e.message, 'error'); }
+}
+
+function openModalDetalleContratoLED(id) {
+  const c = (_ledData.contratos || []).find(x => x.id === id);
+  if (!c) return;
+  const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const ro = esAdmin ? '' : 'readonly disabled';
+  document.getElementById('modalTitle').textContent = '📄 Detalle de contratación';
+  document.getElementById('modalSubtitle').textContent = c.nombrePantalla + ' · ' + c.cliente;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="contratar-form">
+      ${!esAdmin ? '<div class="empty-sub" style="font-size:11px;margin-bottom:8px">Solo el administrador puede editar estos datos.</div>' : ''}
+      <div class="form-row">
+        <div class="form-group"><label>Cliente</label><input type="text" id="det-cliente" value="${c.cliente}" ${ro}></div>
+        <div class="form-group"><label>Ejecutiva</label><input type="text" value="${c.ejecutiva}" disabled></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Inicio</label><input type="date" id="det-inicio" value="${c.inicio}" ${ro}></div>
+        <div class="form-group"><label>Fin</label><input type="date" id="det-fin" value="${c.fin}" ${ro}></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Valor mensual</label><input type="number" id="det-valor" value="${c.valorMensual}" ${ro}></div>
+        <div class="form-group"><label>Valor total</label><input type="number" id="det-total" value="${c.valorTotal}" ${ro}></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Agencia contratante</label><input type="text" id="det-agencia" value="${c.agenciaContratante||''}" ${ro}></div>
+        <div class="form-group"><label>Comisión agencia</label><input type="text" id="det-comision" value="${c.comisionAgencia||''}" ${ro}></div>
+      </div>
+      <div class="form-group"><label>Contratado por</label><input type="text" id="det-contratadopor" value="${c.contratadoPor||''}" ${ro}></div>
+      <div class="form-row">
+        <div class="form-group"><label>Valor 15 días</label><input type="number" id="det-valor15" value="${c.valor15||''}" ${ro}></div>
+        <div class="form-group"><label>Valor 7 días</label><input type="number" id="det-valor7" value="${c.valor7||''}" ${ro}></div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px"><label>Valor 1 día</label><input type="number" id="det-valor1" value="${c.valor1||''}" ${ro}></div>
+      ${esAdmin ? '<button onclick="confirmarDetalleContratoLED(\''+id+'\')" style="width:100%;margin-top:8px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer">💾 Guardar cambios</button>' : ''}
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+async function confirmarDetalleContratoLED(id) {
+  try {
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
+      action:'editarContratoLED', id, solicitante: _usuarioActual,
+      cliente: document.getElementById('det-cliente').value.trim(),
+      inicio: document.getElementById('det-inicio').value,
+      fin: document.getElementById('det-fin').value,
+      valorMensual: document.getElementById('det-valor').value,
+      valorTotal: document.getElementById('det-total').value,
+      agenciaContratante: document.getElementById('det-agencia').value.trim(),
+      comisionAgencia: document.getElementById('det-comision').value.trim(),
+      contratadoPor: document.getElementById('det-contratadopor').value.trim(),
+      valor15: document.getElementById('det-valor15').value,
+      valor7: document.getElementById('det-valor7').value,
+      valor1: document.getElementById('det-valor1').value
+    })});
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ Contrato actualizado', 'success');
     closeModal();
     renderLED(document.getElementById('mainContent'));
   } catch(e) { showToast('❌ ' + e.message, 'error'); }
