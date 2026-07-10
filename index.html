@@ -889,6 +889,8 @@ function switchTab(t) {
   document.querySelectorAll('.tab').forEach((el,i) =>
     el.classList.toggle('active', ['inventario','disponibles','reservadas','alertas','led','mapa','dashboard'][i] === t));
   document.getElementById('viewToggle').style.display = (t === 'alertas' || t === 'mapa' || t === 'led') ? 'none' : '';
+  const mfEj = document.getElementById('mf-ejecutiva');
+  if (mfEj) mfEj.style.display = (t === 'led') ? 'none' : '';
   const pptBtn = document.getElementById('btnExportPPT');
   if (pptBtn) pptBtn.style.display = t === 'disponibles' ? 'block' : 'none';
   const mesWrap = document.getElementById('filtroMesWrap');
@@ -3458,7 +3460,21 @@ function detectLEDTipo(nombre) {
 }
 
 function buildLEDUI(container, data) {
-  const { elementosLED, contratos, materiales, vnnoxError } = data;
+  const { elementosLED: elementosLEDsinFiltrar, contratos, materiales, vnnoxError } = data;
+
+  // Filtros de la barra global: ciudad y tipo se aplican directo sobre
+  // el elemento; cliente se aplica sobre sus contratos activos, ya que
+  // una misma pantalla LED puede tener varios clientes a la vez.
+  const elementosLED = elementosLEDsinFiltrar.filter(el => {
+    if (state.filterCiudad.size && !state.filterCiudad.has(el.ciudad)) return false;
+    if (state.filterTipo.size && !state.filterTipo.has(el.tipo)) return false;
+    if (state.filterCliente.size) {
+      const clave = el.playerVnnoxId || el.codigo;
+      const tieneCliente = contratos.some(c => c.playerId === clave && c.activo && state.filterCliente.has(c.cliente));
+      if (!tieneCliente) return false;
+    }
+    return true;
+  });
   const hoy = new Date().toISOString().split('T')[0];
 
   // Estadísticas
