@@ -3610,7 +3610,7 @@ function buildLEDUI(container, data) {
         (bloqueadoOffline ? '<div style="font-size:10px;color:#f87171;margin:2px 0">Pantalla offline: no se pueden agregar nuevas contrataciones hasta que vuelva a línea</div>' : '') +
         '<div style="font-size:11px;color:var(--muted);margin:4px 0">' +
           playerContratos.length + ' de ' + capacidad + ' ocupados · <span style="color:var(--accent);font-weight:700">' + (capacidad-playerContratos.length) + ' disponibles</span>' +
-          (esAdmin ? ' <span onclick="event.stopPropagation();agregarEspaciosLED(\'' + player.playerId + '\',' + capacidad + ')" style="color:#60a5fa;cursor:pointer;margin-left:6px">+ agregar espacios</span>' : '') +
+          '' +
         '</div>' +
         '<div class="led-capacity-label"><span>Spots hoy</span><span>' + pct + '%</span></div>' +
         '<div class="led-capacity-bar"><div class="led-capacity-fill" style="width:' + pct + '%"></div></div>' +
@@ -3651,6 +3651,9 @@ function buildLEDUI(container, data) {
       });
       for (let s = playerContratos.length; s < capacidad; s++) {
         htmlGrupos += '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">Ingresar nueva contratación</div>';
+      }
+      if (esAdmin) {
+        htmlGrupos += '<div class="led-slot-empty" style="border-color:#60a5fa;color:#60a5fa" onclick="agregarEspaciosLED(\'' + player.playerId + '\',' + capacidad + ')">+ Agregar más espacios</div>';
       }
       htmlGrupos += '</div>'; // led-slots-grid
       htmlGrupos += '</div>'; // led-player-card
