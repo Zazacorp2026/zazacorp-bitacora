@@ -1208,7 +1208,9 @@ function openModal(codigo) {
 
   let rSec = '';
   const bloqueoActivo = isBlocked(v.codigo);
-  if (v.estado === 'DISPONIBLE' && bloqueoActivo) {
+  if (esLEDtipo(v)) {
+    rSec = '<div style="text-align:center;padding:14px;color:var(--muted);font-size:12px">📺 Este elemento se contrata desde la pestaña <strong style="color:var(--accent)">LED</strong>, no desde acá.</div>';
+  } else if (v.estado === 'DISPONIBLE' && bloqueoActivo) {
     rSec = '<div class="block-info"><h5>🔒 BLOQUEADA TEMPORALMENTE</h5>' +
       '<p>Reservada por: <strong>' + bloqueoActivo.ejecutiva + '</strong><br>' +
       'Cliente: <strong>' + bloqueoActivo.cliente + '</strong><br>' +
