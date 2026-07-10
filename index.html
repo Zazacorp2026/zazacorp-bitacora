@@ -3909,15 +3909,16 @@ function calcLEDTotal() {
 
 function checkLEDForm() {
   const esAdminActual = (_usuarioActual || '').toUpperCase() === 'JORGE';
-  const ok = document.getElementById('led-player')?.value &&
+  const camposBasicos = document.getElementById('led-player')?.value &&
              document.getElementById('led-cliente')?.value?.trim() &&
              document.getElementById('led-ejecutiva')?.value &&
              document.getElementById('led-inicio')?.value &&
-             document.getElementById('led-fin')?.value &&
-             document.getElementById('led-agencia')?.value?.trim() &&
-             getLEDComision() &&
-             getLEDContratadoPor() &&
-             (_ledPdfBase64 || esAdminActual);
+             document.getElementById('led-fin')?.value;
+  const ok = esAdminActual
+    ? camposBasicos
+    : camposBasicos &&
+      document.getElementById('led-agencia')?.value?.trim() &&
+      getLEDComision() && getLEDContratadoPor() && _ledPdfBase64;
   const btn = document.getElementById('btnLEDConfirmar');
   if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; btn.style.cursor = ok ? 'pointer' : 'not-allowed'; }
 }
@@ -3946,10 +3947,12 @@ async function confirmarContratoLED() {
   if (!ejecutiva) faltantes.push('ejecutiva');
   if (!inicio) faltantes.push('fecha inicio');
   if (!fin) faltantes.push('fecha fin');
-  if (!agenciaContratante) faltantes.push('agencia contratante');
-  if (!comisionAgencia) faltantes.push('comisión de agencia');
-  if (!contratadoPor) faltantes.push('contratado por');
-  if (!_ledPdfBase64 && !esAdminActual) faltantes.push('PDF de la orden de contratación');
+  if (!esAdminActual) {
+    if (!agenciaContratante) faltantes.push('agencia contratante');
+    if (!comisionAgencia) faltantes.push('comisión de agencia');
+    if (!contratadoPor) faltantes.push('contratado por');
+    if (!_ledPdfBase64) faltantes.push('PDF de la orden de contratación');
+  }
   if (faltantes.length) {
     showToast('Falta completar: ' + faltantes.join(', '), 'info');
     return;
