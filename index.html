@@ -850,17 +850,19 @@ function updateStats() {
 }
 
 let _ledContratosGlobal = [];
+let _ledCapacidadesGlobal = {};
 async function cargarLedContratosGlobal() {
   try {
     const res = await fetch(API_URL + '?action=getVNNOXData', { cache: 'no-store' });
     const json = await res.json();
-    if (json.ok) _ledContratosGlobal = json.contratos || [];
+    if (json.ok) { _ledContratosGlobal = json.contratos || []; _ledCapacidadesGlobal = {}; (json.elementosLED||[]).forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; }); }
   } catch(e) {}
 }
 function espaciosLEDDisponibles(v) {
   const clave = v.playerVnnoxId || v.codigo;
   const ocupados = _ledContratosGlobal.filter(c => c.playerId === clave && c.activo).length;
-  return Math.max(0, 15 - ocupados);
+  const capacidad = _ledCapacidadesGlobal[clave] || 15;
+  return Math.max(0, capacidad - ocupados);
 }
 function esLEDtipo(v) { return (v.tipo || '').toUpperCase().indexOf('LED') >= 0; }
 function esLEDtipo_str(tipo) { return (tipo || '').toUpperCase().indexOf('LED') >= 0; }
@@ -1401,7 +1403,11 @@ async function hacerReserva(codigo) {
       { label: 'Cliente', value: c }
     ]);
     closeModal();
-    await loadData(true);
+    // Actualiza el elemento localmente al instante (para que se vea
+    // reflejado ya mismo) y refresca todo el inventario en segundo
+    // plano, sin hacer esperar al usuario a que termine esa recarga.
+    if (vd) { vd.estado = 'RESERVADA'; }
+    loadData(true);
   } catch (err) {
     showToast('❌ Error: ' + err.message, 'error');
     btn.disabled = false;
@@ -3472,7 +3478,7 @@ async function renderLED(container) {
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error VNNOX');
     _ledData = json;
-    _ledContratosGlobal = json.contratos || [];
+    _ledContratosGlobal = json.contratos || []; _ledCapacidadesGlobal = {}; (json.elementosLED||[]).forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; });
     buildLEDUI(container, json);
   } catch(err) {
     container.innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>Error cargando datos LED: ' + err.message + '</p><button onclick="renderLED(document.getElementById(\'mainContent\'))" style="margin-top:10px;padding:8px 16px;background:var(--accent);color:#000;border:none;border-radius:8px;cursor:pointer">↺ Reintentar</button></div>';
@@ -3575,6 +3581,7 @@ function buildLEDUI(container, data) {
       const spotsUsados     = playerContratos.reduce((s, c) => s + c.spots, 0);
       const pct             = Math.min(100, Math.round(spotsUsados / SPOTS_DIA_CLIENT * 100));
       const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
+      const capacidad = player.capacidad || 15;
       // Solo se bloquea "nueva contratación" si SÍ tiene VNNOX y está
       // offline. Los elementos externos (sin VNNOX) no tienen esa señal,
       // así que siempre se pueden contratar.
@@ -3602,7 +3609,9 @@ function buildLEDUI(container, data) {
         '</div>' +
         (bloqueadoOffline ? '<div style="font-size:10px;color:#f87171;margin:2px 0">Pantalla offline: no se pueden agregar nuevas contrataciones hasta que vuelva a línea</div>' : '') +
         '<div style="font-size:11px;color:var(--muted);margin:4px 0">' +
-          playerContratos.length + ' de 15 ocupados · <span style="color:var(--accent);font-weight:700">' + (15-playerContratos.length) + ' disponibles</span></div>' +
+          playerContratos.length + ' de ' + capacidad + ' ocupados · <span style="color:var(--accent);font-weight:700">' + (capacidad-playerContratos.length) + ' disponibles</span>' +
+          (esAdmin ? ' <span onclick="event.stopPropagation();agregarEspaciosLED(\'' + player.playerId + '\',' + capacidad + ')" style="color:#60a5fa;cursor:pointer;margin-left:6px">+ agregar espacios</span>' : '') +
+        '</div>' +
         '<div class="led-capacity-label"><span>Spots hoy</span><span>' + pct + '%</span></div>' +
         '<div class="led-capacity-bar"><div class="led-capacity-fill" style="width:' + pct + '%"></div></div>' +
       '</div>';
@@ -3640,7 +3649,7 @@ function buildLEDUI(container, data) {
         '</div>';
         htmlGrupos += '</div>';
       });
-      for (let s = playerContratos.length; s < 15; s++) {
+      for (let s = playerContratos.length; s < capacidad; s++) {
         htmlGrupos += '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">Ingresar nueva contratación</div>';
       }
       htmlGrupos += '</div>'; // led-slots-grid
@@ -3758,6 +3767,21 @@ async function confirmarDetalleContratoLED(id) {
 function verMaterialLED(link) {
   if (link && link.startsWith('http')) window.open(link, '_blank');
   else showToast('Sin link de VNNOX registrado', 'info');
+}
+
+async function agregarEspaciosLED(playerId, capacidadActual) {
+  const cantidad = prompt('¿Cuántos espacios más querés agregar a esta pantalla? (hoy tiene ' + capacidadActual + ')', '5');
+  if (!cantidad || isNaN(cantidad) || Number(cantidad) <= 0) return;
+  const nuevaCapacidad = capacidadActual + Number(cantidad);
+  try {
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
+      action:'setCapacidadLED', playerId, capacidad: nuevaCapacidad, solicitante: _usuarioActual
+    })});
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ Ahora tiene ' + nuevaCapacidad + ' espacios', 'success');
+    renderLED(document.getElementById('mainContent'));
+  } catch(e) { showToast('❌ ' + e.message, 'error'); }
 }
 
 async function moverOrdenLED(id, nuevoOrden) {
