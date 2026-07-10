@@ -3843,7 +3843,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
         <input type="text" id="led-contratadopor-manual" placeholder="Especificar" style="display:none;margin-top:6px" oninput="checkLEDForm()">
       </div>
       <div class="pdf-upload-area" id="ledPdfUploadArea" onclick="document.getElementById('ledPdfFileInput').click()">
-        📎 <span id="ledPdfFileName">Click para subir la Orden de Contratación (PDF, obligatorio)</span>
+        📎 <span id="ledPdfFileName">${(_usuarioActual||'').toUpperCase()==='JORGE' ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
       </div>
       <input type="file" id="ledPdfFileInput" accept="application/pdf" style="display:none" onchange="handleLEDPdfFile(event)">
       <button id="btnLEDConfirmar" onclick="confirmarContratoLED()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer">📺 Registrar Contrato LED</button>
@@ -3907,6 +3907,7 @@ function calcLEDTotal() {
 }
 
 function checkLEDForm() {
+  const esAdminActual = (_usuarioActual || '').toUpperCase() === 'JORGE';
   const ok = document.getElementById('led-player')?.value &&
              document.getElementById('led-cliente')?.value?.trim() &&
              document.getElementById('led-ejecutiva')?.value &&
@@ -3915,7 +3916,7 @@ function checkLEDForm() {
              document.getElementById('led-agencia')?.value?.trim() &&
              getLEDComision() &&
              getLEDContratadoPor() &&
-             _ledPdfBase64;
+             (_ledPdfBase64 || esAdminActual);
   const btn = document.getElementById('btnLEDConfirmar');
   if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; }
 }
@@ -3946,7 +3947,8 @@ async function confirmarContratoLED() {
       action:'registrarContratoLED', playerId, nombrePantalla, cliente, ejecutiva,
       spots, periodo, inicio, fin, valorMensual, valorTotal, programaVNNOX,
       agenciaContratante, comisionAgencia, contratadoPor, valor15, valor7, valor1,
-      pdfBase64: _ledPdfBase64, pdfNombre: _ledPdfFile ? _ledPdfFile.name : 'orden.pdf'
+      pdfBase64: _ledPdfBase64, pdfNombre: _ledPdfFile ? _ledPdfFile.name : 'orden.pdf',
+      solicitante: _usuarioActual
     })});
     const json = await res.json();
     if (json.error) throw new Error(json.error);
