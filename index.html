@@ -3772,9 +3772,23 @@ function verMaterialLED(link) {
   else showToast('Sin link de VNNOX registrado', 'info');
 }
 
-async function agregarEspaciosLED(playerId, capacidadActual) {
-  const cantidad = prompt('¿Cuántos espacios más querés agregar a esta pantalla? (hoy tiene ' + capacidadActual + ')', '5');
-  if (!cantidad || isNaN(cantidad) || Number(cantidad) <= 0) return;
+function agregarEspaciosLED(playerId, capacidadActual) {
+  document.getElementById('modalTitle').textContent = '➕ Agregar más espacios';
+  document.getElementById('modalSubtitle').textContent = 'Hoy tiene ' + capacidadActual + ' espacios';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="contratar-form">
+      <div class="form-group" style="margin-bottom:14px">
+        <label>¿Cuántos espacios más querés agregar?</label>
+        <input type="number" id="esp-cantidad" value="5" min="1" style="font-size:18px">
+      </div>
+      <button onclick="confirmarAgregarEspaciosLED('${playerId}',${capacidadActual})" style="width:100%;padding:12px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-weight:700;font-size:13px;cursor:pointer">➕ Agregar</button>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+async function confirmarAgregarEspaciosLED(playerId, capacidadActual) {
+  const cantidad = document.getElementById('esp-cantidad').value;
+  if (!cantidad || isNaN(cantidad) || Number(cantidad) <= 0) { showToast('Ingresa un número válido', 'info'); return; }
   const nuevaCapacidad = capacidadActual + Number(cantidad);
   try {
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
@@ -3783,6 +3797,7 @@ async function agregarEspaciosLED(playerId, capacidadActual) {
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     showToast('✅ Ahora tiene ' + nuevaCapacidad + ' espacios', 'success');
+    closeModal();
     renderLED(document.getElementById('mainContent'));
   } catch(e) { showToast('❌ ' + e.message, 'error'); }
 }
