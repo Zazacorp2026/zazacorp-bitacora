@@ -3458,11 +3458,11 @@ function detectLEDTipo(nombre) {
 }
 
 function buildLEDUI(container, data) {
-  const { players, contratos, materiales, vnnoxError } = data;
+  const { elementosLED, contratos, materiales, vnnoxError } = data;
   const hoy = new Date().toISOString().split('T')[0];
 
   // Estadísticas
-  const online  = players.filter(p => p.isOnline).length;
+  const online  = elementosLED.filter(p => p.isOnline === true).length;
   const activos = contratos.filter(c => c.activo).length;
   const totalSpotsSold = contratos.filter(c => c.activo).reduce((s, c) => s + c.spots, 0);
 
@@ -3470,7 +3470,7 @@ function buildLEDUI(container, data) {
   if (vnnoxError) html += '<div class="led-vnnox-error">⚠️ VNNOX: ' + vnnoxError + '</div>';
 
   html += '<div class="led-stats-bar">' +
-    '<div class="led-stat"><b>' + players.length + '</b>Pantallas VNNOX</div>' +
+    '<div class="led-stat"><b>' + elementosLED.length + '</b>Elementos LED (Bitácora)</div>' +
     '<div class="led-stat"><b style="color:#4ade80">' + online + '</b>En línea</div>' +
     '<div class="led-stat"><b>' + activos + '</b>Contratos activos</div>' +
     '<div class="led-stat"><b>' + totalSpotsSold.toLocaleString() + '</b>Spots/día vendidos</div>' +
@@ -3482,24 +3482,26 @@ function buildLEDUI(container, data) {
 
   html += '<div class="led-grid">';
 
-  // Merge: players de VNNOX + pantallas LED del Sheet sin player en VNNOX
-  const playerIds = new Set(players.map(p => p.playerId));
-  const extrasIds = new Set(contratos.filter(c => c.activo && !playerIds.has(c.playerId)).map(c => c.playerId));
-
-  const allPlayers = [...players];
-  extrasIds.forEach(id => {
-    const c = contratos.find(x => x.playerId === id);
-    if (c) allPlayers.push({ playerId: id, name: c.nombrePantalla, isOnline: false, _soloSheet: true });
-  });
+  // Cada elemento LED trae su propia clave: el Player VNNOX ID si lo
+  // tiene cargado, o su código de Bitácora si es un LED "externo" sin
+  // VNNOX (así igual se puede gestionar y contratar).
+  const allPlayers = elementosLED.map(el => ({
+    playerId: el.playerVnnoxId || el.codigo,
+    name: el.codigo,
+    direccion: el.direccion,
+    foto: el.foto,
+    isOnline: el.isOnline,
+    esExterno: el.esExterno,
+    sn: el.sn, account: el.account,
+    _tipo: detectLEDTipo(el.tipo)
+  }));
 
   // Agrupar por tipo
   const grupos = {};
   LED_TIPOS_ORDER.forEach(t => { grupos[t] = []; });
   allPlayers.forEach(p => {
-    const tipo = p.ledTipo || detectLEDTipo(p.name);
-    p._tipo = tipo;
-    if (!grupos[tipo]) grupos[tipo] = [];
-    grupos[tipo].push(p);
+    if (!grupos[p._tipo]) grupos[p._tipo] = [];
+    grupos[p._tipo].push(p);
   });
 
   html += '</div>'; // cerrar led-grid temporal
@@ -3525,23 +3527,32 @@ function buildLEDUI(container, data) {
       const spotsUsados     = playerContratos.reduce((s, c) => s + c.spots, 0);
       const pct             = Math.min(100, Math.round(spotsUsados / SPOTS_DIA_CLIENT * 100));
       const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
-      const elemBitacora = DATA.find(v => v.playerVnnoxId && v.playerVnnoxId.trim() === player.playerId)
-        || DATA.find(v => (v.direccion||'').toUpperCase().includes((player.name||'').toUpperCase()) || (player.name||'').toUpperCase().includes((v.codigo||'').toUpperCase()));
-      const fotoLED = (elemBitacora || {}).foto;
+      // Solo se bloquea "nueva contratación" si SÍ tiene VNNOX y está
+      // offline. Los elementos externos (sin VNNOX) no tienen esa señal,
+      // así que siempre se pueden contratar.
+      const bloqueadoOffline = !player.esExterno && player.isOnline === false;
+
+      let estadoTag;
+      if (player.esExterno) {
+        estadoTag = '<span style="font-size:10px;color:#fb923c;background:rgba(251,146,60,.15);border:1px solid rgba(251,146,60,.4);border-radius:4px;padding:1px 6px">ELEMENTO EXTERNO</span>';
+      } else {
+        estadoTag = '<span style="font-size:10px;color:' + (player.isOnline ? '#4ade80' : '#f87171') + '">● ' + (player.isOnline ? 'EN LÍNEA' : 'OFFLINE') + '</span>';
+      }
 
       htmlGrupos += '<div class="led-player-card">';
       htmlGrupos += '<div class="led-banner">' +
-        (fotoLED ? '<img src="'+fotoLED+'">' : '') +
+        (player.foto ? '<img src="'+player.foto+'">' : '') +
         '<div class="led-player-header" style="padding:0">' +
-          '<div class="led-online-dot ' + (player.isOnline ? 'online' : 'offline') + '"></div>' +
+          '<div class="led-online-dot ' + (player.esExterno ? 'offline' : (player.isOnline ? 'online' : 'offline')) + '"></div>' +
           '<div>' +
-            '<div class="led-player-name">' + (player.name || player.playerId) + '</div>' +
-            (player.sn ? '<div class="led-player-sn">SN: ' + player.sn + '</div>' : '') +
+            '<div class="led-player-name">' + player.name + '</div>' +
+            '<div class="led-player-sn">' + (player.direccion||'').substring(0,40) + '</div>' +
           '</div>' +
         '</div>' +
-        '<div style="margin:6px 0"><span style="font-size:10px;color:' + (player.isOnline ? '#4ade80' : '#6b7280') + '">' + (player.isOnline ? '● EN LÍNEA' : '● OFFLINE') + '</span>' +
+        '<div style="margin:6px 0">' + estadoTag +
           (player.account ? ' <span style="font-size:9px;color:var(--muted);background:var(--surface2);border-radius:4px;padding:1px 5px">' + player.account + '</span>' : '') +
         '</div>' +
+        (bloqueadoOffline ? '<div style="font-size:10px;color:#f87171;margin:2px 0">Pantalla offline: no se pueden agregar nuevas contrataciones hasta que vuelva a línea</div>' : '') +
         '<div style="font-size:11px;color:var(--muted);margin:4px 0">' +
           playerContratos.length + ' de 15 ocupados · <span style="color:var(--accent);font-weight:700">' + (15-playerContratos.length) + ' disponibles</span></div>' +
         '<div class="led-capacity-label"><span>Spots hoy</span><span>' + pct + '%</span></div>' +
@@ -3729,7 +3740,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
   const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA']
     .map(e => '<option>' + e + '</option>').join('');
   const playerOpts = players.map(p =>
-    '<option value="' + p.playerId + '"' + (p.playerId === prePlayerId ? ' selected' : '') + '>' + p.name + '</option>'
+    '<option value="' + p.playerId + '"' + (p.playerId === prePlayerId ? ' selected' : '') + '>' + p.name + ' — ' + p.playerId + '</option>'
   ).join('');
 
   document.getElementById('modalTitle').textContent = '⚡ Nuevo Contrato LED';
