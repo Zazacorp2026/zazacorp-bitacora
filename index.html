@@ -602,7 +602,7 @@ let state = {
 
 // ── INICIO ──────────────────────────────────────────────────
 async function init() {
-  await Promise.all([loadData(), cargarBloqueos()]);
+  await Promise.all([loadData(), cargarBloqueos(), cargarLedContratosGlobal()]);
 }
 async function forzarRecarga() {
   localStorage.removeItem('zz_cache_v2');
@@ -849,6 +849,22 @@ function updateStats() {
   document.getElementById('st-total').textContent = '● ' + DATA.length + ' TOTAL';
 }
 
+let _ledContratosGlobal = [];
+async function cargarLedContratosGlobal() {
+  try {
+    const res = await fetch(API_URL + '?action=getVNNOXData', { cache: 'no-store' });
+    const json = await res.json();
+    if (json.ok) _ledContratosGlobal = json.contratos || [];
+  } catch(e) {}
+}
+function espaciosLEDDisponibles(v) {
+  const clave = v.playerVnnoxId || v.codigo;
+  const ocupados = _ledContratosGlobal.filter(c => c.playerId === clave && c.activo).length;
+  return Math.max(0, 15 - ocupados);
+}
+function esLEDtipo(v) { return (v.tipo || '').toUpperCase().indexOf('LED') >= 0; }
+function esLEDtipo_str(tipo) { return (tipo || '').toUpperCase().indexOf('LED') >= 0; }
+
 function getFiltered() {
   let d = DATA.slice();
   const s = state.search.toLowerCase().trim();
@@ -863,10 +879,10 @@ function getFiltered() {
         return false;
       });
     } else {
-      d = d.filter(v => v.estado === 'DISPONIBLE' && !isBlocked(v.codigo));
+      d = d.filter(v => esLEDtipo(v) ? espaciosLEDDisponibles(v) > 0 : (v.estado === 'DISPONIBLE' && !isBlocked(v.codigo)));
     }
   }
-  else if (state.tab === 'reservadas') d = d.filter(v => v.estado === 'RESERVADA' || (v.estado === 'DISPONIBLE' && isBlocked(v.codigo)));
+  else if (state.tab === 'reservadas') d = d.filter(v => !esLEDtipo(v) && (v.estado === 'RESERVADA' || (v.estado === 'DISPONIBLE' && isBlocked(v.codigo))));
   else if (state.tab === 'alertas') d = d.filter(v => v.alerta);
   if (s) d = d.filter(v =>
     (v.codigo||'').toLowerCase().includes(s) ||
@@ -891,6 +907,14 @@ function switchTab(t) {
   document.getElementById('viewToggle').style.display = (t === 'alertas' || t === 'mapa' || t === 'led') ? 'none' : '';
   const mfEj = document.getElementById('mf-ejecutiva');
   if (mfEj) mfEj.style.display = (t === 'led') ? 'none' : '';
+  const tiposTodos = [...new Set(DATA.map(v => v.tipo).filter(Boolean))].sort();
+  if (t === 'led') {
+    const tiposLED = tiposTodos.filter(esLEDtipo_str);
+    state.filterTipo = new Set([...state.filterTipo].filter(x => tiposLED.includes(x)));
+    buildMF('mf-tipo', tiposLED, 'filterTipo', 'Todos los tipos');
+  } else {
+    buildMF('mf-tipo', tiposTodos, 'filterTipo', 'Todos los tipos');
+  }
   const pptBtn = document.getElementById('btnExportPPT');
   if (pptBtn) pptBtn.style.display = t === 'disponibles' ? 'block' : 'none';
   const mesWrap = document.getElementById('filtroMesWrap');
@@ -994,7 +1018,12 @@ function renderCard(v) {
     };
   }
   const efectivoReservada = v.estado === 'RESERVADA' || bloqueo;
-  const rBtn = isReadOnly() ? '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px;opacity:.7">👁️ Solo lectura</div>'
+  const esLEDv = (v.tipo || '').toUpperCase().indexOf('LED') >= 0;
+  const rBtn = esLEDv
+    ? (state.tab === 'disponibles'
+        ? '<div style="font-size:11px;color:var(--accent);text-align:center;padding:6px;font-weight:700">📺 ' + espaciosLEDDisponibles(v) + ' espacios disponibles</div>'
+        : '<div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Se contrata desde la pestaña LED</div>')
+    : isReadOnly() ? '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px;opacity:.7">👁️ Solo lectura</div>'
     : v.estado === 'DISPONIBLE'
     ? bloqueo
       ? '<div class="countdown" data-countdown="' + bloqueo.expira + '" data-codigo="' + v.codigo + '">🔒 calculando...</div>' +
@@ -3441,6 +3470,7 @@ async function renderLED(container) {
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error VNNOX');
     _ledData = json;
+    _ledContratosGlobal = json.contratos || [];
     buildLEDUI(container, json);
   } catch(err) {
     container.innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>Error cargando datos LED: ' + err.message + '</p><button onclick="renderLED(document.getElementById(\'mainContent\'))" style="margin-top:10px;padding:8px 16px;background:var(--accent);color:#000;border:none;border-radius:8px;cursor:pointer">↺ Reintentar</button></div>';
