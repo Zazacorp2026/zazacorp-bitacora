@@ -3846,7 +3846,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
         📎 <span id="ledPdfFileName">${(_usuarioActual||'').toUpperCase()==='JORGE' ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
       </div>
       <input type="file" id="ledPdfFileInput" accept="application/pdf" style="display:none" onchange="handleLEDPdfFile(event)">
-      <button id="btnLEDConfirmar" onclick="confirmarContratoLED()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer">📺 Registrar Contrato LED</button>
+      <button id="btnLEDConfirmar" onclick="confirmarContratoLED()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:not-allowed;opacity:.5">📺 Registrar Contrato LED</button>
     </div>`;
   _ledPdfBase64 = null; _ledPdfFile = null;
   document.getElementById('modalOverlay').classList.add('open');
@@ -3854,6 +3854,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
     document.getElementById('led-player').value = prePlayerId;
     autoSetEjecutiva('led-ejecutiva');
   }
+  checkLEDForm();
 }
 
 let _ledPdfBase64 = null, _ledPdfFile = null;
@@ -3918,7 +3919,7 @@ function checkLEDForm() {
              getLEDContratadoPor() &&
              (_ledPdfBase64 || esAdminActual);
   const btn = document.getElementById('btnLEDConfirmar');
-  if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; }
+  if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; btn.style.cursor = ok ? 'pointer' : 'not-allowed'; }
 }
 
 async function confirmarContratoLED() {
@@ -3937,6 +3938,22 @@ async function confirmarContratoLED() {
   const agenciaContratante = document.getElementById('led-agencia').value.trim();
   const comisionAgencia = getLEDComision();
   const contratadoPor = getLEDContratadoPor();
+
+  const esAdminActual = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const faltantes = [];
+  if (!playerId) faltantes.push('pantalla');
+  if (!cliente) faltantes.push('cliente');
+  if (!ejecutiva) faltantes.push('ejecutiva');
+  if (!inicio) faltantes.push('fecha inicio');
+  if (!fin) faltantes.push('fecha fin');
+  if (!agenciaContratante) faltantes.push('agencia contratante');
+  if (!comisionAgencia) faltantes.push('comisión de agencia');
+  if (!contratadoPor) faltantes.push('contratado por');
+  if (!_ledPdfBase64 && !esAdminActual) faltantes.push('PDF de la orden de contratación');
+  if (faltantes.length) {
+    showToast('Falta completar: ' + faltantes.join(', '), 'info');
+    return;
+  }
   const valor15 = '', valor7 = '', valor1 = '';
 
   const btn = document.getElementById('btnLEDConfirmar');
@@ -3963,6 +3980,7 @@ async function confirmarContratoLED() {
 
 // ── Modal: Registrar Material LED ─────────────────────────────
 function openModalMaterialLED(idContrato, playerId, pantalla, cliente, cIni, cFin) {
+  _matContratoIni = cIni; _matContratoFin = cFin;
   document.getElementById('modalTitle').textContent = '🎬 Registrar Material';
   document.getElementById('modalSubtitle').textContent = cliente + ' · ' + pantalla;
   document.getElementById('modalBody').innerHTML = `
@@ -3976,8 +3994,8 @@ function openModalMaterialLED(idContrato, playerId, pantalla, cliente, cIni, cFi
         <div class="form-group"><label>Duración (seg)</label><input type="number" id="mat-duracion" value="10" min="1"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Desde</label><input type="date" id="mat-inicio" min="${cIni}" max="${cFin}" value="${cIni}"></div>
-        <div class="form-group"><label>Hasta</label><input type="date" id="mat-fin" min="${cIni}" max="${cFin}" value="${cFin}"></div>
+        <div class="form-group"><label>Desde</label><input type="date" id="mat-inicio" value="${cIni}"></div>
+        <div class="form-group"><label>Hasta</label><input type="date" id="mat-fin" value="${cFin}"></div>
       </div>
       <div class="empty-sub" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Debe estar dentro del período del contrato (${cIni} a ${cFin}). Máximo 2 materiales por contrato.</div>
       <div class="form-group" style="margin-top:6px">
@@ -3989,6 +4007,7 @@ function openModalMaterialLED(idContrato, playerId, pantalla, cliente, cIni, cFi
   document.getElementById('modalOverlay').classList.add('open');
 }
 
+let _matContratoIni = '', _matContratoFin = '';
 async function confirmarMaterialLED(idContrato, playerId, pantalla, cliente, btnEl) {
   const nombre   = document.getElementById('mat-nombre').value.trim();
   const version  = document.getElementById('mat-version').value.trim() || 'V1';
@@ -3998,6 +4017,11 @@ async function confirmarMaterialLED(idContrato, playerId, pantalla, cliente, btn
   const finMaterial    = document.getElementById('mat-fin').value;
   if (!nombre) { showToast('Ingresa el nombre del material', 'info'); return; }
   if (!inicioMaterial || !finMaterial) { showToast('Ingresa las fechas de uso del material', 'info'); return; }
+  if (finMaterial < inicioMaterial) { showToast('La fecha "Hasta" no puede ser antes que "Desde"', 'info'); return; }
+  if (_matContratoIni && _matContratoFin && (inicioMaterial < _matContratoIni || finMaterial > _matContratoFin)) {
+    showToast('Las fechas deben estar dentro del período del contrato (' + _matContratoIni + ' a ' + _matContratoFin + ')', 'info');
+    return;
+  }
   if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = '⏳ Guardando...'; }
   try {
     const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({
