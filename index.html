@@ -496,18 +496,8 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbyTlN29P6a_52u7vmAk9hwG
 // ══════════════════════════════════════════════════════════════
 //  SISTEMA DE LOGIN
 // ══════════════════════════════════════════════════════════════
-const USUARIOS = {
-  'JORGE':            'Elise0101',
-  'LORENA':           'Zaza2026L',
-  'RICARDO':          'Zaza2026R',
-  'SASKYA':           'Zaza2026S',
-  'SHAYRA':           'Zaza2026Sh',
-  'VERONICA TERAN':   'Zaza2026VT',
-  'VERONICA TRIVINO': 'Zaza2026VTr',
-  'YESENIA':          'Zaza2026Y',
-  'ZULIA':            'Zaza2026Z',
-  'DIANA':            'Zaza2026D'
-};
+// Nombres para el selector — las contraseñas viven solo en el backend (Code.gs).
+const USUARIOS_NOMBRES = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA','DIANA'];
 
 // Usuarios con acceso de solo lectura — pueden ver el inventario completo,
 // pero NO pueden reservar, contratar, editar, liberar ni realizar ninguna
@@ -518,7 +508,7 @@ let _usuarioActual = null;
 
 function checkLogin() {
   const saved = sessionStorage.getItem('zz_usuario');
-  if (saved && USUARIOS[saved]) {
+  if (saved && USUARIOS_NOMBRES.includes(saved)) {
     _usuarioActual = saved;
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('userBadgeName').textContent = saved.split(' ')[0];
@@ -528,7 +518,7 @@ function checkLogin() {
   return false;
 }
 
-function doLogin() {
+async function doLogin() {
   const user = document.getElementById('loginUser').value;
   const pass = document.getElementById('loginPass').value;
   const err  = document.getElementById('loginError');
@@ -536,17 +526,25 @@ function doLogin() {
   if (!user) { err.textContent = 'Selecciona tu nombre'; return; }
   if (!pass)  { err.textContent = 'Ingresa tu contraseña'; return; }
 
-  if (USUARIOS[user] && pass === USUARIOS[user]) {
+  err.textContent = '';
+  try {
+    const url = API_URL + '?action=nxLogin&user=' + encodeURIComponent(user) + '&pass=' + encodeURIComponent(pass) + '&_t=' + Date.now();
+    const res = await fetch(url, { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok) {
+      err.textContent = '❌ Usuario o contraseña incorrectos';
+      document.getElementById('loginPass').value = '';
+      return;
+    }
     sessionStorage.setItem('zz_usuario', user);
+    if (data.readOnly) sessionStorage.setItem('zz_readonly', '1'); else sessionStorage.removeItem('zz_readonly');
     _usuarioActual = user;
     document.getElementById('loginOverlay').classList.add('hidden');
     const displayName = user.split(' ')[0] + (isReadOnly() ? ' 👁️' : '');
     document.getElementById('userBadgeName').textContent = displayName;
-    err.textContent = '';
     init(); // Cargar la app después del login
-  } else {
-    err.textContent = '❌ Usuario o contraseña incorrectos';
-    document.getElementById('loginPass').value = '';
+  } catch (e) {
+    err.textContent = 'No se pudo verificar. Revisa tu conexión e intenta de nuevo.';
   }
 }
 
@@ -1419,7 +1417,7 @@ async function hacerReserva(codigo) {
 async function cancelarReservaBloqueo(codigo) {
   const pin = prompt('🔐 PIN de administrador:');
   if (pin === null) return;
-  if (pin !== ADMIN_PIN) {
+  if (!(await checkAdminPin(pin))) {
     showToast('❌ PIN incorrecto', 'error');
     return;
   }
@@ -1432,12 +1430,11 @@ async function cancelarReservaBloqueo(codigo) {
 
 async function desbloquearAdmin(codigo) {
   const pin = document.getElementById('adminPin').value;
-  if (pin !== ADMIN_PIN) {
+  if (!(await checkAdminPin(pin))) {
     showToast('❌ PIN incorrecto', 'error');
     document.getElementById('adminPin').value = '';
     return;
   }
-  // Desbloquear en Sheet
   try {
     await fetch(API_URL, {
       method: 'POST',
@@ -1453,7 +1450,7 @@ async function desbloquearAdmin(codigo) {
 async function cancelarReserva(codigo) {
   const pin = prompt('🔐 PIN de administrador:');
   if (pin === null) return;
-  if (pin !== ADMIN_PIN) {
+  if (!(await checkAdminPin(pin))) {
     showToast('❌ PIN incorrecto', 'error');
     return;
   }
@@ -1845,7 +1842,7 @@ async function checkAndActivarSegunda(codigo) {
 // ── EDITAR VALLA (ADMIN) ──────────────────────────────────────
 let _editPinOk = false;
 
-function toggleEditForm(codigo) {
+async function toggleEditForm(codigo) {
   const container = document.getElementById('editFormContainer');
   if (!container) return;
 
@@ -1856,7 +1853,7 @@ function toggleEditForm(codigo) {
 
   if (!_editPinOk) {
     const pin = prompt('🔐 PIN de administrador para editar:');
-    if (!pin || pin !== ADMIN_PIN) { showToast('❌ PIN incorrecto', 'error'); return; }
+    if (!pin || !(await checkAdminPin(pin))) { showToast('❌ PIN incorrecto', 'error'); return; }
     _editPinOk = true;
   }
 
@@ -2260,7 +2257,7 @@ async function confirmarMultiContratacion() {
 async function liberarValla(codigo) {
   const pin = prompt('🔐 PIN de administrador para liberar valla:');
   if (pin === null) return;
-  if (pin !== ADMIN_PIN) { showToast('❌ PIN incorrecto', 'error'); return; }
+  if (!(await checkAdminPin(pin))) { showToast('❌ PIN incorrecto', 'error'); return; }
   if (!confirm('¿Seguro que deseas liberar ' + codigo + ' y ponerla DISPONIBLE?')) return;
 
   showToast('⏳ Liberando valla...', 'info');
@@ -3275,7 +3272,17 @@ function showToast(msg, type = 'info') {
 
 
 // ── SISTEMA DE BLOQUEO 48H (Firebase Realtime DB) ───────────
-const ADMIN_PIN  = '2026';
+const ADMIN_PIN  = null; // el PIN real vive solo en el backend (Code.gs)
+async function checkAdminPin(pin) {
+  if (!pin) return false;
+  try {
+    const res = await fetch(API_URL + '?action=nxCheckAdminPin&pin=' + encodeURIComponent(pin) + '&_t=' + Date.now(), { cache: 'no-store' });
+    const data = await res.json();
+    return !!data.ok;
+  } catch (e) {
+    return false;
+  }
+}
 const BLOCK_HOURS = 48; // horas laborales (sin contar sábado ni domingo)
 
 /**
