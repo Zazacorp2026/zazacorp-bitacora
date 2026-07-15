@@ -435,16 +435,21 @@
   </div>
   <span class="count-badge" id="countBadge">–</span>
   <button id="btnExportPPT" onclick="exportarPPT()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
-  <div id="filtroMesWrap" style="display:none;align-items:center;gap:6px">
-    <span style="font-size:11px;color:var(--muted);white-space:nowrap">📅 Disponibles en:</span>
-    <input type="month" id="filtroMesDisp" onchange="aplicarFiltroMes(this.value)" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:11px;padding:6px 8px;font-family:'Space Grotesk',sans-serif;cursor:pointer">
-    <button id="btnClearMes" onclick="limpiarFiltroMes()" style="display:none;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;padding:4px 8px;cursor:pointer">✕</button>
+  <div id="filtroMesWrap" style="display:none;align-items:center;gap:8px;background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:10px;padding:6px 10px">
+    <span style="font-size:12px;color:var(--accent);font-weight:700;white-space:nowrap">📅 Disponibles a partir de:</span>
+    <select id="selMesDisp" onchange="aplicarFiltroMesSel()" style="color-scheme:dark;background:var(--surface);border:1px solid var(--accent);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:7px 9px;font-family:'Space Grotesk',sans-serif;cursor:pointer">
+      <option value="">Mes...</option>
+    </select>
+    <select id="selAnioDisp" onchange="aplicarFiltroMesSel()" style="color-scheme:dark;background:var(--surface);border:1px solid var(--accent);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:7px 9px;font-family:'Space Grotesk',sans-serif;cursor:pointer">
+      <option value="">Año...</option>
+    </select>
+    <button id="btnClearMes" onclick="limpiarFiltroMes()" style="display:none;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;padding:6px 9px;cursor:pointer">✕ Quitar</button>
   </div>
   <button id="btnInvPPT" onclick="exportarPPTInventario()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
   <button id="btnInvExcel" onclick="exportarExcelInventario()" style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.35);border-radius:8px;color:#4ade80;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(74,222,128,.18)'" onmouseout="this.style.background='rgba(74,222,128,.08)'">⬇ Exportar Excel</button>
-  <button id="btnMultiSelectInv" onclick="toggleMultiSelectInv()" style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.35);border-radius:8px;color:#a78bfa;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Seleccionar</button>
-      <button id="btnMultiSelect" onclick="toggleMultiSelect()" style="display:none;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;color:#3b82f6;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Selección múltiple</button>
-      <button id="btnMultiSelectRes" onclick="toggleMultiSelect()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:sans-serif">☐ Selección para contratar</button>
+  <button id="btnMultiSelectInv" onclick="toggleMultiSelectInv()" style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.35);border-radius:8px;color:#a78bfa;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(139,92,246,.25)'" onmouseout="this.style.background='rgba(139,92,246,.12)'">☐ Seleccionar</button>
+      <button id="btnMultiSelect" onclick="toggleMultiSelect()" style="display:none;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;color:#3b82f6;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(59,130,246,.25)'" onmouseout="this.style.background='rgba(59,130,246,.12)'">☐ Selección múltiple</button>
+      <button id="btnMultiSelectRes" onclick="toggleMultiSelect()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">☐ Selección para contratar</button>
   <div class="view-toggle" id="viewToggle">
     <button class="view-btn active" onclick="setView('grid',this)">⊞ Galería</button>
     <button class="view-btn" onclick="setView('table',this)">≡ Tabla</button>
@@ -600,6 +605,7 @@ let state = {
 
 // ── INICIO ──────────────────────────────────────────────────
 async function init() {
+  poblarSelectoresMes();
   await Promise.all([loadData(), cargarBloqueos(), cargarLedContratosGlobal()]);
 }
 async function forzarRecarga() {
@@ -871,10 +877,12 @@ function getFiltered() {
   // Treat blocked (48h) as RESERVADA for filtering purposes
   if (state.tab === 'disponibles') {
     if (state.filterMesDisp) {
-      // Solo mostrar las que terminan en el mes seleccionado
+      // Disponibles A PARTIR de ese mes: ya libres ahora + las que se liberan en o antes del mes elegido
       d = d.filter(v => {
+        if (esLEDtipo(v)) return espaciosLEDDisponibles(v) > 0;
+        if (v.estado === 'DISPONIBLE' && !isBlocked(v.codigo)) return true;
         if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
-          return v.termino.substring(0, 7) === state.filterMesDisp;
+          return v.termino.substring(0, 7) <= state.filterMesDisp;
         }
         return false;
       });
@@ -951,10 +959,38 @@ function aplicarFiltroMes(val) {
   render();
 }
 
+function poblarSelectoresMes() {
+  const selMes = document.getElementById('selMesDisp');
+  const selAnio = document.getElementById('selAnioDisp');
+  if (!selMes || !selAnio || selMes.options.length > 1) return;
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  meses.forEach((m,i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i+1).padStart(2,'0');
+    opt.textContent = m;
+    selMes.appendChild(opt);
+  });
+  const anioActual = new Date().getFullYear();
+  for (let y = anioActual; y <= 2034; y++) {
+    const opt = document.createElement('option');
+    opt.value = String(y);
+    opt.textContent = String(y);
+    selAnio.appendChild(opt);
+  }
+}
+
+function aplicarFiltroMesSel() {
+  const m = document.getElementById('selMesDisp').value;
+  const y = document.getElementById('selAnioDisp').value;
+  aplicarFiltroMes(m && y ? (y + '-' + m) : '');
+}
+
 function limpiarFiltroMes(silent) {
   state.filterMesDisp = '';
-  const inp = document.getElementById('filtroMesDisp');
-  if (inp) inp.value = '';
+  const selMes = document.getElementById('selMesDisp');
+  const selAnio = document.getElementById('selAnioDisp');
+  if (selMes) selMes.value = '';
+  if (selAnio) selAnio.value = '';
   const btn = document.getElementById('btnClearMes');
   if (btn) btn.style.display = 'none';
   if (!silent) { state.page = 1; render(); }
@@ -1038,7 +1074,7 @@ function renderCard(v) {
   const isSelected = selectedVallas.has(v.codigo);
   const isSelectedInv = selectedInv.has(v.codigo);
   // Badge especial para próximas disponibilidades
-  const esProximaDisp = state.tab === 'disponibles' && state.filterMesDisp && (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino && v.termino.substring(0,7) === state.filterMesDisp;
+  const esProximaDisp = state.tab === 'disponibles' && state.filterMesDisp && (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino && v.termino.substring(0,7) <= state.filterMesDisp;
   const badgeEstado = esProximaDisp
     ? '<span class="estado-badge" style="background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.4);font-size:9px">📅 LIBRE EN ' + new Date(v.termino + 'T12:00:00').toLocaleDateString('es', {month:'short',year:'numeric'}).toUpperCase() + '</span>'
     : '<span class="estado-badge ' + ec(v.estado) + '">' + v.estado + '</span>';
