@@ -879,7 +879,14 @@ function getFiltered() {
     if (state.filterMesDisp) {
       // Disponibles A PARTIR de ese mes: ya libres ahora + las que se liberan en o antes del mes elegido
       d = d.filter(v => {
-        if (esLEDtipo(v)) return espaciosLEDDisponibles(v) > 0;
+        if (esLEDtipo(v)) {
+          if (espaciosLEDDisponibles(v) <= 0) return false;
+          // Si el registro del LED tiene su propio contrato/estado con fecha, respetar el mes igual que las vallas normales
+          if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
+            return v.termino.substring(0, 7) <= state.filterMesDisp;
+          }
+          return true;
+        }
         if (v.estado === 'DISPONIBLE' && !isBlocked(v.codigo)) return true;
         if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
           return v.termino.substring(0, 7) <= state.filterMesDisp;
