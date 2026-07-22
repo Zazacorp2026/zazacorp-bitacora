@@ -511,14 +511,35 @@ const READONLY_USERS = new Set(['DIANA']);
 
 let _usuarioActual = null;
 
+// La sesión expira sola a las 6h (igual que el token del backend), aunque
+// la pestaña se quede abierta sin recargar. Se revisa al cargar y cada
+// 5 min mientras la app está abierta.
+const SESION_TTL_MS = 6 * 60 * 60 * 1000;
+function sesionExpirada() {
+  const ts = Number(sessionStorage.getItem('zz_login_ts') || 0);
+  return !ts || (Date.now() - ts) > SESION_TTL_MS;
+}
+function forzarLogoutPorExpiracion() {
+  sessionStorage.removeItem('zz_usuario');
+  sessionStorage.removeItem('zz_token');
+  sessionStorage.removeItem('zz_readonly');
+  sessionStorage.removeItem('zz_login_ts');
+  _usuarioActual = null;
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  const err = document.getElementById('loginError');
+  if (err) err.textContent = 'Tu sesión expiró. Ingresa de nuevo.';
+}
+setInterval(() => { if (_usuarioActual && sesionExpirada()) forzarLogoutPorExpiracion(); }, 5 * 60 * 1000);
+
 function checkLogin() {
   const saved = sessionStorage.getItem('zz_usuario');
-  if (saved && USUARIOS_NOMBRES.includes(saved)) {
+  if (saved && USUARIOS_NOMBRES.includes(saved) && !sesionExpirada()) {
     _usuarioActual = saved;
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('userBadgeName').textContent = saved.split(' ')[0];
     return true;
   }
+  if (saved) forzarLogoutPorExpiracion();
   document.getElementById('loginOverlay').classList.remove('hidden');
   return false;
 }
@@ -567,6 +588,7 @@ async function doLogin() {
       return;
     }
     sessionStorage.setItem('zz_usuario', user);
+    sessionStorage.setItem('zz_login_ts', String(Date.now()));
     if (data.token) sessionStorage.setItem('zz_token', data.token);
     if (data.readOnly) sessionStorage.setItem('zz_readonly', '1'); else sessionStorage.removeItem('zz_readonly');
     _usuarioActual = user;
