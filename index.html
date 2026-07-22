@@ -311,6 +311,44 @@
   .segunda-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(167,139,250,.15);color:#a78bfa;margin-top:4px;}
   @media(max-width:640px){.kanban{grid-template-columns:1fr;}.form-row{grid-template-columns:1fr;}.header-right .stat-pill{display:none;}}
 
+  /* ══════════ OPTIMIZACIÓN MÓVIL (Android/iOS) ══════════
+     La app se diseñó pensando en escritorio (header con 7 pestañas,
+     barra de herramientas con varios filtros lado a lado, mucho padding
+     lateral fijo de 24px). En una pantalla de celular eso hace que todo
+     se vea apretujado o cortado. Este bloque no cambia el diseño de
+     escritorio (solo aplica bajo 768px): reduce paddings, permite que
+     las pestañas se deslicen horizontalmente en vez de aplastarse, y
+     apila los filtros/búsqueda a ancho completo para que sean fáciles
+     de tocar con el dedo. */
+  @media(max-width:768px){
+    header{padding:0 12px;height:auto;min-height:56px;flex-wrap:wrap;gap:8px 0;padding-top:8px;padding-bottom:8px;}
+    .logo img{height:38px !important;}
+    .header-right{gap:8px;flex-wrap:wrap;}
+    .header-right a[title="Manual de usuario"] span{display:none;}
+    .header-right button[onclick="forzarRecarga()"]{font-size:0;padding:6px 8px;}
+    .header-right button[onclick="forzarRecarga()"]::before{content:'↻';font-size:14px;}
+    .user-badge{padding:4px 8px;font-size:11px;}
+
+    .tabs{padding:10px 10px 0;gap:4px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+    .tabs::-webkit-scrollbar{display:none;}
+    .tab{white-space:nowrap;flex-shrink:0;font-size:12px;padding:8px 12px;}
+
+    .toolbar{padding:10px 12px;flex-direction:column;align-items:stretch;}
+    .search-box{min-width:0;max-width:none;width:100%;}
+    .multi-filter{width:100%;}
+    .mf-btn{width:100%;justify-content:space-between;}
+    .mf-drop{min-width:0;width:100%;}
+
+    .content{padding:12px;}
+    .config-banner{margin:12px;padding:12px 14px;}
+    .modal{max-width:100%;border-radius:16px 16px 0 0;}
+  }
+  @media(max-width:480px){
+    .login-box{padding:28px 20px;}
+    #loginLogo{height:80px !important;}
+    .stat-pill{font-size:10px;padding:3px 8px;}
+  }
+
   /* ── LOGIN SCREEN ─────────────────────────────────────────── */
   #loginOverlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;}
   #loginOverlay.hidden{display:none;}
