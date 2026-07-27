@@ -1201,6 +1201,19 @@ function ec(e) {
 // en la misma URL (se genera y cachea en su CDN, no toca la foto
 // original ni requiere volver a subir nada). anchoPx define el ancho
 // máximo que en verdad se necesita mostrar en cada lugar.
+// Escapa texto antes de insertarlo como HTML — sin esto, alguien podía
+// escribir código en campos como "Cliente" u "Observaciones" (que hoy
+// cualquier ejecutiva logueada puede editar) y ese código se ejecutaría
+// en la pantalla de cualquiera que abra esa valla después, incluido un
+// admin (robo de sesión, etc.). Convierte < > & " ' en su versión de
+// texto plano, así se ven como texto normal en vez de ejecutarse.
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+
 function cldOptimizar(url, anchoPx) {
   if (!url || typeof url !== 'string' || !url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
   return url.replace('/upload/', '/upload/w_' + (anchoPx || 500) + ',c_limit,q_auto,f_auto/');
@@ -1219,8 +1232,8 @@ function renderCard(v) {
   if (!bloqueo && v.bloqueo_expira && new Date() < new Date(v.bloqueo_expira)) {
     bloqueo = {
       expira: v.bloqueo_expira,
-      ejecutiva: v.bloqueo_ejecutiva || v.ejecutiva_reserva || '',
-      cliente: v.cliente_reserva || v.cliente || '',
+      ejecutiva: v.bloqueo_ejecutiva || esc(v.ejecutiva_reserva) || '',
+      cliente: esc(v.cliente_reserva) || esc(v.cliente) || '',
       fromSheet: true
     };
   }
@@ -1259,10 +1272,10 @@ function renderCard(v) {
     '<div class="card-photo">' + fHtml + '</div>' +
     '<div class="card-body">' +
       '<div class="card-header"><div class="card-codigo">' + v.codigo + '</div>' + (esProximaDisp ? badgeEstado : '<div class="estado-badge ' + (bloqueo ? 'eb-RESERVADA' : ec(v.estado)) + '">' + (bloqueo ? 'RESERVADA' : v.estado) + '</div>') + '</div>' +
-      '<div class="card-dir">' + v.direccion + '</div>' +
-      '<div class="card-meta"><span class="meta-tag">' + v.tipo + '</span>' + (v.medidas ? '<span class="meta-tag">' + v.medidas + '</span>' : '') + '<span class="meta-tag">' + v.lugar + '</span></div>' +
+      '<div class="card-dir">' + esc(v.direccion) + '</div>' +
+      '<div class="card-meta"><span class="meta-tag">' + v.tipo + '</span>' + (esc(v.medidas) ? '<span class="meta-tag">' + esc(v.medidas) + '</span>' : '') + '<span class="meta-tag">' + esc(v.lugar) + '</span></div>' +
       aHtml +
-      (v.estado === 'CONTRATADA' && v.reserva2_cliente ? '<div style="font-size:9px;color:#818cf8;font-weight:600;margin-bottom:4px">🔄 Pre-reservada: ' + v.reserva2_cliente + '</div>' : '') +
+      (v.estado === 'CONTRATADA' && esc(v.reserva2_cliente) ? '<div style="font-size:9px;color:#818cf8;font-weight:600;margin-bottom:4px">🔄 Pre-reservada: ' + esc(v.reserva2_cliente) + '</div>' : '') +
       (v.estado === 'CONTRATADA' && v.termino && !v.alerta ? (function(){
         const hoy = new Date(); hoy.setHours(0,0,0,0);
         const p = v.termino.split('-');
@@ -1274,7 +1287,7 @@ function renderCard(v) {
         const color = diff <= 30 ? '#f59e0b' : diff <= 60 ? '#fb923c' : 'var(--muted)';
         return '<div style="font-size:9px;color:' + color + ';margin-bottom:6px;font-weight:600">📅 Fin en: ' + txt + '</div>';
       })() : '') +
-      '<div class="card-footer"><div><div class="card-cliente">' + (v.cliente || (v.estado === 'DISPONIBLE' ? '' : '—')) + '</div><div class="card-ejecutiva">' + (v.ejecutiva || '') + '</div></div>' +
+      '<div class="card-footer"><div><div class="card-cliente">' + (esc(v.cliente) || (v.estado === 'DISPONIBLE' ? '' : '—')) + '</div><div class="card-ejecutiva">' + (esc(v.ejecutiva) || '') + '</div></div>' +
       (v.valor ? '<div style="font-family:monospace;font-size:10px;color:var(--muted)">$' + Number(v.valor).toLocaleString() + '</div>' : '') + '</div>' +
       rBtn + '</div></div>';
 }
@@ -1283,10 +1296,10 @@ function renderTable(data) {
   const rows = data.map(v =>
     '<tr onclick="openModal(\'' + v.codigo + '\')">' +
     '<td style="font-family:monospace;font-size:10px;color:var(--accent)">' + v.codigo + '</td>' +
-    '<td class="dir">' + v.direccion + '</td>' +
-    '<td>' + v.lugar + '</td><td>' + v.tipo + '</td>' +
+    '<td class="dir">' + esc(v.direccion) + '</td>' +
+    '<td>' + esc(v.lugar) + '</td><td>' + v.tipo + '</td>' +
     '<td><span class="estado-badge ' + ec(v.estado) + '">' + v.estado + '</span></td>' +
-    '<td>' + (v.cliente || '—') + '</td><td>' + (v.ejecutiva || '—') + '</td>' +
+    '<td>' + (esc(v.cliente) || '—') + '</td><td>' + (esc(v.ejecutiva) || '—') + '</td>' +
     '<td style="font-family:monospace;font-size:10px">' + (v.termino || '—') + '</td>' +
     '<td>' + (v.alerta ? '<span class="alerta-tag ' + (v.alerta.includes('VENCIDO') ? 'at-danger' : 'at-warn') + '">' + v.alerta + '</span>' : '—') + '</td>' +
     '</tr>').join('');
@@ -1308,8 +1321,8 @@ function renderKanban(container, data) {
     const cards = items.slice(0, 80).map(v =>
       '<div class="kanban-card" onclick="openModal(\'' + v.codigo + '\')">' +
       '<div class="kc-code">' + v.codigo + '</div>' +
-      '<div class="kc-dir">' + v.direccion + '</div>' +
-      '<div class="kc-meta"><span class="kc-tipo">' + v.tipo + '</span><span class="kc-cliente">' + (v.cliente || v.cliente_reserva || '') + '</span></div></div>').join('');
+      '<div class="kc-dir">' + esc(v.direccion) + '</div>' +
+      '<div class="kc-meta"><span class="kc-tipo">' + v.tipo + '</span><span class="kc-cliente">' + (esc(v.cliente) || esc(v.cliente_reserva) || '') + '</span></div></div>').join('');
     const more = items.length > 80 ? '<div style="text-align:center;padding:8px;font-size:10px;color:var(--muted)">+' + (items.length - 80) + ' más — usa filtros</div>' : '';
     return '<div class="kanban-col"><div class="kanban-header"><span class="kanban-title" style="color:' + col + '">' + est + '</span><span class="kanban-count" style="background:' + bg + ';color:' + col + '">' + items.length + '</span></div><div class="kanban-body">' + cards + more + '</div></div>';
   }).join('');
@@ -1352,9 +1365,9 @@ function renderAlerts(container) {
       '<div class="alert-check" onclick="event.stopPropagation();toggleAlerta(\'' + v.codigo + '\')" style="width:20px;height:20px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:10px;transition:all .15s;cursor:pointer" title="Seleccionar para exportar">✓</div>' +
       fotoHtml +
       '<div class="alert-info" style="margin-left:14px">' +
-        '<div class="alert-codigo">' + v.codigo + ' · ' + v.lugar + '</div>' +
-        '<div class="alert-dir">' + v.direccion + '</div>' +
-        '<div class="alert-meta">Cliente: ' + (v.cliente || '—') + ' · Ejecutiva: ' + (v.ejecutiva || '—') + ' · Vence: ' + (v.termino || '—') + '</div>' +
+        '<div class="alert-codigo">' + v.codigo + ' · ' + esc(v.lugar) + '</div>' +
+        '<div class="alert-dir">' + esc(v.direccion) + '</div>' +
+        '<div class="alert-meta">Cliente: ' + (esc(v.cliente) || '—') + ' · Ejecutiva: ' + (esc(v.ejecutiva) || '—') + ' · Vence: ' + (v.termino || '—') + '</div>' +
       '</div>' +
       '<span class="alert-badge ' + (v.alerta.includes('VENCIDO') ? 'badge-danger' : 'badge-warning') + '" style="margin-left:14px">' + v.alerta + '</span>' +
     '</div>';
@@ -1440,21 +1453,21 @@ function openModal(codigo) {
       '<button class="btn-reservar" id="btnReservar" onclick="hacerReserva(\'' + v.codigo + '\')">✓ Confirmar Reserva</button></div>';
   } else if (v.estado === 'RESERVADA') {
     rSec = '<div class="reserva-info"><h5>🟡 RESERVADA</h5>' +
-      '<p>Cliente: <strong>' + (v.cliente_reserva || v.cliente || '—') + '</strong><br>' +
-      'Ejecutiva: <strong>' + (v.ejecutiva_reserva || v.ejecutiva || '—') + '</strong><br>' +
+      '<p>Cliente: <strong>' + (esc(v.cliente_reserva) || esc(v.cliente) || '—') + '</strong><br>' +
+      'Ejecutiva: <strong>' + (esc(v.ejecutiva_reserva) || esc(v.ejecutiva) || '—') + '</strong><br>' +
       'Fecha: <strong>' + (v.fecha_reserva || '—') + '</strong></p></div>' +
       '<button class="btn-cancelar" onclick="cancelarReserva(\'' + v.codigo + '\')">✕ Cancelar reserva</button>';
   }
 
-  document.getElementById('modalTitle').textContent = v.direccion.substring(0,70) + (v.direccion.length > 70 ? '…' : '');
-  document.getElementById('modalSubtitle').textContent = v.codigo + ' · ' + v.lugar + ' · ' + v.tipo;
+  document.getElementById('modalTitle').textContent = esc(v.direccion).substring(0,70) + (esc(v.direccion).length > 70 ? '…' : '');
+  document.getElementById('modalSubtitle').textContent = v.codigo + ' · ' + esc(v.lugar) + ' · ' + v.tipo;
   // El visor tiene zoom (rueda del mouse), así que pedimos un ancho más
   // grande que una tarjeta normal para que no se vea borroso al acercar.
   const fotoLocal = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 1400);
   const liberarBtn = (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') ? '<button class="liberar-btn" onclick="liberarValla(\'' + v.codigo + '\')">🔓 Liberar valla (Admin)</button>' : '';
   const bloqueo = isBlocked(v.codigo) || (v.bloqueo_expira ? {expira: v.bloqueo_expira, ejecutiva: v.bloqueo_ejecutiva} : null);
-  const seg2Cliente = v.reserva2_cliente || '';
-  const seg2Ejec = v.reserva2_ejecutiva || '';
+  const seg2Cliente = esc(v.reserva2_cliente) || '';
+  const seg2Ejec = esc(v.reserva2_ejecutiva) || '';
   const seg2Badge = seg2Cliente ? '<div class="segunda-badge">🔔 2ª reserva en cola: ' + seg2Cliente + ' (' + seg2Ejec + ')</div>' : '';
 
   // Visor con zoom + arrastre
@@ -1475,19 +1488,19 @@ function openModal(codigo) {
     fotoVisor +
     '<div class="detail-grid" style="margin-top:14px">' +
       '<div class="detail-item"><div class="detail-label">Estado</div><div class="detail-value"><span class="estado-badge ' + ec(v.estado) + '">' + v.estado + '</span></div></div>' +
-      '<div class="detail-item"><div class="detail-label">Propietario</div><div class="detail-value">' + (v.propietario || '—') + '</div></div>' +
-      '<div class="detail-item"><div class="detail-label">Medidas</div><div class="detail-value mono">' + (v.medidas || '—') + '</div></div>' +
-      '<div class="detail-item"><div class="detail-label">Arrendatario</div><div class="detail-value">' + (v.arrendatario || '—') + '</div></div>' +
-      '<div class="detail-item"><div class="detail-label">Cliente actual</div><div class="detail-value">' + (v.cliente || '—') + '</div></div>' +
-      '<div class="detail-item"><div class="detail-label">Ejecutiva</div><div class="detail-value">' + (v.ejecutiva || '—') + '</div></div>' +
+      '<div class="detail-item"><div class="detail-label">Propietario</div><div class="detail-value">' + (esc(v.propietario) || '—') + '</div></div>' +
+      '<div class="detail-item"><div class="detail-label">Medidas</div><div class="detail-value mono">' + (esc(v.medidas) || '—') + '</div></div>' +
+      '<div class="detail-item"><div class="detail-label">Arrendatario</div><div class="detail-value">' + (esc(v.arrendatario) || '—') + '</div></div>' +
+      '<div class="detail-item"><div class="detail-label">Cliente actual</div><div class="detail-value">' + (esc(v.cliente) || '—') + '</div></div>' +
+      '<div class="detail-item"><div class="detail-label">Ejecutiva</div><div class="detail-value">' + (esc(v.ejecutiva) || '—') + '</div></div>' +
       '<div class="detail-item"><div class="detail-label">Inicio</div><div class="detail-value mono">' + (v.inicio || '—') + '</div></div>' +
       '<div class="detail-item"><div class="detail-label">Fin contrato</div><div class="detail-value mono">' + (v.termino || '—') + '</div></div>' +
       '<div class="detail-item"><div class="detail-label">Período</div><div class="detail-value">' + (v.periodo || '—') + '</div></div>' +
       '<div class="detail-item"><div class="detail-label">Valor mensual</div><div class="detail-value mono">' + (v.valor ? '$' + Number(v.valor).toLocaleString() : '—') + '</div></div>' +
-      (v.comentarios ? '<div class="detail-item" style="grid-column:span 2"><div class="detail-label">Comentarios</div><div class="detail-value" style="color:var(--muted);font-size:11px">' + v.comentarios + '</div></div>' : '') +
+      (esc(v.comentarios) ? '<div class="detail-item" style="grid-column:span 2"><div class="detail-label">Comentarios</div><div class="detail-value" style="color:var(--muted);font-size:11px">' + esc(v.comentarios) + '</div></div>' : '') +
       (mUrl ? '<div class="detail-item"><div class="detail-label">Ubicación</div><a href="' + mUrl + '" target="_blank" class="maps-link">🗺 Ver en Google Maps</a></div>' : '') +
       (v.alerta ? '<div class="detail-item"><div class="detail-label">Alerta</div><div class="detail-value"><span class="alerta-tag ' + (v.alerta.includes('VENCIDO') ? 'at-danger' : 'at-warn') + '">' + v.alerta + '</span></div></div>' : '') +
-      (v.cliente_reserva && v.estado !== 'RESERVADA' ? '<div class="detail-item"><div class="detail-label">Pre-reserva</div><div class="detail-value">' + v.cliente_reserva + ' / ' + v.ejecutiva_reserva + '</div></div>' : '') +
+      (esc(v.cliente_reserva) && v.estado !== 'RESERVADA' ? '<div class="detail-item"><div class="detail-label">Pre-reserva</div><div class="detail-value">' + esc(v.cliente_reserva) + ' / ' + esc(v.ejecutiva_reserva) + '</div></div>' : '') +
     '</div>' + rSec;
 
   // Add liberar + edit buttons to modal
@@ -1499,11 +1512,11 @@ function openModal(codigo) {
     if (!isReadOnly()) {
     // Pre-reservar cuando termine (solo CONTRATADA)
     if (v.estado === 'CONTRATADA') {
-      if (v.reserva2_cliente) {
+      if (esc(v.reserva2_cliente)) {
         // Ya tiene pre-reserva — mostrar badge
         const preBadge = document.createElement('div');
         preBadge.style.cssText = 'background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);border-radius:8px;padding:10px 14px;margin-top:8px;font-size:12px;color:#818cf8';
-        preBadge.innerHTML = '🔄 <b>Pre-reserva registrada:</b> ' + v.reserva2_cliente + ' / ' + v.reserva2_ejecutiva + '<br><span style="font-size:10px;color:var(--muted)">Se activará automáticamente al terminar el contrato</span>';
+        preBadge.innerHTML = '🔄 <b>Pre-reserva registrada:</b> ' + esc(v.reserva2_cliente) + ' / ' + esc(v.reserva2_ejecutiva) + '<br><span style="font-size:10px;color:var(--muted)">Se activará automáticamente al terminar el contrato</span>';
         existingBody.appendChild(preBadge);
       } else {
         const preBtn = document.createElement('button');
@@ -1729,11 +1742,11 @@ function renderMapa(container) {
     <div id="mapContainer"></div>`;
 
   // Populate ciudad filter
-  const ciudades = [...new Set(DATA.map(v => v.lugar).filter(Boolean))].sort();
+  const ciudades = [...new Set(DATA.map(v => esc(v.lugar)).filter(Boolean))].sort();
   const cf = document.getElementById('mapCiudadFilter');
   ciudades.forEach(c => cf.add(new Option(c, c)));
 
-  const clientes = [...new Set(DATA.map(v => v.cliente).filter(Boolean))].sort();
+  const clientes = [...new Set(DATA.map(v => esc(v.cliente)).filter(Boolean))].sort();
   const clF = document.getElementById('mapClienteFilter');
   clientes.forEach(c => clF.add(new Option(c, c)));
 
@@ -1788,13 +1801,13 @@ function updateMapMarkers() {
     if (isNaN(lat) || isNaN(lon)) return false;
     if (lat < -5 || lat > 5) return false;
     if (lon < -82 || lon > -75) return false;
-    if (ciudadF && v.lugar !== ciudadF) return false;
-    if (clienteF && v.cliente !== clienteF) return false;
+    if (ciudadF && esc(v.lugar) !== ciudadF) return false;
+    if (clienteF && esc(v.cliente) !== clienteF) return false;
     if (estadoF) {
       const efectivo = isBlocked(v.codigo) ? 'RESERVADA' : v.estado;
       if (efectivo !== estadoF) return false;
     }
-    if (search && !v.codigo.toLowerCase().includes(search) && !v.direccion.toLowerCase().includes(search)) return false;
+    if (search && !v.codigo.toLowerCase().includes(search) && !esc(v.direccion).toLowerCase().includes(search)) return false;
     return true;
   });
 
@@ -1817,10 +1830,10 @@ function updateMapMarkers() {
       ${fotoTag}
       <div class="pop-estado" style="background:${estadoBg};color:${estadoColor}">${estadoDisplay}</div>
       <h4>${v.codigo}</h4>
-      <p>${v.direccion.substring(0,80)}${v.direccion.length>80?'...':''}</p>
-      <p><strong>${v.tipo}</strong> ${v.medidas ? '· '+v.medidas : ''}</p>
-      ${v.cliente ? '<p>Cliente: <strong>'+v.cliente+'</strong></p>' : ''}
-      ${v.ejecutiva ? '<p>Ejecutiva: '+v.ejecutiva+'</p>' : ''}
+      <p>${esc(v.direccion).substring(0,80)}${esc(v.direccion).length>80?'...':''}</p>
+      <p><strong>${v.tipo}</strong> ${esc(v.medidas) ? '· '+esc(v.medidas) : ''}</p>
+      ${esc(v.cliente) ? '<p>Cliente: <strong>'+esc(v.cliente)+'</strong></p>' : ''}
+      ${esc(v.ejecutiva) ? '<p>Ejecutiva: '+esc(v.ejecutiva)+'</p>' : ''}
       ${bloqueo ? '<p style="color:#8b5cf6;font-weight:600">Reservada por '+bloqueo.ejecutiva+' para '+bloqueo.cliente+'</p>' : ''}
       <button class="pop-btn" style="background:${estadoColor};color:${v.estado==='DISPONIBLE'&&!bloqueo?'#000':'#fff'}" onclick="document.querySelector('.leaflet-popup-close-button').click();setTimeout(()=>openModal('${v.codigo}'),100)">
         ${v.estado==='DISPONIBLE'&&!bloqueo ? '+ Reservar' : 'Ver detalle'}
@@ -2074,7 +2087,7 @@ async function toggleEditForm(codigo) {
   const TIPOS = ['Valla Fija','Valla LED','Pantalla','Túnel','Mural','Icónico','Paso Peatonal con Caja de luz','Paso Peatonal LED','Paso Vehicular LED','Paradero LED','Paradero Vinil','Paradero Backlight','Paradero','Cenefa','Caja de Luz','Cercha'];
 
   const estadoOpts = ESTADOS.map(e => '<option value="'+e+'"'+(v.estado===e?' selected':'')+'>'+e+'</option>').join('');
-  const execOpts = ['','...'].concat(EJECUTIVAS).map(e => '<option value="'+e+'"'+(v.ejecutiva===e?' selected':'')+'>'+e+'</option>').join('');
+  const execOpts = ['','...'].concat(EJECUTIVAS).map(e => '<option value="'+e+'"'+(esc(v.ejecutiva)===e?' selected':'')+'>'+e+'</option>').join('');
   const tipoOpts = TIPOS.map(t => '<option value="'+t+'"'+(v.tipo===t?' selected':'')+'>'+t+'</option>').join('');
 
   container.style.display = 'block';
@@ -2092,7 +2105,7 @@ async function toggleEditForm(codigo) {
       '</div>' +
       '<div class="edit-field">' +
         '<label>Cliente</label>' +
-        '<input id="ef-cliente" value="'+(v.cliente||'')+'">' +
+        '<input id="ef-cliente" value="'+(esc(v.cliente)||'')+'">' +
       '</div>' +
       '<div class="edit-field">' +
         '<label>Tipo</label>' +
@@ -2116,23 +2129,23 @@ async function toggleEditForm(codigo) {
       '</div>' +
       '<div class="edit-field">' +
         '<label>Propietario</label>' +
-        '<input id="ef-propietario" value="'+(v.propietario||'')+'">' +
+        '<input id="ef-propietario" value="'+(esc(v.propietario)||'')+'">' +
       '</div>' +
       '<div class="edit-field">' +
         '<label>Arrendatario</label>' +
-        '<input id="ef-arrendatario" value="'+(v.arrendatario||'')+'">' +
+        '<input id="ef-arrendatario" value="'+(esc(v.arrendatario)||'')+'">' +
       '</div>' +
       '<div class="edit-field">' +
         '<label>Medidas</label>' +
-        '<input id="ef-medidas" value="'+(v.medidas||'')+'">' +
+        '<input id="ef-medidas" value="'+(esc(v.medidas)||'')+'">' +
       '</div>' +
       '<div class="edit-field">' +
         '<label>Lugar / Ciudad</label>' +
-        '<input id="ef-lugar" value="'+(v.lugar||'')+'">' +
+        '<input id="ef-lugar" value="'+(esc(v.lugar)||'')+'">' +
       '</div>' +
       '<div class="edit-field full">' +
         '<label>Dirección</label>' +
-        '<input id="ef-direccion" value="'+(v.direccion||'')+'">' +
+        '<input id="ef-direccion" value="'+(esc(v.direccion)||'')+'">' +
       '</div>' +
       '<div class="edit-field">' +
         '<label>Latitud</label>' +
@@ -2148,7 +2161,7 @@ async function toggleEditForm(codigo) {
       '</div>' +
       '<div class="edit-field full">' +
         '<label>Comentarios</label>' +
-        '<textarea id="ef-comentarios" rows="2">'+(v.comentarios||'')+'</textarea>' +
+        '<textarea id="ef-comentarios" rows="2">'+(esc(v.comentarios)||'')+'</textarea>' +
       '</div>' +
       '<div class="edit-field full">' +
         '<label>Foto URL</label>' +
@@ -2495,9 +2508,9 @@ function renderDashboard(container) {
   const en30 = new Date(hoy.getTime() + 30*24*3600000);
 
   DATA.forEach(v => {
-    const e = v.ejecutiva || 'Sin asignar';
+    const e = esc(v.ejecutiva) || 'Sin asignar';
     if (!ejecutivas[e]) ejecutivas[e] = {cont:0,res:0,alert:0,vencen:0,clientes:new Set()};
-    if (v.estado==='CONTRATADA') { ejecutivas[e].cont++; totalCont++; if(v.cliente) ejecutivas[e].clientes.add(v.cliente); }
+    if (v.estado==='CONTRATADA') { ejecutivas[e].cont++; totalCont++; if(esc(v.cliente)) ejecutivas[e].clientes.add(esc(v.cliente)); }
     if (v.estado==='RESERVADA')  { ejecutivas[e].res++;  totalRes++; }
     if (v.alerta)                { ejecutivas[e].alert++;totalAlert++; }
     if (v.termino) {
@@ -2507,7 +2520,7 @@ function renderDashboard(container) {
         if (t>=hoy && t<=en30) ejecutivas[e].vencen++;
       }
     }
-    ciudades[v.lugar||'Otra'] = (ciudades[v.lugar||'Otra']||0)+1;
+    ciudades[esc(v.lugar)||'Otra'] = (ciudades[esc(v.lugar)||'Otra']||0)+1;
     if (v.estado==='DISPONIBLE') totalDisp++;
   });
 
@@ -2517,7 +2530,7 @@ function renderDashboard(container) {
     .filter(([,d])=>d.cont+d.res>0);
 
   const clienteCount = {};
-  DATA.filter(v=>v.cliente&&v.estado==='CONTRATADA').forEach(v=>{clienteCount[v.cliente]=(clienteCount[v.cliente]||0)+1;});
+  DATA.filter(v=>esc(v.cliente)&&v.estado==='CONTRATADA').forEach(v=>{clienteCount[esc(v.cliente)]=(clienteCount[esc(v.cliente)]||0)+1;});
   const topClientes = Object.entries(clienteCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
 
   const proxVencer = DATA.filter(v=>{
@@ -2558,7 +2571,7 @@ function renderDashboard(container) {
   let vencRows = proxVencer.slice(0,10).map(function(v) {
     return '<div class="exec-row">' +
       '<span class="exec-name" style="font-family:monospace;font-size:11px;color:var(--accent)">'+v.codigo+'</span>' +
-      '<span style="font-size:11px;color:var(--muted);flex:1;margin:0 10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+(v.cliente||'—')+' · '+(v.ejecutiva||'—')+'</span>' +
+      '<span style="font-size:11px;color:var(--muted);flex:1;margin:0 10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+(esc(v.cliente)||'—')+' · '+(esc(v.ejecutiva)||'—')+'</span>' +
       '<span class="exec-pill pill-alert">Vence: '+v.termino+'</span>' +
       '</div>';
   }).join('') || '<p style="color:var(--muted);font-size:12px">Sin vencimientos en los próximos 30 días</p>';
@@ -2601,15 +2614,15 @@ function openModalContratar(codigo) {
   if (!v) return;
 
   document.getElementById('modalTitle').textContent = '⚡ Contratación Inmediata';
-  document.getElementById('modalSubtitle').textContent = v.codigo + ' · ' + v.lugar + ' · ' + v.tipo;
+  document.getElementById('modalSubtitle').textContent = v.codigo + ' · ' + esc(v.lugar) + ' · ' + v.tipo;
 
   const today = new Date().toISOString().split('T')[0];
   _pdfFile = null; _pdfBase64 = null;
 
   document.getElementById('modalBody').innerHTML = `
     <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#60a5fa">
-      📋 <strong>${v.direccion.substring(0,60)}${v.direccion.length>60?'…':''}</strong><br>
-      ${v.tipo} · ${v.medidas} · ${v.lugar}
+      📋 <strong>${esc(v.direccion).substring(0,60)}${esc(v.direccion).length>60?'…':''}</strong><br>
+      ${v.tipo} · ${esc(v.medidas)} · ${esc(v.lugar)}
     </div>
     <div class="contratar-form">
       <h4>⚡ Datos de Contratación</h4>
