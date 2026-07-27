@@ -533,6 +533,48 @@ const FB_URL  = 'https://zazacorp-bitacora-default-rtdb.firebaseio.com';
 const API_URL = 'https://script.google.com/macros/s/AKfycbyTlN29P6a_52u7vmAk9hwGCFNb2hCPjHeIdnQsVTkYdaEiVDmcz1lTkI-3slIVbcptkw/exec';
 // ══════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════
+//  FIREBASE — Autenticación anónima
+//  La base de datos ahora exige "auth != null" en sus reglas (antes
+//  cualquiera en internet podía leer/escribir directo con curl, sin
+//  login). Para que Nexus siga leyendo/escribiendo RÁPIDO y directo
+//  a Firebase (sin pasar por Apps Script, que es más lento), la app
+//  pide un token anónimo a Firebase al cargar — invisible para el
+//  usuario, no es una cuenta ni pide nada — y lo manda en cada
+//  llamada. Un `curl` sin ese token ya no pasa las reglas.
+// ══════════════════════════════════════════════════════════════
+const FIREBASE_API_KEY = 'AIzaSyDDOp1KWX3Cv-LL0SwjkbFmXh972NziBy0';
+let _fbTokenPromise = null;
+let _fbToken = null;
+let _fbTokenExpira = 0;
+
+async function fbObtenerToken() {
+  if (_fbToken && Date.now() < _fbTokenExpira - 60000) return _fbToken;
+  if (_fbTokenPromise) return _fbTokenPromise;
+  _fbTokenPromise = (async () => {
+    const res = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FIREBASE_API_KEY, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ returnSecureToken: true })
+    });
+    const data = await res.json();
+    if (!data.idToken) throw new Error('No se pudo autenticar con Firebase');
+    _fbToken = data.idToken;
+    _fbTokenExpira = Date.now() + (Number(data.expiresIn || 3600) * 1000);
+    _fbTokenPromise = null;
+    return _fbToken;
+  })();
+  return _fbTokenPromise;
+}
+
+// Arma la URL de Firebase agregando el token de auth como query param
+// (así funciona igual con fetch normal, sin necesitar el SDK completo).
+async function fbUrl(path) {
+  const token = await fbObtenerToken();
+  const sep = path.includes('?') ? '&' : '?';
+  return FB_URL + path + sep + 'auth=' + token;
+}
+// ══════════════════════════════════════════════════════════════
+
 
 // ══════════════════════════════════════════════════════════════
 //  SISTEMA DE LOGIN
@@ -720,7 +762,7 @@ async function loadData(force = false) {
 async function fetchFresh(esReintento) {
   // 1. Firebase primero — rápido, sin límite de concurrencia
   try {
-    const fbRes = await fetch(FB_URL + '/inventario.json', { cache: 'no-store' });
+    const fbRes = await fetch(await fbUrl('/inventario.json'), { cache: 'no-store' });
     if (fbRes.ok) {
       const fbData = await fbRes.json();
       if (fbData && fbData.data && Array.isArray(fbData.data) && fbData.data.length > 0) {
@@ -1127,8 +1169,21 @@ function ec(e) {
   return e === 'DISPONIBLE' ? 'eb-DISPONIBLE' : e === 'CONTRATADA' ? 'eb-CONTRATADA' : e === 'RESERVADA' ? 'eb-RESERVADA' : 'eb-default';
 }
 
+// Las fotos se suben a Cloudinary a resolución original (sin comprimir,
+// vistas a veces >1MB cada una). Al mostrar 20-30 de golpe en la
+// galería, eso son decenas de MB simultáneos y se siente lento — no
+// tiene nada que ver con Firebase ni con el login. Cloudinary permite
+// pedir una versión ya redimensionada/comprimida agregando un parámetro
+// en la misma URL (se genera y cachea en su CDN, no toca la foto
+// original ni requiere volver a subir nada). anchoPx define el ancho
+// máximo que en verdad se necesita mostrar en cada lugar.
+function cldOptimizar(url, anchoPx) {
+  if (!url || typeof url !== 'string' || !url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
+  return url.replace('/upload/', '/upload/w_' + (anchoPx || 500) + ',c_limit,q_auto,f_auto/');
+}
+
 function renderCard(v) {
-  const fotoCard = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
+  const fotoCard = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 500);
   const fotoPosCard = localStorage.getItem('zz_fotopos_' + v.codigo) || 'center';
   const fHtml = fotoCard
     ? '<img src="' + fotoCard + '" alt="foto" style="width:100%;height:100%;object-fit:cover;object-position:' + fotoPosCard + '">'
@@ -1265,7 +1320,7 @@ function renderAlerts(container) {
       '</div>' +
     '</div>' +
     '<div class="alerts-list">' + data.map(v => {
-    const foto = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
+    const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 180);
     const fotoHtml = foto
       ? '<img src="' + foto + '" style="width:90px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid var(--border)">'
       : '<div style="width:90px;height:70px;background:var(--surface2);border-radius:8px;flex-shrink:0;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>';
@@ -1369,7 +1424,9 @@ function openModal(codigo) {
 
   document.getElementById('modalTitle').textContent = v.direccion.substring(0,70) + (v.direccion.length > 70 ? '…' : '');
   document.getElementById('modalSubtitle').textContent = v.codigo + ' · ' + v.lugar + ' · ' + v.tipo;
-  const fotoLocal = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
+  // El visor tiene zoom (rueda del mouse), así que pedimos un ancho más
+  // grande que una tarjeta normal para que no se vea borroso al acercar.
+  const fotoLocal = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 1400);
   const liberarBtn = (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') ? '<button class="liberar-btn" onclick="liberarValla(\'' + v.codigo + '\')">🔓 Liberar valla (Admin)</button>' : '';
   const bloqueo = isBlocked(v.codigo) || (v.bloqueo_expira ? {expira: v.bloqueo_expira, ejecutiva: v.bloqueo_ejecutiva} : null);
   const seg2Cliente = v.reserva2_cliente || '';
@@ -1731,7 +1788,7 @@ function updateMapMarkers() {
     const marker = L.marker([lat, lon], { icon: makeMarkerIcon(color) });
 
     const fotoTag = v.foto && String(v.foto).startsWith('http')
-      ? `<img src="${v.foto}" style="width:100%;height:100px;object-fit:cover;border-radius:6px;margin-bottom:6px">` : '';
+      ? `<img src="${cldOptimizar(v.foto, 350)}" style="width:100%;height:100px;object-fit:cover;border-radius:6px;margin-bottom:6px">` : '';
     const popupHtml = `<div class="map-popup">
       ${fotoTag}
       <div class="pop-estado" style="background:${estadoBg};color:${estadoColor}">${estadoDisplay}</div>
@@ -3480,7 +3537,7 @@ async function cargarBloqueos() {
 
   // 2. Sincronizar con Firebase en background
   try {
-    const res = await fetch(FB_URL + '/bloqueos.json');
+    const res = await fetch(await fbUrl('/bloqueos.json'));
     const data = await res.json();
     _bloqueos = data || {};
     // Limpiar vencidos
@@ -3509,7 +3566,7 @@ async function guardarBloqueos() {
   localStorage.setItem('zz_bloqueos_cache', JSON.stringify(_bloqueos));
   // Sincronizar con Firebase
   try {
-    await fetch(FB_URL + '/bloqueos.json', {
+    await fetch(await fbUrl('/bloqueos.json'), {
       method: 'PUT',
       body: JSON.stringify(_bloqueos)
     });
@@ -3732,7 +3789,7 @@ function buildLEDUI(container, data) {
 
       htmlGrupos += '<div class="led-player-card">';
       htmlGrupos += '<div class="led-banner">' +
-        (player.foto ? '<img src="'+player.foto+'">' : '') +
+        (player.foto ? '<img src="'+cldOptimizar(player.foto, 400)+'">' : '') +
         '<div class="led-player-header" style="padding:0">' +
           '<div class="led-online-dot ' + (player.esExterno ? 'offline' : (player.isOnline ? 'online' : 'offline')) + '"></div>' +
           '<div>' +
