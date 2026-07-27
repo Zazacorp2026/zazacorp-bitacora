@@ -552,6 +552,13 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbyTlN29P6a_52u7vmAk9hwG
         opts = Object.assign({}, opts, { body: JSON.stringify(parsed) });
       } catch (e) { /* body no era JSON (no debería pasar hacia API_URL), se deja igual */ }
     }
+    // Las lecturas (GET, ?action=getAll, rfGetTodasAsignaciones, etc.)
+    // ahora también exigen sesión en el backend — se agrega el token
+    // como parámetro de la URL, sin tener que tocar cada llamada.
+    if ((!opts || !opts.method || opts.method === 'GET') && typeof url === 'string' && url.indexOf(API_URL) === 0 && url.indexOf('token=') === -1) {
+      const sep = url.indexOf('?') === -1 ? '?' : '&';
+      url = url + sep + 'token=' + encodeURIComponent(sessionStorage.getItem('zz_token') || '');
+    }
     return _fetchOriginal(url, opts);
   };
 })();
