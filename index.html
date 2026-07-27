@@ -534,6 +534,30 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbyTlN29P6a_52u7vmAk9hwG
 // ══════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════
+//  FASE 2 · Token obligatorio en cada acción de escritura
+//  El backend ahora EXIGE un token de sesión válido en todo POST
+//  (reservar, contratar, editar, etc.) — antes solo se emitía en el
+//  login pero ninguna acción lo pedía de vuelta. En vez de editar cada
+//  una de las llamadas a la API por separado (~18 lugares, riesgo alto
+//  de olvidar una), se intercepta aquí UNA sola vez cualquier POST
+//  hacia API_URL y se le agrega el token guardado al loguearse.
+// ══════════════════════════════════════════════════════════════
+(function() {
+  const _fetchOriginal = window.fetch.bind(window);
+  window.fetch = function(url, opts) {
+    if (opts && opts.method === 'POST' && typeof url === 'string' && url.indexOf(API_URL) === 0 && opts.body) {
+      try {
+        const parsed = JSON.parse(opts.body);
+        parsed.token = sessionStorage.getItem('zz_token') || '';
+        opts = Object.assign({}, opts, { body: JSON.stringify(parsed) });
+      } catch (e) { /* body no era JSON (no debería pasar hacia API_URL), se deja igual */ }
+    }
+    return _fetchOriginal(url, opts);
+  };
+})();
+// ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
 //  FIREBASE — Autenticación anónima
 //  La base de datos ahora exige "auth != null" en sus reglas (antes
 //  cualquiera en internet podía leer/escribir directo con curl, sin
