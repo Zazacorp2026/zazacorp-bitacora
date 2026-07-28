@@ -3056,7 +3056,12 @@ async function exportarPPTInventario() {
       slide.addShape(pres.shapes.RECTANGLE, { x:0,y:0,w:0.35,h:7.5, fill:{color:WHITE},line:{color:WHITE} });
 
       // Foto
-      const foto = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
+      // El PPT se ve a un tamaño mucho menor que la foto original en
+      // Cloudinary (que puede pesar +1MB sin comprimir) — pedir una
+      // versión de 1600px con compresión inteligente no se nota a
+      // simple vista en la diapositiva, pero exporta muchísimo más
+      // rápido al no tener que descargar el archivo crudo completo.
+      const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 1600);
       if (foto && (foto.startsWith('http') || foto.startsWith('data:'))) {
         try {
           if (foto.startsWith('data:')) slide.addImage({ data: foto.replace('data:',''), x:0.35,y:1.4,w:6.6,h:4.7, sizing:{type:'cover',w:6.6,h:4.7} });
@@ -3252,7 +3257,12 @@ async function exportarPPT() {
       slide.addShape(pres.shapes.RECTANGLE, { x:0,y:0,w:0.35,h:7.5, fill:{color:WHITE},line:{color:WHITE} });
 
       // Foto
-      const foto = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
+      // El PPT se ve a un tamaño mucho menor que la foto original en
+      // Cloudinary (que puede pesar +1MB sin comprimir) — pedir una
+      // versión de 1600px con compresión inteligente no se nota a
+      // simple vista en la diapositiva, pero exporta muchísimo más
+      // rápido al no tener que descargar el archivo crudo completo.
+      const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 1600);
       if (foto && (foto.startsWith('http') || foto.startsWith('data:'))) {
         try {
           if (foto.startsWith('data:')) {
@@ -3404,8 +3414,8 @@ async function exportarPPTAlertas() {
     slide.addShape(pres.shapes.RECTANGLE, { x:0,y:0,w:7.3,h:7.5, fill:{color:ORANGE},line:{color:ORANGE} });
     slide.addShape(pres.shapes.RECTANGLE, { x:0,y:0,w:0.35,h:7.5, fill:{color:WHITE},line:{color:WHITE} });
 
-    // Foto
-    const foto = localStorage.getItem('zz_foto_' + v.codigo) || v.foto;
+    // Foto (1600px + q_auto: no se nota en el PPT, exporta mucho más rápido)
+    const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 1600);
     if (foto && (foto.startsWith('http') || foto.startsWith('data:'))) {
       try {
         if (foto.startsWith('data:')) {
