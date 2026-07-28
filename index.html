@@ -567,7 +567,23 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbyTlN29P6a_52u7vmAk9hwG
       const sep = url.indexOf('?') === -1 ? '?' : '&';
       url = url + sep + 'token=' + encodeURIComponent(sessionStorage.getItem('zz_token') || '');
     }
-    return _fetchOriginal(url, opts);
+    const esLlamadaBackend = typeof url === 'string' && url.indexOf(API_URL) === 0;
+    const promesa = _fetchOriginal(url, opts);
+    if (esLlamadaBackend) {
+      // Detección centralizada de "sesión vencida": el backend responde
+      // {ok:false, sessionExpired:true} con HTTP 200 normal, así que
+      // antes pasaba desapercibido — la app se quedaba mostrando datos
+      // viejos en silencio, sin avisar, dando la sensación de que
+      // "se demora en actualizar" cuando en realidad ya nunca lo lograba.
+      promesa.then(res => {
+        res.clone().json().then(data => {
+          if (data && data.sessionExpired && _usuarioActual) {
+            forzarLogoutPorExpiracion();
+          }
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+    return promesa;
   };
 })();
 // ══════════════════════════════════════════════════════════════
