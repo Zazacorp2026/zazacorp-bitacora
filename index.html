@@ -398,31 +398,34 @@
     <div class="login-logo">
       <img id="loginLogo" style="height:110px;width:auto;margin-bottom:8px" alt="Zazacorp">
     </div>
-    <div class="login-field">
-      <label>Usuario</label>
-      <select id="loginUser">
-        <option value="">Selecciona tu nombre...</option>
-        <option value="JORGE">Jorge</option>
-        <option value="LORENA">Lorena</option>
-        <option value="RICARDO">Ricardo</option>
-        <option value="SASKYA">Saskya</option>
-        <option value="SHAYRA">Shayra</option>
-        <option value="VERONICA TERAN">Verónica Terán</option>
-        <option value="VERONICA TRIVINO">Verónica Triviño</option>
-        <option value="YESENIA">Yesenia</option>
-        <option value="ZULIA">Zulia</option>
-        <option value="DIANA">Diana (Solo lectura)</option>
-      </select>
+    <!-- Login de usuario/contraseña: se deja oculto (no borrado) como
+         respaldo por si algo falla con el login de Google — se puede
+         reactivar quitando "display:none" de este bloque. -->
+    <div id="loginFormClasico" style="display:none">
+      <div class="login-field">
+        <label>Usuario</label>
+        <select id="loginUser">
+          <option value="">Selecciona tu nombre...</option>
+          <option value="JORGE">Jorge</option>
+          <option value="LORENA">Lorena</option>
+          <option value="RICARDO">Ricardo</option>
+          <option value="SASKYA">Saskya</option>
+          <option value="SHAYRA">Shayra</option>
+          <option value="VERONICA TERAN">Verónica Terán</option>
+          <option value="VERONICA TRIVINO">Verónica Triviño</option>
+          <option value="YESENIA">Yesenia</option>
+          <option value="ZULIA">Zulia</option>
+          <option value="DIANA">Diana (Solo lectura)</option>
+        </select>
+      </div>
+      <div class="login-field">
+        <label>Contraseña</label>
+        <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <button class="login-btn" onclick="doLogin()">Ingresar →</button>
     </div>
-    <div class="login-field">
-      <label>Contraseña</label>
-      <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-    <button class="login-btn" onclick="doLogin()">Ingresar →</button>
     <div class="login-error" id="loginError"></div>
-    <div style="display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--muted);font-size:11px">
-      <div style="flex:1;height:1px;background:var(--border)"></div>OR<div style="flex:1;height:1px;background:var(--border)"></div>
-    </div>
+    <p style="text-align:center;color:var(--muted);font-size:12px;margin-bottom:14px">Ingresa con tu cuenta de Google corporativa</p>
     <div id="googleBtnDiv" style="display:flex;justify-content:center"></div>
   </div>
 </div>
