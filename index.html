@@ -289,7 +289,25 @@
   .dash-stat{text-align:center;padding:10px 0;}
   .dash-stat .num{font-size:32px;font-weight:700;color:var(--accent);}
   .dash-stat .lbl{font-size:11px;color:var(--muted);margin-top:4px;}
-  .dash-stats-row{display:flex;justify-content:space-around;}
+  .dash-stats-row{display:flex;justify-content:space-around;flex-wrap:wrap;gap:10px;}
+  .dash-filterbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;}
+  .dash-filterbar select{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:7px 10px;color:var(--text);font-size:12px;font-family:'Space Grotesk',sans-serif;outline:none;min-width:140px;}
+  .dash-filterbar select:focus{border-color:var(--accent);}
+  .dash-filterbar button{background:transparent;border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:11px;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;}
+  .dash-filterbar button:hover{border-color:var(--accent);color:var(--accent);}
+  .dash-table{width:100%;border-collapse:collapse;font-size:12px;}
+  .dash-table th{text-align:left;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--border);}
+  .dash-table td{padding:7px 8px;border-bottom:1px solid var(--border);}
+  .dash-table tr:last-child td{border-bottom:none;}
+  .dash-table tr:hover td{background:var(--surface2);}
+  .ocupacion-bar{width:100%;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-top:4px;}
+  .ocupacion-bar-fill{height:100%;border-radius:3px;}
+  .dash-badge-up{color:#10b981;font-weight:700;}
+  .dash-badge-down{color:#ef4444;font-weight:700;}
+  .dash-badge-flat{color:var(--muted);font-weight:700;}
+  .dash-subtabs{display:flex;gap:6px;margin-bottom:12px;}
+  .dash-subtab{font-size:11px;padding:5px 12px;border-radius:16px;background:var(--surface2);color:var(--muted);cursor:pointer;border:1px solid transparent;}
+  .dash-subtab.active{background:rgba(245,158,11,.15);color:var(--accent);border-color:rgba(245,158,11,.3);}
   .liberar-btn{margin-top:12px;width:100%;padding:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:sans-serif;}
   .liberar-btn:hover{background:rgba(239,68,68,.2);}
 
@@ -664,12 +682,25 @@ function forzarLogoutPorExpiracion() {
 }
 setInterval(() => { if (_usuarioActual && sesionExpirada()) forzarLogoutPorExpiracion(); }, 5 * 60 * 1000);
 
+// El Dashboard (con montos $ y desglose por ejecutiva) solo lo debe
+// ver Jorge como administrador — al resto se le oculta la pestaña por
+// completo (y si de casualidad quedó esa vista seleccionada de antes,
+// se lo manda de vuelta a Inventario).
+function aplicarPermisoDashboard() {
+  const tab = document.getElementById('tabDashboard');
+  if (!tab) return;
+  const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  tab.style.display = esAdmin ? '' : 'none';
+  if (!esAdmin && state.tab === 'dashboard') switchTab('inventario');
+}
+
 function checkLogin() {
   const saved = sessionStorage.getItem('zz_usuario');
   if (saved && USUARIOS_NOMBRES.includes(saved) && !sesionExpirada()) {
     _usuarioActual = saved;
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('userBadgeName').textContent = saved.split(' ')[0];
+    aplicarPermisoDashboard();
     return true;
   }
   if (saved) forzarLogoutPorExpiracion();
@@ -713,6 +744,7 @@ function completarLoginExitoso(user, data) {
   document.getElementById('loginOverlay').classList.add('hidden');
   const displayName = user.split(' ')[0] + (isReadOnly() ? ' 👁️' : '');
   document.getElementById('userBadgeName').textContent = displayName;
+  aplicarPermisoDashboard();
   registrarAccesoSilencioso(user, true, '');
   init(); // Cargar la app después del login
 }
@@ -2575,107 +2607,341 @@ async function liberarValla(codigo) {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+//  DASHBOARD COMERCIAL (solo Jorge) — filtros + desglose por tipo,
+//  cliente y ejecutiva + ventas por semana/mes + comparativo contra
+//  el período anterior + alertas comerciales.
+//
+//  Sobre el histórico "mes a mes hacia atrás": el inventario en Sheets
+//  solo guarda el estado ACTUAL de cada valla, nunca su pasado. Por
+//  eso el backend ahora guarda una "foto" (snapshot) el día 1 de cada
+//  mes en la hoja Snapshots_Mensuales — el histórico real se va
+//  acumulando desde que eso se instale, no se puede reconstruir hacia
+//  atrás de meses que ya pasaron sin esa foto.
+// ══════════════════════════════════════════════════════════════
+let dashState = { ejecutiva:'', tipo:'', cliente:'', ciudad:'', periodo:'actual', ventasVista:'mes' };
+let _historialVentasCache = null;
+let _snapshotsCache = null;
+
+async function cargarDatosDashboardExtra() {
+  if (_historialVentasCache && _snapshotsCache) return;
+  try {
+    const [rv, rs] = await Promise.all([
+      fetch(API_URL + '?action=getHistorialVentas&_t=' + Date.now(), { cache: 'no-store' }),
+      fetch(API_URL + '?action=getSnapshotsMensuales&_t=' + Date.now(), { cache: 'no-store' })
+    ]);
+    const dv = await rv.json(), ds = await rs.json();
+    _historialVentasCache = dv.ok ? dv.ventas : [];
+    _snapshotsCache = ds.ok ? ds.snapshots : [];
+  } catch (e) {
+    _historialVentasCache = _historialVentasCache || [];
+    _snapshotsCache = _snapshotsCache || [];
+  }
+}
+
+function nombreMesAnioDash(d) {
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  return meses[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+// "actual" (en vivo) + un valor por cada fecha de snapshot ya guardada,
+// más reciente primero.
+function listaPeriodosDash() {
+  const fechas = [...new Set((_snapshotsCache||[]).map(s=>s.fecha))].sort().reverse();
+  return [{ value:'actual', label:'📍 Mes actual (en vivo) — ' + nombreMesAnioDash(new Date()) }]
+    .concat(fechas.map(f => ({ value:f, label: nombreMesAnioDash(new Date(f+'T00:00:00')) })));
+}
+
+// Dataset de trabajo según el período elegido: "actual" usa el
+// inventario en vivo (DATA); cualquier otro valor es una fecha de
+// snapshot guardada, y usa esa foto congelada de ese día.
+function datasetPeriodoDash(periodoValue) {
+  if (!periodoValue || periodoValue === 'actual') {
+    return DATA.map(v => ({
+      codigo:v.codigo, tipo:v.tipo||'Sin tipo', estado:v.estado,
+      cliente: esc(v.cliente) || '', ejecutiva: esc(v.ejecutiva) || 'Sin asignar',
+      ciudad: esc(v.lugar) || 'Otra', valor: Number(v.valor)||0
+    }));
+  }
+  return (_snapshotsCache||[]).filter(s => s.fecha === periodoValue).map(s => ({
+    codigo:s.codigo, tipo:s.tipo||'Sin tipo', estado:s.estado,
+    cliente:s.cliente||'', ejecutiva:s.ejecutiva||'Sin asignar',
+    ciudad:s.ciudad||'Otra', valor:s.valor
+  }));
+}
+
+function aplicarFiltrosDash(rows) {
+  return rows.filter(r =>
+    (!dashState.ejecutiva || r.ejecutiva === dashState.ejecutiva) &&
+    (!dashState.tipo || r.tipo === dashState.tipo) &&
+    (!dashState.cliente || r.cliente === dashState.cliente) &&
+    (!dashState.ciudad || r.ciudad === dashState.ciudad)
+  );
+}
+
+function formatoUSDDash(n) { return '$' + Number(n||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
+
+function cambiarFiltroDash(campo, valor) {
+  dashState[campo] = valor;
+  pintarDashboard(document.getElementById('mainContent'));
+}
+function limpiarFiltrosDash() {
+  dashState.ejecutiva=''; dashState.tipo=''; dashState.cliente=''; dashState.ciudad='';
+  pintarDashboard(document.getElementById('mainContent'));
+}
+function cambiarVentasVista(v) {
+  dashState.ventasVista = v;
+  pintarDashboard(document.getElementById('mainContent'));
+}
+
 function renderDashboard(container) {
-  const ejecutivas = {};
-  const ciudades = {};
-  let totalDisp=0,totalCont=0,totalRes=0,totalAlert=0;
+  container.innerHTML = '<div class="empty"><div class="spinner" style="margin:0 auto 12px"></div><p>Cargando dashboard...</p></div>';
+  cargarDatosDashboardExtra().then(() => pintarDashboard(container));
+}
+
+function pintarDashboard(container) {
   const hoy = new Date();
-  const en30 = new Date(hoy.getTime() + 30*24*3600000);
+  const rowsPeriodoCompleto = datasetPeriodoDash(dashState.periodo);
+  const rows = aplicarFiltrosDash(rowsPeriodoCompleto);
 
-  DATA.forEach(v => {
-    const e = esc(v.ejecutiva) || 'Sin asignar';
-    if (!ejecutivas[e]) ejecutivas[e] = {cont:0,res:0,alert:0,vencen:0,clientes:new Set()};
-    if (v.estado==='CONTRATADA') { ejecutivas[e].cont++; totalCont++; if(esc(v.cliente)) ejecutivas[e].clientes.add(esc(v.cliente)); }
-    if (v.estado==='RESERVADA')  { ejecutivas[e].res++;  totalRes++; }
-    if (v.alerta)                { ejecutivas[e].alert++;totalAlert++; }
-    if (v.termino) {
-      const parts = v.termino.split('/');
-      if (parts.length===3) {
-        const t = new Date(parts[2]+'-'+parts[1]+'-'+parts[0]);
-        if (t>=hoy && t<=en30) ejecutivas[e].vencen++;
-      }
+  // Opciones de los desplegables: siempre del dataset COMPLETO del
+  // período (no del ya filtrado), para no "perder" opciones al filtrar.
+  const opcEjecutivas = [...new Set(rowsPeriodoCompleto.map(r=>r.ejecutiva).filter(Boolean))].sort();
+  const opcTipos      = [...new Set(rowsPeriodoCompleto.map(r=>r.tipo).filter(Boolean))].sort();
+  const opcCiudades   = [...new Set(rowsPeriodoCompleto.map(r=>r.ciudad).filter(Boolean))].sort();
+  const opcClientes   = [...new Set(rowsPeriodoCompleto.filter(r=>r.estado==='CONTRATADA').map(r=>r.cliente).filter(Boolean))].sort();
+
+  // KPIs generales (respetan filtros + período)
+  const totalDisp = rows.filter(r=>r.estado==='DISPONIBLE').length;
+  const totalCont = rows.filter(r=>r.estado==='CONTRATADA').length;
+  const totalRes  = rows.filter(r=>r.estado==='RESERVADA').length;
+  const montoMensualTotal = rows.filter(r=>r.estado==='CONTRATADA').reduce((s,r)=>s+r.valor,0);
+  const ticketPromedio = totalCont ? montoMensualTotal/totalCont : 0;
+  const ocupacionGeneral = rows.length ? Math.round((totalCont/rows.length)*100) : 0;
+
+  // Por tipo de elemento
+  const porTipo = {};
+  rows.forEach(r => {
+    if (!porTipo[r.tipo]) porTipo[r.tipo] = {disp:0,cont:0,res:0,total:0,monto:0};
+    porTipo[r.tipo].total++;
+    if (r.estado==='DISPONIBLE') porTipo[r.tipo].disp++;
+    if (r.estado==='RESERVADA')  porTipo[r.tipo].res++;
+    if (r.estado==='CONTRATADA') { porTipo[r.tipo].cont++; porTipo[r.tipo].monto += r.valor; }
+  });
+  const filasTipo = Object.entries(porTipo).sort((a,b)=>b[1].monto-a[1].monto);
+  const tablaTipo = filasTipo.map(([tipo,d]) => {
+    const ocup = d.total ? Math.round((d.cont/d.total)*100) : 0;
+    const colorOcup = ocup>=70?'#10b981':ocup>=40?'#f59e0b':'#ef4444';
+    return '<tr>' +
+      '<td>'+tipo+'</td>' +
+      '<td>'+d.total+'</td>' +
+      '<td style="color:#10b981">'+d.disp+'</td>' +
+      '<td style="color:#ef4444">'+d.cont+'</td>' +
+      '<td style="color:var(--accent)">'+d.res+'</td>' +
+      '<td>'+ocup+'%<div class="ocupacion-bar"><div class="ocupacion-bar-fill" style="width:'+ocup+'%;background:'+colorOcup+'"></div></div></td>' +
+      '<td style="font-weight:700">'+formatoUSDDash(d.monto)+'</td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:16px">Sin datos con estos filtros</td></tr>';
+
+  // Por cliente
+  const porCliente = {};
+  rows.filter(r=>r.estado==='CONTRATADA' && r.cliente).forEach(r => {
+    if (!porCliente[r.cliente]) porCliente[r.cliente] = {ejecutivas:new Set(), tipos:{}, monto:0, count:0};
+    porCliente[r.cliente].ejecutivas.add(r.ejecutiva);
+    porCliente[r.cliente].tipos[r.tipo] = (porCliente[r.cliente].tipos[r.tipo]||0)+1;
+    porCliente[r.cliente].monto += r.valor;
+    porCliente[r.cliente].count++;
+  });
+  const filasCliente = Object.entries(porCliente).sort((a,b)=>b[1].monto-a[1].monto);
+  const tablaCliente = filasCliente.map(([cliente,d]) => {
+    const tiposTxt = Object.entries(d.tipos).map(([t,n])=>n+' '+t).join(', ');
+    return '<tr>' +
+      '<td style="font-weight:600">'+cliente+'</td>' +
+      '<td style="font-size:11px;color:var(--muted)">'+Array.from(d.ejecutivas).join(', ')+'</td>' +
+      '<td style="font-size:11px;color:var(--muted)">'+tiposTxt+'</td>' +
+      '<td>'+d.count+'</td>' +
+      '<td style="font-weight:700;color:#10b981">'+formatoUSDDash(d.monto)+'</td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">Sin clientes con estos filtros</td></tr>';
+
+  // Por ejecutiva
+  const porEjecutiva = {};
+  rows.filter(r=>r.estado==='CONTRATADA').forEach(r => {
+    const e = r.ejecutiva;
+    if (!porEjecutiva[e]) porEjecutiva[e] = {clientes:new Set(), count:0, monto:0};
+    if (r.cliente) porEjecutiva[e].clientes.add(r.cliente);
+    porEjecutiva[e].count++;
+    porEjecutiva[e].monto += r.valor;
+  });
+  const filasEjec = Object.entries(porEjecutiva).sort((a,b)=>b[1].monto-a[1].monto);
+  const tablaEjec = filasEjec.map(([nombre,d]) => {
+    return '<tr>' +
+      '<td style="font-weight:600">'+nombre+'</td>' +
+      '<td>'+d.clientes.size+'</td>' +
+      '<td>'+d.count+'</td>' +
+      '<td style="font-weight:700;color:#10b981">'+formatoUSDDash(d.monto)+'/mes</td>' +
+      '<td style="color:#60a5fa">'+formatoUSDDash(d.monto*12)+'/año (proy.)</td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">Sin datos con estos filtros</td></tr>';
+
+  // Comparativo vs período anterior
+  const periodos = listaPeriodosDash();
+  const idxActual = Math.max(0, periodos.findIndex(p=>p.value===(dashState.periodo||'actual')));
+  const periodoAnteriorObj = periodos[idxActual+1];
+  let comparativoHtml = '<p style="color:var(--muted);font-size:12px">Aún no hay un período anterior guardado para comparar — en cuanto pase el próximo día 1 de mes, aparece aquí solo.</p>';
+  if (periodoAnteriorObj) {
+    const rowsAnterior = aplicarFiltrosDash(datasetPeriodoDash(periodoAnteriorObj.value));
+    const montoAnterior = rowsAnterior.filter(r=>r.estado==='CONTRATADA').reduce((s,r)=>s+r.valor,0);
+    const contAnterior = rowsAnterior.filter(r=>r.estado==='CONTRATADA').length;
+    const deltaMonto = montoMensualTotal - montoAnterior;
+    const deltaPct = montoAnterior ? Math.round((deltaMonto/montoAnterior)*100) : (montoMensualTotal>0?100:0);
+    const claseDelta = deltaMonto>0?'dash-badge-up':deltaMonto<0?'dash-badge-down':'dash-badge-flat';
+    const flecha = deltaMonto>0?'▲':deltaMonto<0?'▼':'●';
+    const deltaVallas = totalCont - contAnterior;
+    comparativoHtml =
+      '<div class="dash-stats-row">' +
+        '<div class="dash-stat"><div class="num" style="font-size:20px">'+formatoUSDDash(montoAnterior)+'</div><div class="lbl">'+periodoAnteriorObj.label+'</div></div>' +
+        '<div class="dash-stat"><div class="num" style="font-size:20px">'+formatoUSDDash(montoMensualTotal)+'</div><div class="lbl">'+(periodos[idxActual]?periodos[idxActual].label:'Actual')+'</div></div>' +
+        '<div class="dash-stat"><div class="num ' + claseDelta + '" style="font-size:20px">'+flecha+' '+formatoUSDDash(Math.abs(deltaMonto))+' ('+(deltaPct>0?'+':'')+deltaPct+'%)</div><div class="lbl">Variación $</div></div>' +
+        '<div class="dash-stat"><div class="num" style="font-size:20px">'+(deltaVallas>=0?'+':'')+deltaVallas+'</div><div class="lbl">Δ Vallas contratadas</div></div>' +
+      '</div>';
+  }
+
+  // Ventas por semana/mes (Historial_Precios — respeta los mismos filtros)
+  const ventasFiltradas = (_historialVentasCache||[]).filter(v =>
+    (!dashState.ejecutiva || esc(v.ejecutiva)===dashState.ejecutiva) &&
+    (!dashState.tipo || v.tipo===dashState.tipo) &&
+    (!dashState.cliente || esc(v.cliente)===dashState.cliente) &&
+    (!dashState.ciudad || esc(v.ciudad)===dashState.ciudad)
+  );
+  const gruposVentas = {};
+  ventasFiltradas.forEach(v => {
+    if (!v.fechaRegistro) return;
+    const d = new Date(v.fechaRegistro + 'T00:00:00');
+    if (isNaN(d)) return;
+    let clave;
+    if (dashState.ventasVista === 'semana') {
+      const inicioSemana = new Date(d); inicioSemana.setDate(d.getDate() - d.getDay());
+      clave = inicioSemana.toISOString().split('T')[0];
+    } else {
+      clave = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
     }
-    ciudades[esc(v.lugar)||'Otra'] = (ciudades[esc(v.lugar)||'Otra']||0)+1;
-    if (v.estado==='DISPONIBLE') totalDisp++;
+    if (!gruposVentas[clave]) gruposVentas[clave] = {count:0, monto:0};
+    gruposVentas[clave].count++;
+    gruposVentas[clave].monto += (Number(v.valorMensual)||0);
   });
+  const clavesVentas = Object.keys(gruposVentas).sort().slice(-10);
+  const maxMontoVentas = Math.max(1, ...clavesVentas.map(k=>gruposVentas[k].monto));
+  const barrasVentas = clavesVentas.map(clave => {
+    const d = gruposVentas[clave];
+    const pct = Math.round((d.monto/maxMontoVentas)*100);
+    const etiqueta = dashState.ventasVista==='semana'
+      ? clave.slice(5)
+      : clave.split('-')[1] + '/' + clave.split('-')[0].slice(2);
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+      '<div style="width:52px;font-size:10px;color:var(--muted);flex-shrink:0">'+etiqueta+'</div>' +
+      '<div style="flex:1;background:var(--surface2);border-radius:4px;overflow:hidden;height:18px">' +
+        '<div style="height:100%;width:'+pct+'%;background:var(--accent);border-radius:4px"></div>' +
+      '</div>' +
+      '<div style="width:110px;font-size:11px;text-align:right;flex-shrink:0"><b>'+formatoUSDDash(d.monto)+'</b> <span style="color:var(--muted)">('+d.count+')</span></div>' +
+    '</div>';
+  }).join('') || '<p style="color:var(--muted);font-size:12px">Sin ventas registradas todavía con estos filtros</p>';
 
-  const execList = Object.entries(ejecutivas)
-    .filter(([e])=>e&&e!=='Sin asignar')
-    .sort((a,b)=>b[1].cont-a[1].cont)
-    .filter(([,d])=>d.cont+d.res>0);
+  // Alertas comerciales
+  const en30 = new Date(hoy.getTime() + 30*24*3600000);
+  const tiposBajaOcupacion = filasTipo.filter(([,d]) => d.total>=3 && (d.cont/d.total) < 0.4);
+  const proxVencer = DATA.filter(v => {
+    if (!v.termino || v.estado!=='CONTRATADA') return false;
+    if (dashState.ejecutiva && esc(v.ejecutiva)!==dashState.ejecutiva) return false;
+    if (dashState.tipo && v.tipo!==dashState.tipo) return false;
+    if (dashState.cliente && esc(v.cliente)!==dashState.cliente) return false;
+    if (dashState.ciudad && esc(v.lugar)!==dashState.ciudad) return false;
+    const t = new Date(v.termino);
+    return !isNaN(t) && t>=hoy && t<=en30 && !v.reserva2_cliente;
+  }).sort((a,b)=>new Date(a.termino)-new Date(b.termino));
 
-  const clienteCount = {};
-  DATA.filter(v=>esc(v.cliente)&&v.estado==='CONTRATADA').forEach(v=>{clienteCount[esc(v.cliente)]=(clienteCount[esc(v.cliente)]||0)+1;});
-  const topClientes = Object.entries(clienteCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
-
-  const proxVencer = DATA.filter(v=>{
-    if(!v.termino||v.estado!=='CONTRATADA') return false;
-    const p=v.termino.split('/');
-    if(p.length!==3) return false;
-    const t=new Date(p[2]+'-'+p[1]+'-'+p[0]);
-    return t>=hoy && t<=en30;
-  });
-
-  let execRows = execList.map(function(entry) {
-    const name=entry[0], d=entry[1];
-    return '<div class="exec-row">' +
-      '<span class="exec-name">' + name + '</span>' +
-      '<div class="exec-pills">' +
-      '<span class="exec-pill pill-cont">' + d.cont + ' cont.</span>' +
-      (d.res>0 ? '<span class="exec-pill pill-res">'+d.res+' res.</span>' : '') +
-      (d.alert>0 ? '<span class="exec-pill pill-alert">⚠️ '+d.alert+'</span>' : '') +
-      (d.vencen>0 ? '<span class="exec-pill" style="background:rgba(167,139,250,.15);color:#a78bfa">📅 '+d.vencen+' vencen</span>' : '') +
-      '<span class="exec-pill" style="background:var(--surface2);color:var(--muted)">'+d.clientes.size+' clientes</span>' +
-      '</div></div>';
-  }).join('');
-
-  let clienteRows = topClientes.map(function(entry,i) {
-    return '<div class="exec-row">' +
-      '<span class="exec-name">'+(i+1)+'. '+entry[0]+'</span>' +
-      '<span class="exec-pill pill-cont">'+entry[1]+' valla'+(entry[1]>1?'s':'')+'</span>' +
+  let alertasHtml = '';
+  if (tiposBajaOcupacion.length) {
+    alertasHtml += '<div style="margin-bottom:12px"><b style="font-size:12px">📉 Tipos con baja ocupación (oportunidad comercial):</b><br>' +
+      tiposBajaOcupacion.map(([tipo,d])=>'<span class="exec-pill" style="background:rgba(239,68,68,.1);color:#ef4444;margin:4px 4px 0 0;display:inline-block">'+tipo+': '+Math.round((d.cont/d.total)*100)+'% ocupado ('+d.disp+' libres)</span>').join('') +
       '</div>';
-  }).join('');
-
-  let ciudadRows = Object.entries(ciudades).sort((a,b)=>b[1]-a[1]).slice(0,8).map(function(entry) {
-    return '<div class="exec-row">' +
-      '<span class="exec-name">'+entry[0]+'</span>' +
-      '<span class="exec-pill" style="background:var(--surface2);color:var(--muted)">'+entry[1]+'</span>' +
+  }
+  if (proxVencer.length) {
+    alertasHtml += '<div><b style="font-size:12px">⏳ Vencen en 30 días SIN renovación registrada ('+proxVencer.length+'):</b>' +
+      proxVencer.slice(0,8).map(v => '<div class="exec-row"><span class="exec-name" style="font-family:monospace;font-size:11px;color:var(--accent)">'+v.codigo+'</span><span style="font-size:11px;color:var(--muted);flex:1;margin:0 10px">'+(esc(v.cliente)||'—')+' · '+(esc(v.ejecutiva)||'—')+'</span><span class="exec-pill pill-alert">Vence: '+v.termino+'</span></div>').join('') +
       '</div>';
-  }).join('');
-
-  let vencRows = proxVencer.slice(0,10).map(function(v) {
-    return '<div class="exec-row">' +
-      '<span class="exec-name" style="font-family:monospace;font-size:11px;color:var(--accent)">'+v.codigo+'</span>' +
-      '<span style="font-size:11px;color:var(--muted);flex:1;margin:0 10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+(esc(v.cliente)||'—')+' · '+(esc(v.ejecutiva)||'—')+'</span>' +
-      '<span class="exec-pill pill-alert">Vence: '+v.termino+'</span>' +
-      '</div>';
-  }).join('') || '<p style="color:var(--muted);font-size:12px">Sin vencimientos en los próximos 30 días</p>';
+  }
+  if (!alertasHtml) alertasHtml = '<p style="color:var(--muted);font-size:12px">Sin alertas comerciales por ahora 🎉</p>';
 
   container.innerHTML =
+    '<div class="dash-filterbar">' +
+      '<select onchange="cambiarFiltroDash(\'periodo\', this.value)">' +
+        periodos.map(p => '<option value="'+p.value+'"'+(dashState.periodo===p.value?' selected':'')+'>'+p.label+'</option>').join('') +
+      '</select>' +
+      '<select onchange="cambiarFiltroDash(\'ejecutiva\', this.value)">' +
+        '<option value="">Todas las ejecutivas</option>' +
+        opcEjecutivas.map(e=>'<option value="'+e+'"'+(dashState.ejecutiva===e?' selected':'')+'>'+e+'</option>').join('') +
+      '</select>' +
+      '<select onchange="cambiarFiltroDash(\'tipo\', this.value)">' +
+        '<option value="">Todos los tipos</option>' +
+        opcTipos.map(t=>'<option value="'+t+'"'+(dashState.tipo===t?' selected':'')+'>'+t+'</option>').join('') +
+      '</select>' +
+      '<select onchange="cambiarFiltroDash(\'ciudad\', this.value)">' +
+        '<option value="">Todas las ciudades</option>' +
+        opcCiudades.map(c=>'<option value="'+c+'"'+(dashState.ciudad===c?' selected':'')+'>'+c+'</option>').join('') +
+      '</select>' +
+      '<select onchange="cambiarFiltroDash(\'cliente\', this.value)">' +
+        '<option value="">Todos los clientes</option>' +
+        opcClientes.map(c=>'<option value="'+c+'"'+(dashState.cliente===c?' selected':'')+'>'+c+'</option>').join('') +
+      '</select>' +
+      '<button onclick="limpiarFiltrosDash()">✕ Limpiar filtros</button>' +
+    '</div>' +
     '<div class="dashboard-grid">' +
-    '<div class="dash-card" style="grid-column:span 2">' +
-      '<h4>📊 Resumen general</h4>' +
+
+    '<div class="dash-card" style="grid-column:span 4">' +
+      '<h4>📊 Resumen general'+((dashState.ejecutiva||dashState.tipo||dashState.ciudad||dashState.cliente)?' (filtrado)':'')+'</h4>' +
       '<div class="dash-stats-row">' +
         '<div class="dash-stat"><div class="num" style="color:#10b981">'+totalDisp+'</div><div class="lbl">Disponibles</div></div>' +
         '<div class="dash-stat"><div class="num" style="color:#ef4444">'+totalCont+'</div><div class="lbl">Contratadas</div></div>' +
         '<div class="dash-stat"><div class="num" style="color:var(--accent)">'+totalRes+'</div><div class="lbl">Reservadas</div></div>' +
-        '<div class="dash-stat"><div class="num" style="color:#f87171">'+totalAlert+'</div><div class="lbl">En alerta</div></div>' +
-        '<div class="dash-stat"><div class="num" style="color:#a78bfa">'+proxVencer.length+'</div><div class="lbl">Vencen en 30d</div></div>' +
-        '<div class="dash-stat"><div class="num" style="color:#60a5fa">'+DATA.length+'</div><div class="lbl">Total inventario</div></div>' +
+        '<div class="dash-stat"><div class="num" style="color:#a78bfa">'+ocupacionGeneral+'%</div><div class="lbl">Ocupación</div></div>' +
+        '<div class="dash-stat"><div class="num" style="color:#10b981">'+formatoUSDDash(montoMensualTotal)+'</div><div class="lbl">$ Mensual</div></div>' +
+        '<div class="dash-stat"><div class="num" style="color:#60a5fa">'+formatoUSDDash(ticketPromedio)+'</div><div class="lbl">Ticket promedio</div></div>' +
       '</div>' +
     '</div>' +
+
+    '<div class="dash-card" style="grid-column:span 4">' +
+      '<h4>📈 Comparativo vs período anterior</h4>' + comparativoHtml +
+    '</div>' +
+
     '<div class="dash-card" style="grid-column:span 2">' +
-      '<h4>👤 Por ejecutiva</h4>' + execRows +
+      '<h4>🏗️ Por tipo de elemento</h4>' +
+      '<div style="overflow-x:auto"><table class="dash-table"><thead><tr><th>Tipo</th><th>Total</th><th>Disp.</th><th>Cont.</th><th>Res.</th><th>Ocupación</th><th>$/mes</th></tr></thead><tbody>'+tablaTipo+'</tbody></table></div>' +
     '</div>' +
-    '<div class="dash-card">' +
-      '<h4>🏆 Top clientes</h4>' + clienteRows +
-    '</div>' +
-    '<div class="dash-card">' +
-      '<h4>🏙️ Por ciudad</h4>' + ciudadRows +
-    '</div>' +
+
     '<div class="dash-card" style="grid-column:span 2">' +
-      '<h4>⚠️ Vencimientos próximos 30 días</h4>' + vencRows +
+      '<h4>👤 Por ejecutiva</h4>' +
+      '<div style="overflow-x:auto"><table class="dash-table"><thead><tr><th>Ejecutiva</th><th>Clientes</th><th>Vallas</th><th>$/mes</th><th>$/año (proy.)</th></tr></thead><tbody>'+tablaEjec+'</tbody></table></div>' +
     '</div>' +
+
+    '<div class="dash-card" style="grid-column:span 4">' +
+      '<h4>🏆 Por cliente</h4>' +
+      '<div style="overflow-x:auto;max-height:340px;overflow-y:auto"><table class="dash-table"><thead><tr><th>Cliente</th><th>Ejecutiva</th><th>Elementos</th><th>#</th><th>$/mes</th></tr></thead><tbody>'+tablaCliente+'</tbody></table></div>' +
+    '</div>' +
+
+    '<div class="dash-card" style="grid-column:span 2">' +
+      '<h4>📅 Ventas registradas</h4>' +
+      '<div class="dash-subtabs">' +
+        '<div class="dash-subtab'+(dashState.ventasVista==='semana'?' active':'')+'" onclick="cambiarVentasVista(\'semana\')">Por semana</div>' +
+        '<div class="dash-subtab'+(dashState.ventasVista==='mes'?' active':'')+'" onclick="cambiarVentasVista(\'mes\')">Por mes</div>' +
+      '</div>' +
+      barrasVentas +
+    '</div>' +
+
+    '<div class="dash-card" style="grid-column:span 2">' +
+      '<h4>⚠️ Alertas comerciales</h4>' + alertasHtml +
+    '</div>' +
+
     '</div>';
 }
 
