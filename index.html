@@ -696,6 +696,18 @@ function aplicarPermisoDashboard() {
   if (!esAdmin && state.tab === 'dashboard') switchTab('inventario');
 }
 
+// El Cotizador y el Pipeline (con precios, descuentos y márgenes) por
+// ahora solo los debe ver Jorge, hasta que se definan roles reales —
+// mismo patrón que aplicarPermisoDashboard.
+function aplicarPermisoCotizador() {
+  const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const tabQz = document.getElementById('tabCotizador');
+  const tabPipe = document.getElementById('tabPipeline');
+  if (tabQz) tabQz.style.display = esAdmin ? '' : 'none';
+  if (tabPipe) tabPipe.style.display = esAdmin ? '' : 'none';
+  if (!esAdmin && (state.tab === 'cotizador' || state.tab === 'pipeline')) switchTab('inventario');
+}
+
 function checkLogin() {
   const saved = sessionStorage.getItem('zz_usuario');
   if (saved && USUARIOS_NOMBRES.includes(saved) && !sesionExpirada()) {
@@ -703,6 +715,7 @@ function checkLogin() {
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('userBadgeName').textContent = saved.split(' ')[0];
     aplicarPermisoDashboard();
+    aplicarPermisoCotizador();
     return true;
   }
   if (saved) forzarLogoutPorExpiracion();
@@ -747,6 +760,7 @@ function completarLoginExitoso(user, data) {
   const displayName = user.split(' ')[0] + (isReadOnly() ? ' 👁️' : '');
   document.getElementById('userBadgeName').textContent = displayName;
   aplicarPermisoDashboard();
+  aplicarPermisoCotizador();
   registrarAccesoSilencioso(user, true, '');
   init(); // Cargar la app después del login
 }
