@@ -475,9 +475,11 @@
   <div class="tab" onclick="switchTab('led')">🖥 LED</div>
   <div class="tab" onclick="switchTab('mapa')">🗺 Mapa</div>
   <div class="tab" id="tabDashboard" onclick="switchTab('dashboard')">📊 Dashboard</div>
+  <div class="tab" id="tabCotizador" onclick="switchTab('cotizador')">🧮 Cotizador</div>
+  <div class="tab" id="tabPipeline" onclick="switchTab('pipeline')">📈 Pipeline</div>
 </div>
 
-<div class="toolbar">
+<div class="toolbar" id="mainToolbar">
   <input type="text" class="search-box" placeholder="🔍  Código, dirección, cliente, ejecutiva..." id="searchInput" oninput="applyFilters()">
   <div class="multi-filter" id="mf-ciudad">
     <button class="mf-btn" onclick="toggleMF('mf-ciudad')">Todas las ciudades <span class="mf-arrow">▾</span></button>
@@ -1173,10 +1175,502 @@ function getFiltered() {
   return d;
 }
 
+// ══════════════════════════════════════════════════════════════
+// ── MÓDULO COTIZADOR (prefijo qz) · Fase 1 ─────────────────────
+// Todo aditivo — no toca getFiltered()/switchTab/render existentes
+// más allá de los 3 puntos de enganche ya hechos (tab, array
+// posicional de switchTab, dispatch de render()).
+// ══════════════════════════════════════════════════════════════
+let selectedQz = new Set();
+let qzAgenciasCache = null;
+let qzCotizacionActual = null;
+
+// Misma comparación de disponibilidad-por-mes que ya usa getFiltered()
+// para la pestaña Disponibles (v.termino.substring(0,7) <= mes), pero
+// como función aparte para no tocar getFiltered().
+function qzEstaDisponibleEnMes(v, mesISO) {
+  if (esLEDtipo(v)) {
+    if (espaciosLEDDisponibles(v) <= 0) return false;
+    if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
+      return v.termino.substring(0, 7) <= mesISO;
+    }
+    return true;
+  }
+  if (v.estado === 'DISPONIBLE' && !isBlocked(v.codigo)) return true;
+  if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
+    return v.termino.substring(0, 7) <= mesISO;
+  }
+  return false;
+}
+
+function qzGetMesInicioActual() {
+  const el = document.getElementById('qzMesInicio');
+  return (el && el.value) || new Date().toISOString().slice(0, 7);
+}
+
+function qzRenderListaElementos() {
+  const term = (document.getElementById('qzBuscarInput')?.value || '').toLowerCase().trim();
+  const mes = qzGetMesInicioActual();
+  let d = DATA.filter(v => qzEstaDisponibleEnMes(v, mes));
+  if (term) {
+    d = d.filter(v =>
+      (v.codigo || '').toLowerCase().includes(term) ||
+      (v.lugar || '').toLowerCase().includes(term) ||
+      (v.direccion || '').toLowerCase().includes(term) ||
+      (v.tipo || '').toLowerCase().includes(term)
+    );
+  }
+  const total = d.length;
+  d = d.slice(0, 80);
+  if (!d.length) return '<div class="empty" style="padding:30px 10px"><p>Sin elementos disponibles con estos filtros</p></div>';
+  let html = d.map(v => {
+    const checked = selectedQz.has(v.codigo) ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer">' +
+      '<input type="checkbox" ' + checked + ' onchange="qzToggleElemento(\'' + String(v.codigo).replace(/'/g, "\\'") + '\')">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-weight:700;font-size:12.5px;color:var(--text)">' + v.codigo + ' <span style="color:var(--muted);font-weight:500">· ' + (v.tipo || '—') + '</span></div>' +
+        '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v.lugar) + (v.direccion ? ' — ' + esc(v.direccion) : '') + '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--accent);font-weight:700;white-space:nowrap">$' + Number(v.valor || 0).toLocaleString() + '/mes</div>' +
+    '</label>';
+  }).join('');
+  if (total > 80) html += '<div style="padding:8px 12px;font-size:11px;color:var(--muted);text-align:center">Mostrando 80 de ' + total + ' — refina la búsqueda para ver más</div>';
+  return html;
+}
+
+function qzOnBuscarInput() {
+  const listEl = document.getElementById('qzElementosList');
+  if (listEl) listEl.innerHTML = qzRenderListaElementos();
+}
+function qzOnFiltroMesChange() { qzOnBuscarInput(); }
+
+function qzRenderChipsSeleccion() {
+  if (!selectedQz.size) return '<div style="color:var(--muted);font-size:12px;padding:6px 0">Selecciona elementos de la lista de la izquierda.</div>';
+  return Array.from(selectedQz).map(codigo => {
+    const v = DATA.find(x => x.codigo === codigo);
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;margin-bottom:6px">' +
+      '<span style="font-size:12px;font-weight:700">' + codigo + '<span style="color:var(--muted);font-weight:500"> · ' + (v ? v.tipo : '') + '</span></span>' +
+      '<span onclick="qzQuitarElemento(\'' + String(codigo).replace(/'/g, "\\'") + '\')" style="cursor:pointer;color:var(--red);font-weight:700">✕</span>' +
+    '</div>';
+  }).join('');
+}
+
+function qzRefrescarPanelDerecho() {
+  const el = document.getElementById('qzSeleccionPanel');
+  if (el) el.innerHTML = qzRenderChipsSeleccion();
+  const countEl = document.getElementById('qzSeleccionCount');
+  if (countEl) countEl.textContent = selectedQz.size;
+}
+
+function qzToggleElemento(codigo) {
+  if (selectedQz.has(codigo)) selectedQz.delete(codigo); else selectedQz.add(codigo);
+  qzOnBuscarInput();
+  qzRefrescarPanelDerecho();
+}
+function qzQuitarElemento(codigo) {
+  selectedQz.delete(codigo);
+  qzOnBuscarInput();
+  qzRefrescarPanelDerecho();
+}
+
+async function qzCargarAgencias() {
+  const sel = document.getElementById('qzAgenciaSelect');
+  if (!sel) return;
+  if (!qzAgenciasCache) {
+    try {
+      const res = await fetch(API_URL + '?action=qzListarAgencias', { cache: 'no-store' });
+      const json = await res.json();
+      qzAgenciasCache = (json.ok && json.agencias) ? json.agencias : [];
+    } catch (e) { qzAgenciasCache = []; }
+  }
+  sel.innerHTML = '<option value="">Sin agencia (venta directa)</option>' +
+    qzAgenciasCache.map(a => '<option value="' + String(a).replace(/"/g, '&quot;') + '">' + a + '</option>').join('');
+}
+
+async function qzCalcular() {
+  if (!selectedQz.size) { showToast('Selecciona al menos un elemento', 'info'); return; }
+  const cantidadMeses = Math.max(1, Number(document.getElementById('qzCantidadMeses')?.value) || 1);
+  const agencia = document.getElementById('qzAgenciaSelect')?.value || '';
+  const descuentoInput = Number(document.getElementById('qzDescuentoInput')?.value) || 0;
+  const descuentoPct = descuentoInput / 100;
+  const elementos = Array.from(selectedQz).map(codigo => ({ codigo, meses: cantidadMeses }));
+
+  const btn = document.getElementById('qzBtnCalcular');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando...'; }
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzCalcularCotizacion', elementos, agencia, descuentoPct }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error al calcular');
+    qzCotizacionActual = Object.assign({ elementos: elementos, agencia: agencia, cliente: document.getElementById('qzClienteInput')?.value || '' }, json);
+    qzPintarResultado();
+    qzPintarAprobacion();
+  } catch (e) {
+    showToast('❌ Error: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🧮 Calcular'; }
+  }
+}
+
+function qzPintarResultado() {
+  const el = document.getElementById('qzResultadoPanel');
+  if (!el || !qzCotizacionActual) return;
+  const r = qzCotizacionActual;
+  const semColor = r.semaforo === 'OK' ? 'var(--green)' : 'var(--accent)';
+  const semTexto = r.semaforo === 'OK' ? '✅ Margen OK' : '⚠️ Requiere aprobación de margen';
+  let html = '<div style="display:flex;flex-direction:column;gap:8px">' +
+    '<div style="display:flex;justify-content:space-between"><span style="color:var(--muted);font-size:12px">Tarifa bruta</span><span style="font-weight:700">$' + r.tarifaBruta.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between"><span style="color:var(--muted);font-size:12px">Descuento aplicado</span><span style="font-weight:700">' + (r.descuentoPct * 100).toFixed(1) + '%</span></div>' +
+    '<div style="display:flex;justify-content:space-between"><span style="color:var(--muted);font-size:12px">Precio final</span><span style="font-weight:800;font-size:16px;color:var(--accent)">$' + r.precioFinal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</span></div>' +
+    '<div style="padding:8px;border-radius:8px;background:' + semColor + '22;border:1px solid ' + semColor + ';color:' + semColor + ';font-weight:700;font-size:12px;text-align:center">' + semTexto + '</div>';
+  if (r.sobreTopeDescuento) {
+    html += '<div style="padding:10px;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);font-size:12px;font-weight:700">⚠️ El descuento supera el tope permitido (' + (r.topeDescuentoPct * 100).toFixed(1) + '%). Guarda y aprueba con PIN antes de exportar.</div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+  const btnGuardar = document.getElementById('qzBtnGuardar');
+  if (btnGuardar) btnGuardar.disabled = false;
+}
+
+function qzPintarAprobacion() {
+  const panel = document.getElementById('qzPinPanel');
+  const btnExport = document.getElementById('qzBtnExportar');
+  if (!panel) return;
+  if (qzCotizacionActual && qzCotizacionActual.estado_aprobacion === 'PENDIENTE') {
+    panel.style.display = 'flex';
+    if (btnExport) btnExport.disabled = true;
+  } else {
+    panel.style.display = 'none';
+    if (btnExport) btnExport.disabled = !qzCotizacionActual || !qzCotizacionActual.cotId;
+  }
+}
+
+async function qzGuardar() {
+  if (!qzCotizacionActual) { showToast('Primero calcula la cotización', 'info'); return; }
+  const cliente = document.getElementById('qzClienteInput')?.value || '';
+  const btn = document.getElementById('qzBtnGuardar');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando...'; }
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'qzCrearCotizacion',
+      elementos: qzCotizacionActual.elementos,
+      agencia: qzCotizacionActual.agencia,
+      cliente: cliente,
+      descuentoPct: qzCotizacionActual.descuentoPct
+    }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error al guardar');
+    qzCotizacionActual = Object.assign(qzCotizacionActual, json, { cliente: cliente });
+    qzPintarResultado();
+    qzPintarAprobacion();
+    showToast('✅ Cotización guardada', 'success');
+  } catch (e) {
+    showToast('❌ Error: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar cotización'; }
+  }
+}
+
+async function qzAprobarPin() {
+  const pin = document.getElementById('qzPinInput')?.value || '';
+  if (!qzCotizacionActual || !qzCotizacionActual.cotId) return;
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzAprobarDescuentoConPin', cotId: qzCotizacionActual.cotId, pin: pin }) });
+    const json = await res.json();
+    if (!json.ok) { showToast('❌ ' + (json.error || 'PIN incorrecto'), 'error'); return; }
+    qzCotizacionActual.estado_aprobacion = 'APROBADO';
+    qzPintarAprobacion();
+    showToast('✅ Descuento aprobado', 'success');
+  } catch (e) {
+    showToast('❌ Error: ' + e.message, 'error');
+  }
+}
+
+async function qzExportarCotizacionPPT() {
+  if (!qzCotizacionActual || !qzCotizacionActual.cotId) { showToast('Guarda la cotización primero', 'info'); return; }
+  if (qzCotizacionActual.estado_aprobacion === 'PENDIENTE') { showToast('Aprueba el descuento con PIN antes de exportar', 'info'); return; }
+  const btn = document.getElementById('qzBtnExportar');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando...'; }
+
+  if (typeof PptxGenJS === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+      s.onload = resolve;
+      s.onerror = () => {
+        const s2 = document.createElement('script');
+        s2.src = 'https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+        s2.onload = resolve; s2.onerror = reject;
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s);
+    });
+  }
+
+  try {
+    const r = qzCotizacionActual;
+    const pres = new PptxGenJS();
+    pres.layout = 'LAYOUT_WIDE';
+    pres.title = 'ZAZACORP · Cotización';
+
+    const NAVY = '1A2B4A', ORANGE = 'F47B20', WHITE = 'FFFFFF', LABEL = '8A9BB5';
+
+    const cover = pres.addSlide();
+    cover.background = { color: NAVY };
+    cover.addImage({ data: LOGO_ZAZACORP_LIMPIO, x: 5.15, y: 2.6, w: 3, h: 0.96 });
+    cover.addText('COTIZACIÓN COMERCIAL', { x: 0, y: 4.2, w: 13.3, h: 0.6, align: 'center', fontSize: 22, bold: true, color: WHITE, fontFace: 'Arial' });
+    cover.addText((r.cliente || 'Cliente por definir') + (r.agencia ? '  ·  ' + r.agencia : ''), { x: 0, y: 4.8, w: 13.3, h: 0.5, align: 'center', fontSize: 14, color: 'D1D5DB', fontFace: 'Arial' });
+
+    const resumen = pres.addSlide();
+    resumen.background = { color: WHITE };
+    resumen.addText('RESUMEN', { x: 0.5, y: 0.4, w: 6, h: 0.4, fontSize: 18, bold: true, color: NAVY, fontFace: 'Arial' });
+    const filas = [
+      ['Cliente', r.cliente || '—'],
+      ['Agencia', r.agencia || 'Venta directa'],
+      ['Elementos', String(r.elementos.length)],
+      ['Tarifa bruta', '$' + r.tarifaBruta.toLocaleString(undefined, { maximumFractionDigits: 2 })],
+      ['Descuento', (r.descuentoPct * 100).toFixed(1) + '%'],
+      ['Precio final', '$' + r.precioFinal.toLocaleString(undefined, { maximumFractionDigits: 2 })]
+    ];
+    filas.forEach((f, i) => {
+      const y = 1.1 + i * 0.55;
+      resumen.addText(f[0], { x: 0.5, y: y, w: 3, h: 0.45, fontSize: 12, color: LABEL, bold: true, fontFace: 'Arial' });
+      resumen.addText(f[1], { x: 3.6, y: y, w: 5, h: 0.45, fontSize: 14, color: NAVY, bold: true, fontFace: 'Arial' });
+    });
+    resumen.addImage({ data: LOGO_ZAZACORP_LIMPIO, x: 11.6, y: 6.9, w: 1.5, h: 0.48 });
+
+    r.elementos.forEach(function (el) {
+      const v = DATA.find(x => x.codigo === el.codigo) || {};
+      const slide = pres.addSlide();
+      slide.background = { color: WHITE };
+      slide.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 13.3, h: 0.9, fill: { color: ORANGE }, line: { color: ORANGE } });
+      slide.addText(el.codigo, { x: 0.4, y: 0.12, w: 8, h: 0.66, fontSize: 22, bold: true, color: WHITE, fontFace: 'Arial Black' });
+      const detalles = [
+        ['Tipo', v.tipo || '—'],
+        ['Ubicación', v.lugar || '—'],
+        ['Dirección', v.direccion || '—'],
+        ['Meses cotizados', String(el.meses)]
+      ];
+      detalles.forEach((d, i) => {
+        const y = 1.3 + i * 0.65;
+        slide.addText(d[0], { x: 0.5, y: y, w: 2.6, h: 0.3, fontSize: 10, color: LABEL, bold: true, fontFace: 'Arial' });
+        slide.addText(d[1], { x: 3.2, y: y, w: 9, h: 0.5, fontSize: 14, color: NAVY, fontFace: 'Arial', wrap: true });
+      });
+      slide.addImage({ data: LOGO_ZAZACORP_LIMPIO, x: 11.6, y: 6.9, w: 1.5, h: 0.48 });
+    });
+
+    const fecha = new Date().toISOString().split('T')[0];
+    await pres.writeFile({ fileName: 'ZAZACORP_Cotizacion_' + fecha + '.pptx' });
+    showToast('✓ Cotización exportada', 'success');
+  } catch (e) {
+    showToast('❌ Error: ' + e.message, 'error');
+    console.error(e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Exportar PPT'; }
+  }
+}
+
+function renderCotizador(container) {
+  container.innerHTML =
+    '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;padding:4px 0">' +
+      '<div style="flex:1 1 380px;min-width:320px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">' +
+        '<div style="padding:12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px">' +
+          '<input id="qzBuscarInput" type="text" placeholder="🔍 Código, ubicación, tipo..." oninput="qzOnBuscarInput()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px;font-family:inherit">' +
+          '<div style="display:flex;gap:8px">' +
+            '<input id="qzMesInicio" type="month" value="' + new Date().toISOString().slice(0, 7) + '" onchange="qzOnFiltroMesChange()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark">' +
+            '<input id="qzCantidadMeses" type="number" min="1" max="24" value="1" title="Cantidad de meses" style="width:70px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
+          '</div>' +
+        '</div>' +
+        '<div id="qzElementosList" style="max-height:480px;overflow-y:auto">' + qzRenderListaElementos() + '</div>' +
+      '</div>' +
+      '<div style="flex:1 1 340px;min-width:300px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px">' +
+        '<div style="font-weight:800;font-size:13px;color:var(--text)">🧮 Cotización (<span id="qzSeleccionCount">' + selectedQz.size + '</span> elementos)</div>' +
+        '<div id="qzSeleccionPanel">' + qzRenderChipsSeleccion() + '</div>' +
+        '<div>' +
+          '<label style="font-size:11px;color:var(--muted);font-weight:700">AGENCIA</label>' +
+          '<select id="qzAgenciaSelect" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;color-scheme:dark"><option value="">Cargando...</option></select>' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:11px;color:var(--muted);font-weight:700">CLIENTE</label>' +
+          '<input id="qzClienteInput" type="text" placeholder="Nombre del cliente" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px">' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:11px;color:var(--muted);font-weight:700">DESCUENTO (%)</label>' +
+          '<input id="qzDescuentoInput" type="number" min="0" max="100" step="0.5" value="0" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px">' +
+        '</div>' +
+        '<button id="qzBtnCalcular" onclick="qzCalcular()" style="background:rgba(59,130,246,.15);border:1px solid var(--blue);border-radius:8px;color:var(--blue);font-weight:700;font-size:12.5px;padding:10px;cursor:pointer">🧮 Calcular</button>' +
+        '<div id="qzResultadoPanel" style="font-size:12px;color:var(--muted)">Selecciona elementos y calcula para ver el precio.</div>' +
+        '<div id="qzPinPanel" style="display:none;gap:8px;align-items:center;background:rgba(239,68,68,.08);border:1px solid var(--red);border-radius:8px;padding:10px">' +
+          '<input id="qzPinInput" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
+          '<button onclick="qzAprobarPin()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:700;font-size:11.5px;padding:8px 10px;cursor:pointer">Aprobar</button>' +
+        '</div>' +
+        '<button id="qzBtnGuardar" onclick="qzGuardar()" disabled style="background:rgba(74,222,128,.12);border:1px solid var(--green);border-radius:8px;color:var(--green);font-weight:700;font-size:12.5px;padding:10px;cursor:pointer">💾 Guardar cotización</button>' +
+        '<button id="qzBtnExportar" onclick="qzExportarCotizacionPPT()" disabled style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-weight:700;font-size:12.5px;padding:10px;cursor:pointer">⬇ Exportar PPT</button>' +
+      '</div>' +
+    '</div>';
+  qzCargarAgencias();
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── MÓDULO COTIZADOR · Pipeline (Entrega B) ────────────────────
+// ══════════════════════════════════════════════════════════════
+let qzPipelineData = null;
+let qzPipelineMes = new Date().toISOString().slice(0, 7);
+const QZ_ETAPAS_FRONT = ['COTIZADO', 'CONTRATADO', 'CERTIFICADO', 'FACTURADO', 'COBRADO'];
+const QZ_ETAPA_LABEL = { COTIZADO: 'Cotizado', CONTRATADO: 'Contratado', CERTIFICADO: 'Certificado', FACTURADO: 'Facturado', COBRADO: 'Cobrado' };
+
+function qzEsAdmin() { return (_usuarioActual || '').toUpperCase() === 'JORGE'; }
+
+function qzFilasDeCotizacion(cotId) {
+  if (!qzPipelineData) return [];
+  return qzPipelineData.pipeline.filter(p => p.cotId === cotId).slice().sort((a, b) => new Date(a.fechaEtapa) - new Date(b.fechaEtapa));
+}
+function qzEtapaActualDeCotizacion(cotId) {
+  const filas = qzFilasDeCotizacion(cotId);
+  return filas.length ? filas[filas.length - 1].etapa : 'COTIZADO';
+}
+function qzFechaEtapaActual(cotId) {
+  const filas = qzFilasDeCotizacion(cotId);
+  return filas.length ? filas[filas.length - 1].fechaEtapa : null;
+}
+
+async function qzCargarPipeline() {
+  try {
+    const res = await fetch(API_URL + '?action=qzGetPipeline', { cache: 'no-store' });
+    const json = await res.json();
+    if (json.ok) qzPipelineData = json;
+    return json;
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function qzRenderTarjetaCotizacion(c) {
+  const etapaActual = qzEtapaActualDeCotizacion(c.cotId);
+  const idx = QZ_ETAPAS_FRONT.indexOf(etapaActual);
+  const siguiente = (idx >= 0 && idx < QZ_ETAPAS_FRONT.length - 1) ? QZ_ETAPAS_FRONT[idx + 1] : null;
+  const puedeMover = siguiente && (siguiente !== 'CERTIFICADO' || qzEsAdmin());
+
+  let html = '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">' +
+    '<div style="font-weight:700;font-size:12px">' + (esc(c.cliente) || 'Sin cliente') + '</div>' +
+    '<div style="font-size:11px;color:var(--muted)">' + (esc(c.agencia) || 'Venta directa') + ' · ' + c.elementos.length + ' elem.</div>' +
+    '<div style="font-size:13px;font-weight:800;color:var(--accent);margin-top:4px">$' + c.precioFinal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div>';
+  if (c.estadoAprobacion === 'PENDIENTE') {
+    html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Descuento pendiente de aprobación</div>';
+  }
+  if (siguiente) {
+    if (puedeMover) {
+      html += '<button onclick="qzToggleMoverForm(\'' + c.cotId + '\')" style="margin-top:8px;width:100%;background:rgba(59,130,246,.12);border:1px solid var(--blue);border-radius:6px;color:var(--blue);font-size:11px;font-weight:700;padding:6px;cursor:pointer">→ Mover a ' + QZ_ETAPA_LABEL[siguiente] + '</button>';
+    } else {
+      html += '<div style="margin-top:8px;font-size:10px;color:var(--muted)">Solo Jorge puede marcar Certificado</div>';
+    }
+    html += '<div id="qzMoverForm_' + c.cotId + '" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+    if (siguiente === 'FACTURADO') {
+      html += '<input id="qzMontoFact_' + c.cotId + '" type="number" placeholder="Monto facturado" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px;font-size:11px;margin-bottom:6px">';
+    }
+    if (siguiente === 'COBRADO') {
+      html += '<input id="qzFechaCobro_' + c.cotId + '" type="date" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px;font-size:11px;margin-bottom:6px;color-scheme:dark">' +
+        '<input id="qzMontoCobro_' + c.cotId + '" type="number" placeholder="Monto cobrado" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px;font-size:11px;margin-bottom:6px">';
+    }
+    if (puedeMover) {
+      html += '<button onclick="qzConfirmarMoverEtapa(\'' + c.cotId + '\',\'' + siguiente + '\')" style="width:100%;background:var(--green);border:none;border-radius:6px;color:#fff;font-weight:700;font-size:11px;padding:6px;cursor:pointer">Confirmar</button>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function qzToggleMoverForm(cotId) {
+  const el = document.getElementById('qzMoverForm_' + cotId);
+  if (el) el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+}
+
+async function qzConfirmarMoverEtapa(cotId, etapaDestino) {
+  const body = { action: 'qzMoverEtapaPipeline', cotId: cotId, etapaDestino: etapaDestino };
+  if (etapaDestino === 'FACTURADO') {
+    body.montoFacturado = document.getElementById('qzMontoFact_' + cotId)?.value || '';
+  }
+  if (etapaDestino === 'COBRADO') {
+    body.fechaCobro = document.getElementById('qzFechaCobro_' + cotId)?.value || '';
+    body.montoCobrado = document.getElementById('qzMontoCobro_' + cotId)?.value || '';
+  }
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error al mover etapa');
+    showToast('✅ Movido a ' + QZ_ETAPA_LABEL[etapaDestino], 'success');
+    await qzCargarPipeline();
+    qzPintarPipeline();
+  } catch (e) {
+    showToast('❌ Error: ' + e.message, 'error');
+  }
+}
+
+function qzCambiarMesPipeline() {
+  const el = document.getElementById('qzPipelineMesInput');
+  qzPipelineMes = (el && el.value) || new Date().toISOString().slice(0, 7);
+  qzPintarPipeline();
+}
+
+function qzPintarPipeline() {
+  const board = document.getElementById('qzPipelineBoard');
+  if (!board || !qzPipelineData) return;
+  const cotizaciones = qzPipelineData.cotizaciones || [];
+  const esAdmin = qzEsAdmin();
+
+  const porEtapa = {};
+  QZ_ETAPAS_FRONT.forEach(e => porEtapa[e] = []);
+  cotizaciones.forEach(c => {
+    const etapa = qzEtapaActualDeCotizacion(c.cotId);
+    const fecha = qzFechaEtapaActual(c.cotId);
+    if (fecha && String(fecha).slice(0, 7) === qzPipelineMes) porEtapa[etapa].push(c);
+  });
+
+  let html = '<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px">';
+  QZ_ETAPAS_FRONT.forEach(etapa => {
+    const items = porEtapa[etapa];
+    const total = items.reduce((s, c) => s + (c.precioFinal || 0), 0);
+    html += '<div style="flex:1 1 220px;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">' +
+      '<div style="font-weight:800;font-size:12px;color:var(--text);margin-bottom:2px">' + QZ_ETAPA_LABEL[etapa] + ' (' + items.length + ')</div>' +
+      '<div style="font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px">$' + total.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div>';
+    if (!items.length) {
+      html += '<div style="font-size:11px;color:var(--muted)">Sin cotizaciones este mes</div>';
+    } else if (esAdmin) {
+      const grupos = {};
+      items.forEach(c => { const k = c.ejecutiva || c.creadoPor || 'Sin asignar'; (grupos[k] = grupos[k] || []).push(c); });
+      Object.keys(grupos).sort().forEach(k => {
+        html += '<div style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;margin:8px 0 4px">' + esc(k) + '</div>';
+        html += grupos[k].map(qzRenderTarjetaCotizacion).join('');
+      });
+    } else {
+      html += items.map(qzRenderTarjetaCotizacion).join('');
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  board.innerHTML = html;
+}
+
+async function renderPipeline(container) {
+  container.innerHTML =
+    '<div style="padding:4px 0">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
+        '<label style="font-size:11px;color:var(--muted);font-weight:700">MES</label>' +
+        '<input id="qzPipelineMesInput" type="month" value="' + qzPipelineMes + '" onchange="qzCambiarMesPipeline()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark">' +
+      '</div>' +
+      '<div id="qzPipelineBoard"><div class="empty"><p>Cargando pipeline...</p></div></div>' +
+    '</div>';
+  await qzCargarPipeline();
+  qzPintarPipeline();
+}
+
 function switchTab(t) {
   state.tab = t; state.page = 1;
   document.querySelectorAll('.tab').forEach((el,i) =>
-    el.classList.toggle('active', ['inventario','disponibles','reservadas','alertas','led','mapa','dashboard'][i] === t));
+    el.classList.toggle('active', ['inventario','disponibles','reservadas','alertas','led','mapa','dashboard','cotizador','pipeline'][i] === t));
+  const mainToolbar = document.getElementById('mainToolbar');
+  if (mainToolbar) mainToolbar.style.display = (t === 'cotizador' || t === 'pipeline') ? 'none' : '';
+  if (t === 'cotizador' || t === 'pipeline') { render(); return; }
   document.getElementById('viewToggle').style.display = (t === 'alertas' || t === 'mapa' || t === 'led') ? 'none' : '';
   const mfEj = document.getElementById('mf-ejecutiva');
   if (mfEj) mfEj.style.display = (t === 'led') ? 'none' : '';
@@ -1274,6 +1768,21 @@ function render() {
   if (state.tab === 'led')     { renderLED(content); return; }
   if (state.tab === 'mapa') { renderMapa(content); return; }
   if (state.tab === 'dashboard') { renderDashboard(content); return; }
+  if (state.tab === 'cotizador') {
+    // El cotizador maneja sus propias actualizaciones puntuales del DOM
+    // (búsqueda, selección, resultado). Si ya está construido, no lo
+    // reconstruimos aquí — este render() también se dispara desde
+    // pollings ajenos (bloqueos cada 10s, contador cada 1s) y reconstruir
+    // el panel completo borraría lo que la ejecutiva esté escribiendo
+    // (descuento, cliente) o el resultado ya calculado.
+    if (!document.getElementById('qzElementosList')) renderCotizador(content);
+    return;
+  }
+  if (state.tab === 'pipeline') {
+    // Mismo motivo que Cotizador: no reconstruir en cada render() de fondo.
+    if (!document.getElementById('qzPipelineBoard')) renderPipeline(content);
+    return;
+  }
 
   const filtered = getFiltered();
   const total = filtered.length;
