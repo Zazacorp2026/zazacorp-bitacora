@@ -324,7 +324,7 @@
   .cg-chips-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
   .cg-chip{background:var(--surface2);color:var(--text);padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:8px;border:1px solid var(--border);}
   .cg-chip button{background:var(--accent);border:none;color:#0a0c10;width:16px;height:16px;border-radius:50%;cursor:pointer;font-size:9px;line-height:1;}
-  .cg-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:16px;}
+  .cg-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px;}
   .cg-kpi-card{background:var(--surface);border-radius:10px;padding:16px;border:1px solid var(--border);border-left:3px solid var(--blue);}
   .cg-kpi-label{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px;}
   .cg-kpi-value{font-size:20px;font-weight:800;color:var(--text);}
@@ -1733,8 +1733,10 @@ async function renderPipeline(container) {
 // ══════════════════════════════════════════════════════════════
 let cgDataCache = null;
 let cgAllEjecutivas = [];
+let cgAllClientes = [];
+let cgAllMarcas = [];
 let cgCharts = {};
-let cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [] };
+let cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [], cliente: '', marca: '', groupBy: 'Cliente' };
 const CG_MONTH_NAMES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const CG_LINE_PALETTE = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4', '#eab308', '#ec4899', '#84cc16', '#f97316'];
 
@@ -1748,6 +1750,8 @@ async function cgCargarDatos(forzar) {
   if (!json.ok) throw new Error(json.error || 'Error al cargar facturación');
   cgDataCache = json.filas || [];
   cgAllEjecutivas = [...new Set(cgDataCache.map(d => d['Ejecutiva']).filter(Boolean))].sort();
+  cgAllClientes = [...new Set(cgDataCache.map(d => d['Cliente']).filter(Boolean))].sort();
+  cgAllMarcas = [...new Set(cgDataCache.map(d => d['Marca']).filter(Boolean))].sort();
 }
 
 // Fuerza saltarse el caché de 10 min del servidor — para cuando Jorge
@@ -1769,12 +1773,22 @@ async function cgActualizarDatos() {
 
 // Filtro base: año/mes/tipo, SIN ejecutiva — así el ranking puede seguir
 // mostrando todas las barras aunque ya haya ejecutivas seleccionadas.
+function cgMatchTexto(valor, filtro) {
+  const q = String(filtro || '').trim().toLowerCase();
+  if (!q) return true;
+  return String(valor || '').toLowerCase().includes(q);
+}
+
+// Filtro base: año/mes/tipo/cliente/marca, SIN ejecutiva — así el ranking puede seguir
+// mostrando todas las barras aunque ya haya ejecutivas seleccionadas.
 function cgGetBaseFilteredData() {
   return (cgDataCache || []).filter(d => {
     if (cgState.year && String(d['Año']) !== String(cgState.year)) return false;
     if (cgState.monthFrom && Number(d['Mes']) < Number(cgState.monthFrom)) return false;
     if (cgState.monthTo && Number(d['Mes']) > Number(cgState.monthTo)) return false;
     if (cgState.tipo && d['Tipo de Elemento'] !== cgState.tipo) return false;
+    if (!cgMatchTexto(d['Cliente'], cgState.cliente)) return false;
+    if (!cgMatchTexto(d['Marca'], cgState.marca)) return false;
     return true;
   });
 }
@@ -1785,22 +1799,34 @@ function cgGetFilteredData() {
   return base.filter(d => set.has(d['Ejecutiva']));
 }
 
+// Para comparar años se ignora solo el filtro Año, pero se respetan mes/tipo/cliente/marca/ejecutivas.
+function cgGetDataParaCompararAnios() {
+  const setEj = new Set(cgState.ejecutivas || []);
+  return (cgDataCache || []).filter(d => {
+    if (cgState.monthFrom && Number(d['Mes']) < Number(cgState.monthFrom)) return false;
+    if (cgState.monthTo && Number(d['Mes']) > Number(cgState.monthTo)) return false;
+    if (cgState.tipo && d['Tipo de Elemento'] !== cgState.tipo) return false;
+    if (!cgMatchTexto(d['Cliente'], cgState.cliente)) return false;
+    if (!cgMatchTexto(d['Marca'], cgState.marca)) return false;
+    if (setEj.size && !setEj.has(d['Ejecutiva'])) return false;
+    return true;
+  });
+}
+
 function cgPintarKpis() {
   const data = cgGetFilteredData();
-  let neto = 0, bruto = 0, iva = 0, utilidad = 0;
+  let neto = 0, bruto = 0, iva = 0;
   const facturas = new Set();
   data.forEach(d => {
     neto += Number(d['Neto (Stotal)']) || 0;
     bruto += Number(d['Bruto (PBase)']) || 0;
     iva += Number(d['IVA']) || 0;
-    utilidad += Number(d['Utilidad']) || 0;
     if (d['Comprobante']) facturas.add(d['Comprobante']);
   });
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('cgKpiNeto', cgFmtMoney(neto));
   set('cgKpiBruto', cgFmtMoney(bruto));
   set('cgKpiIva', cgFmtMoney(iva));
-  set('cgKpiUtilidad', cgFmtMoney(utilidad));
   set('cgKpiFacturas', facturas.size.toLocaleString('es-EC'));
 }
 
@@ -1862,6 +1888,63 @@ function cgPintarTendencia() {
   });
 }
 
+function cgPintarComparativoAnios() {
+  const ctx = document.getElementById('cgChartComparativoAnios');
+  if (!ctx || typeof Chart === 'undefined') return;
+  const data = cgGetDataParaCompararAnios();
+  const years = [...new Set(data.map(d => d['Año']).filter(Boolean))].sort();
+  const porAnioMes = {};
+  years.forEach(y => porAnioMes[y] = {});
+  data.forEach(d => {
+    const y = d['Año'];
+    const m = Number(d['Mes']);
+    if (!y || !m) return;
+    porAnioMes[y][m] = (porAnioMes[y][m] || 0) + (Number(d['Neto (Stotal)']) || 0);
+  });
+  const labels = CG_MONTH_NAMES.slice(1);
+  const datasets = years.map((y, i) => ({
+    label: String(y),
+    data: labels.map((_, idx) => porAnioMes[y][idx + 1] || 0),
+    borderColor: cgLineColor(i),
+    backgroundColor: cgLineColor(i),
+    tension: 0.25,
+    fill: false
+  }));
+  if (cgCharts.comparativoAnios) cgCharts.comparativoAnios.destroy();
+  cgCharts.comparativoAnios = new Chart(ctx, {
+    type: 'line',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'bottom' }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + cgFmtMoney(c.parsed.y) } } },
+      scales: { y: { ticks: { callback: v => cgFmtMoney(v) } } }
+    }
+  });
+  cgPintarResumenAnios(data);
+}
+
+function cgPintarResumenAnios(data) {
+  const tbody = document.getElementById('cgTablaAniosBody');
+  if (!tbody) return;
+  const porAnio = {};
+  data.forEach(d => {
+    const y = d['Año'] || 'Sin año';
+    if (!porAnio[y]) porAnio[y] = { neto: 0, bruto: 0, iva: 0, facturas: new Set() };
+    porAnio[y].neto += Number(d['Neto (Stotal)']) || 0;
+    porAnio[y].bruto += Number(d['Bruto (PBase)']) || 0;
+    porAnio[y].iva += Number(d['IVA']) || 0;
+    if (d['Comprobante']) porAnio[y].facturas.add(d['Comprobante']);
+  });
+  const rows = Object.entries(porAnio).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  tbody.innerHTML = rows.map(([anio, v]) =>
+    '<tr><td>' + esc(anio) + '</td>' +
+    '<td style="text-align:right">' + v.facturas.size.toLocaleString('es-EC') + '</td>' +
+    '<td style="text-align:right">' + cgFmtMoney(v.bruto) + '</td>' +
+    '<td style="text-align:right">' + cgFmtMoney(v.iva) + '</td>' +
+    '<td style="text-align:right;font-weight:800;color:var(--accent)">' + cgFmtMoney(v.neto) + '</td></tr>'
+  ).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Sin datos</td></tr>';
+}
+
 function cgPintarTipoElemento() {
   const ctx = document.getElementById('cgChartTipo');
   if (!ctx || typeof Chart === 'undefined') return;
@@ -1897,22 +1980,55 @@ function cgPintarTablaClientes() {
   const porCliente = {};
   data.forEach(d => {
     const cli = d['Cliente'] || 'Sin nombre';
-    if (!porCliente[cli]) porCliente[cli] = { neto: 0, ejecutivas: new Set(), facturas: new Set() };
+    if (!porCliente[cli]) porCliente[cli] = { neto: 0, ejecutivas: new Set(), marcas: new Set(), facturas: new Set() };
     porCliente[cli].neto += Number(d['Neto (Stotal)']) || 0;
     if (d['Ejecutiva']) porCliente[cli].ejecutivas.add(d['Ejecutiva']);
+    if (d['Marca']) porCliente[cli].marcas.add(d['Marca']);
     if (d['Comprobante']) porCliente[cli].facturas.add(d['Comprobante']);
   });
-  let rows = Object.entries(porCliente).map(([cliente, v]) => ({ cliente: cliente, neto: v.neto, ejecutivas: [...v.ejecutivas], facturas: v.facturas.size }));
+  let rows = Object.entries(porCliente).map(([cliente, v]) => ({ cliente: cliente, neto: v.neto, ejecutivas: [...v.ejecutivas], marcas: [...v.marcas], facturas: v.facturas.size }));
   const q = (document.getElementById('cgClienteBusqueda')?.value || '').toLowerCase().trim();
-  if (q) rows = rows.filter(r => r.cliente.toLowerCase().includes(q));
+  if (q) rows = rows.filter(r => r.cliente.toLowerCase().includes(q) || r.marcas.join(' ').toLowerCase().includes(q));
   rows.sort((a, b) => b.neto - a.neto);
   rows = rows.slice(0, 200);
   tbody.innerHTML = rows.map(r =>
     '<tr><td>' + esc(r.cliente) + (r.ejecutivas.length > 1 ? ' <span style="background:rgba(245,158,11,.15);color:var(--accent);font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;margin-left:6px">' + r.ejecutivas.length + ' EJECUTIVAS</span>' : '') + '</td>' +
+    '<td>' + esc(r.marcas.slice(0, 3).join(', ')) + (r.marcas.length > 3 ? ' +' + (r.marcas.length - 3) : '') + '</td>' +
     '<td>' + esc(r.ejecutivas.join(', ')) + '</td>' +
     '<td style="text-align:right">' + r.facturas + '</td>' +
     '<td style="text-align:right;font-weight:700;color:var(--accent)">' + cgFmtMoney(r.neto) + '</td></tr>'
-  ).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">Sin resultados</td></tr>';
+  ).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Sin resultados</td></tr>';
+}
+
+function cgPintarDetalleEjecutivas() {
+  const tbody = document.getElementById('cgTablaDetalleEjBody');
+  if (!tbody) return;
+  const data = cgGetFilteredData();
+  const dim = cgState.groupBy === 'Marca' ? 'Marca' : 'Cliente';
+  const grupos = {};
+  data.forEach(d => {
+    const grupo = d[dim] || ('Sin ' + dim.toLowerCase());
+    const ej = d['Ejecutiva'] || 'Sin asignar';
+    const key = grupo + '||' + ej;
+    if (!grupos[key]) grupos[key] = { grupo: grupo, ejecutiva: ej, neto: 0, bruto: 0, facturas: new Set() };
+    grupos[key].neto += Number(d['Neto (Stotal)']) || 0;
+    grupos[key].bruto += Number(d['Bruto (PBase)']) || 0;
+    if (d['Comprobante']) grupos[key].facturas.add(d['Comprobante']);
+  });
+  const totGrupo = {};
+  Object.values(grupos).forEach(r => { totGrupo[r.grupo] = (totGrupo[r.grupo] || 0) + r.neto; });
+  let rows = Object.values(grupos).map(r => ({ ...r, pct: totGrupo[r.grupo] ? r.neto / totGrupo[r.grupo] : 0 }));
+  rows = rows.filter(r => totGrupo[r.grupo] > 0).sort((a, b) => (totGrupo[b.grupo] - totGrupo[a.grupo]) || (b.neto - a.neto)).slice(0, 300);
+  const titulo = document.getElementById('cgDetalleEjTitulo');
+  if (titulo) titulo.textContent = 'Detalle por ' + dim.toLowerCase() + ' y ejecutiva';
+  tbody.innerHTML = rows.map(r =>
+    '<tr><td>' + esc(r.grupo) + '</td>' +
+    '<td>' + esc(r.ejecutiva) + '</td>' +
+    '<td style="text-align:right">' + r.facturas.size.toLocaleString('es-EC') + '</td>' +
+    '<td style="text-align:right">' + cgFmtMoney(r.bruto) + '</td>' +
+    '<td style="text-align:right;font-weight:800;color:var(--accent)">' + cgFmtMoney(r.neto) + '</td>' +
+    '<td style="text-align:right">' + Math.round(r.pct * 100) + '%</td></tr>'
+  ).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Sin resultados</td></tr>';
 }
 
 function cgToggleEjecutiva(name) {
@@ -1939,9 +2055,11 @@ function cgSincronizarFiltrosUI() {
   cgRenderEjecutivaOptions(document.getElementById('cgEjecutivaSearch')?.value || '');
   const chipsRow = document.getElementById('cgChipsRow');
   if (chipsRow) {
-    chipsRow.innerHTML = cgState.ejecutivas.map(e =>
-      '<span class="cg-chip">' + esc(e) + '<button type="button" onclick="cgToggleEjecutiva(\'' + e.replace(/'/g, "\\'") + '\')">✕</button></span>'
-    ).join('');
+    const chips = [];
+    cgState.ejecutivas.forEach(e => chips.push('<span class="cg-chip">' + esc(e) + '<button type="button" onclick="cgToggleEjecutiva(\'' + e.replace(/'/g, "\\'") + '\')">✕</button></span>'));
+    if (cgState.cliente) chips.push('<span class="cg-chip">Cliente: ' + esc(cgState.cliente) + '<button type="button" onclick="cgCambiarFiltro(\'cliente\',\'\')">✕</button></span>');
+    if (cgState.marca) chips.push('<span class="cg-chip">Marca: ' + esc(cgState.marca) + '<button type="button" onclick="cgCambiarFiltro(\'marca\',\'\')">✕</button></span>');
+    chipsRow.innerHTML = chips.join('');
   }
 }
 
@@ -1949,18 +2067,24 @@ function cgRepintarTodo() {
   cgPintarKpis();
   cgPintarRanking();
   cgPintarTendencia();
+  cgPintarComparativoAnios();
   cgPintarTipoElemento();
   cgPintarTablaClientes();
+  cgPintarDetalleEjecutivas();
 }
 
 function cgCambiarFiltro(campo, valor) {
   cgState[campo] = valor;
+  if (campo === 'cliente') { const el = document.getElementById('cgFilterCliente'); if (el && el.value !== valor) el.value = valor; }
+  if (campo === 'marca') { const el = document.getElementById('cgFilterMarca'); if (el && el.value !== valor) el.value = valor; }
+  cgSincronizarFiltrosUI();
   cgRepintarTodo();
 }
 
 function cgLimpiarFiltros() {
-  cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [] };
-  ['cgFilterYear', 'cgFilterMonthFrom', 'cgFilterMonthTo', 'cgFilterTipo'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [], cliente: '', marca: '', groupBy: 'Cliente' };
+  ['cgFilterYear', 'cgFilterMonthFrom', 'cgFilterMonthTo', 'cgFilterTipo', 'cgFilterCliente', 'cgFilterMarca'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const gb = document.getElementById('cgGroupBy'); if (gb) gb.value = 'Cliente';
   cgSincronizarFiltrosUI();
   cgRepintarTodo();
 }
@@ -2008,6 +2132,8 @@ async function renderComercialGeneral(container) {
 
   const years = [...new Set(cgDataCache.map(d => d['Año']))].filter(Boolean).sort();
   const tipos = [...new Set(cgDataCache.map(d => d['Tipo de Elemento']))].filter(Boolean).sort();
+  const clienteOpts = cgAllClientes.slice(0, 1200).map(c => '<option value="' + esc(c) + '"></option>').join('');
+  const marcaOpts = cgAllMarcas.slice(0, 1200).map(m => '<option value="' + esc(m) + '"></option>').join('');
   const monthOpts = ['<option value="">Todos</option>'];
   for (let m = 1; m <= 12; m++) monthOpts.push('<option value="' + m + '">' + CG_MONTH_NAMES[m] + '</option>');
 
@@ -2018,6 +2144,8 @@ async function renderComercialGeneral(container) {
       '<div class="cg-filter-group"><label>Mes desde</label><select id="cgFilterMonthFrom" onchange="cgCambiarFiltro(\'monthFrom\',this.value)">' + monthOpts.join('') + '</select></div>' +
       '<div class="cg-filter-group"><label>Mes hasta</label><select id="cgFilterMonthTo" onchange="cgCambiarFiltro(\'monthTo\',this.value)">' + monthOpts.join('') + '</select></div>' +
       '<div class="cg-filter-group"><label>Tipo de elemento</label><select id="cgFilterTipo" onchange="cgCambiarFiltro(\'tipo\',this.value)"><option value="">Todos</option>' + tipos.map(t => '<option value="' + esc(t) + '">' + esc(t) + '</option>').join('') + '</select></div>' +
+      '<div class="cg-filter-group"><label>Cliente</label><input id="cgFilterCliente" list="cgClientesList" placeholder="Todos" oninput="cgCambiarFiltro(\'cliente\',this.value)"><datalist id="cgClientesList">' + clienteOpts + '</datalist></div>' +
+      '<div class="cg-filter-group"><label>Marca</label><input id="cgFilterMarca" list="cgMarcasList" placeholder="Todas" oninput="cgCambiarFiltro(\'marca\',this.value)"><datalist id="cgMarcasList">' + marcaOpts + '</datalist></div>' +
       '<div class="cg-filter-group" style="position:relative">' +
         '<label>Ejecutiva(s)</label>' +
         '<div onclick="document.getElementById(\'cgEjecutivaPanel\').style.display = document.getElementById(\'cgEjecutivaPanel\').style.display===\'block\'?\'none\':\'block\'" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;min-width:130px;justify-content:space-between;font-size:12px"><span id="cgEjecutivaToggleLabel">Todas</span><span style="color:var(--muted)">▾</span></div>' +
@@ -2026,6 +2154,7 @@ async function renderComercialGeneral(container) {
           '<div id="cgEjecutivaOptions" style="max-height:200px;overflow-y:auto"></div>' +
         '</div>' +
       '</div>' +
+      '<div class="cg-filter-group"><label>Agrupar detalle</label><select id="cgGroupBy" onchange="cgCambiarFiltro(\'groupBy\',this.value)"><option value="Cliente">Cliente</option><option value="Marca">Marca</option></select></div>' +
       '<div class="cg-filter-group" style="margin-left:auto;flex-direction:row;gap:8px">' +
         '<button id="cgBtnActualizar" onclick="cgActualizarDatos()" style="background:rgba(59,130,246,.08);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">🔄 Actualizar datos</button>' +
         '<button onclick="cgLimpiarFiltros()" style="background:transparent;border:1px dashed var(--border);color:var(--muted);border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer">Limpiar filtros</button>' +
@@ -2037,7 +2166,6 @@ async function renderComercialGeneral(container) {
       '<div class="cg-kpi-card"><span class="cg-kpi-label">Neto Total</span><span class="cg-kpi-value" id="cgKpiNeto">—</span></div>' +
       '<div class="cg-kpi-card" style="border-left-color:var(--accent)"><span class="cg-kpi-label">Bruto Total</span><span class="cg-kpi-value" id="cgKpiBruto">—</span></div>' +
       '<div class="cg-kpi-card" style="border-left-color:var(--accent)"><span class="cg-kpi-label">IVA</span><span class="cg-kpi-value" id="cgKpiIva">—</span></div>' +
-      '<div class="cg-kpi-card" style="border-left-color:var(--green)"><span class="cg-kpi-label">Utilidad</span><span class="cg-kpi-value" id="cgKpiUtilidad">—</span></div>' +
       '<div class="cg-kpi-card"><span class="cg-kpi-label"># Facturas</span><span class="cg-kpi-value" id="cgKpiFacturas">—</span></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
@@ -2045,12 +2173,20 @@ async function renderComercialGeneral(container) {
       '<div class="cg-chart-card"><h4>Tendencia mensual del Neto</h4><div class="cg-chart-wrap"><canvas id="cgChartTendencia"></canvas></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
+      '<div class="cg-chart-card"><h4>Comparativo mensual por año <small>(respeta filtros, ignora solo Año)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartComparativoAnios"></canvas></div></div>' +
+      '<div class="cg-chart-card"><h4>Resumen por año</h4><div style="max-height:280px;overflow-y:auto"><table class="cg-table"><thead><tr><th>Año</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">IVA</th><th style="text-align:right">Neto</th></tr></thead><tbody id="cgTablaAniosBody"></tbody></table></div></div>' +
+    '</div>' +
+    '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Por tipo de elemento <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartTipo"></canvas></div></div>' +
       '<div class="cg-chart-card">' +
         '<h4>Clientes</h4>' +
-        '<input id="cgClienteBusqueda" type="text" placeholder="🔍 Buscar cliente..." oninput="cgPintarTablaClientes()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:10px">' +
-        '<div style="max-height:280px;overflow-y:auto"><table class="cg-table"><thead><tr><th>Cliente</th><th>Ejecutiva(s)</th><th style="text-align:right">Facturas</th><th style="text-align:right">Neto</th></tr></thead><tbody id="cgTablaClientesBody"></tbody></table></div>' +
+        '<input id="cgClienteBusqueda" type="text" placeholder="🔍 Buscar cliente o marca..." oninput="cgPintarTablaClientes()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:10px">' +
+        '<div style="max-height:280px;overflow-y:auto"><table class="cg-table"><thead><tr><th>Cliente</th><th>Marca(s)</th><th>Ejecutiva(s)</th><th style="text-align:right">Facturas</th><th style="text-align:right">Neto</th></tr></thead><tbody id="cgTablaClientesBody"></tbody></table></div>' +
       '</div>' +
+    '</div>' +
+    '<div class="cg-chart-card" style="margin-bottom:16px">' +
+      '<h4 id="cgDetalleEjTitulo">Detalle por cliente y ejecutiva</h4>' +
+      '<div style="max-height:360px;overflow:auto"><table class="cg-table"><thead><tr><th>Cliente / Marca</th><th>Ejecutiva</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th><th style="text-align:right">% del grupo</th></tr></thead><tbody id="cgTablaDetalleEjBody"></tbody></table></div>' +
     '</div>';
 
   document.addEventListener('click', function cgCerrarPanelFuera(e) {
