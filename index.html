@@ -311,6 +311,29 @@
   .liberar-btn{margin-top:12px;width:100%;padding:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:sans-serif;}
   .liberar-btn:hover{background:rgba(239,68,68,.2);}
 
+  /* ── Comercial General (facturación completa, solo Jorge) ── */
+  .cg-filters{display:flex;flex-wrap:wrap;gap:14px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;}
+  .cg-filter-group{display:flex;flex-direction:column;gap:4px;}
+  .cg-filter-group label{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700;}
+  .cg-filter-group select,.cg-filter-group input{padding:7px 9px;border-radius:8px;border:1px solid var(--border);font-size:12px;min-width:130px;background:var(--surface2);color:var(--text);color-scheme:dark;font-family:inherit;}
+  .cg-chips-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+  .cg-chip{background:var(--surface2);color:var(--text);padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:8px;border:1px solid var(--border);}
+  .cg-chip button{background:var(--accent);border:none;color:#0a0c10;width:16px;height:16px;border-radius:50%;cursor:pointer;font-size:9px;line-height:1;}
+  .cg-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:16px;}
+  .cg-kpi-card{background:var(--surface);border-radius:10px;padding:16px;border:1px solid var(--border);border-left:3px solid var(--blue);}
+  .cg-kpi-label{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px;}
+  .cg-kpi-value{font-size:20px;font-weight:800;color:var(--text);}
+  .cg-charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+  .cg-chart-card{background:var(--surface);border-radius:10px;padding:16px;border:1px solid var(--border);}
+  .cg-chart-card h4{margin:0 0 10px;font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+  .cg-chart-card h4 small{text-transform:none;font-weight:400;color:var(--muted);}
+  .cg-chart-wrap{position:relative;height:280px;}
+  .cg-table{width:100%;border-collapse:collapse;font-size:12px;}
+  .cg-table th{text-align:left;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--border);}
+  .cg-table td{padding:7px 8px;border-bottom:1px solid var(--border);}
+  .cg-table tr:hover td{background:var(--surface2);}
+  @media (max-width:900px){.cg-kpis{grid-template-columns:repeat(2,1fr);}.cg-charts-grid{grid-template-columns:1fr;}}
+
   .edit-form{background:var(--surface2);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:16px;margin-top:14px;}
   .edit-form h4{font-size:13px;font-weight:600;margin-bottom:14px;color:var(--accent);}
   .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
@@ -434,6 +457,8 @@
           <option value="YESENIA">Yesenia</option>
           <option value="ZULIA">Zulia</option>
           <option value="DIANA">Diana (Solo lectura)</option>
+          <option value="SASKYA YEPEZ">Saskya Yepez</option>
+          <option value="PAMELA LARA">Pamela Lara</option>
         </select>
       </div>
       <div class="login-field">
@@ -477,6 +502,7 @@
   <div class="tab" id="tabDashboard" onclick="switchTab('dashboard')">📊 Dashboard</div>
   <div class="tab" id="tabCotizador" onclick="switchTab('cotizador')">🧮 Cotizador</div>
   <div class="tab" id="tabPipeline" onclick="switchTab('pipeline')">📈 Pipeline</div>
+  <div class="tab" id="tabComercialGeneral" onclick="switchTab('comercialgeneral')">💼 Comercial General</div>
 </div>
 
 <div class="toolbar" id="mainToolbar">
@@ -655,7 +681,7 @@ async function fbUrl(path) {
 //  SISTEMA DE LOGIN
 // ══════════════════════════════════════════════════════════════
 // Nombres para el selector — las contraseñas viven solo en el backend (Code.gs).
-const USUARIOS_NOMBRES = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA','DIANA'];
+const USUARIOS_NOMBRES = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA','DIANA','SASKYA YEPEZ','PAMELA LARA'];
 
 // Usuarios con acceso de solo lectura — pueden ver el inventario completo,
 // pero NO pueden reservar, contratar, editar, liberar ni realizar ninguna
@@ -708,6 +734,17 @@ function aplicarPermisoCotizador() {
   if (!esAdmin && (state.tab === 'cotizador' || state.tab === 'pipeline')) switchTab('inventario');
 }
 
+// Comercial General muestra el detalle de facturación de TODA la
+// empresa (Sheet ZazaCorp_Facturacion_Master) — el dato más sensible
+// del negocio. Por diseño, solo Jorge la ve; el backend además exige
+// estar en CG_USUARIOS_AUTORIZADOS (nunca solo esta pantalla oculta).
+function aplicarPermisoComercialGeneral() {
+  const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const tab = document.getElementById('tabComercialGeneral');
+  if (tab) tab.style.display = esAdmin ? '' : 'none';
+  if (!esAdmin && state.tab === 'comercialgeneral') switchTab('inventario');
+}
+
 function checkLogin() {
   const saved = sessionStorage.getItem('zz_usuario');
   if (saved && USUARIOS_NOMBRES.includes(saved) && !sesionExpirada()) {
@@ -716,6 +753,7 @@ function checkLogin() {
     document.getElementById('userBadgeName').textContent = saved.split(' ')[0];
     aplicarPermisoDashboard();
     aplicarPermisoCotizador();
+    aplicarPermisoComercialGeneral();
     return true;
   }
   if (saved) forzarLogoutPorExpiracion();
@@ -761,6 +799,7 @@ function completarLoginExitoso(user, data) {
   document.getElementById('userBadgeName').textContent = displayName;
   aplicarPermisoDashboard();
   aplicarPermisoCotizador();
+  aplicarPermisoComercialGeneral();
   registrarAccesoSilencioso(user, true, '');
   init(); // Cargar la app después del login
 }
@@ -1678,13 +1717,334 @@ async function renderPipeline(container) {
   qzPintarPipeline();
 }
 
+// ══════════════════════════════════════════════════════════════
+// ── COMERCIAL GENERAL (prefijo cg) · solo Jorge ────────────────
+// Dashboard de facturación completa (Sheet ZazaCorp_Facturacion_Master),
+// portado del prototipo standalone en DASHBOARD COMERCIAL/zazacorp2026
+// (mismos cálculos/filtros que su app.js), adaptado a la arquitectura
+// de pestañas de Nexus y a la paleta CSS ya existente aquí (son las
+// mismas variables --surface/--border/--accent, no hace falta CSS nuevo
+// más allá de las clases .cg-* ya agregadas al <style>).
+// ══════════════════════════════════════════════════════════════
+let cgDataCache = null;
+let cgAllEjecutivas = [];
+let cgCharts = {};
+let cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [] };
+const CG_MONTH_NAMES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const CG_LINE_PALETTE = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4', '#eab308', '#ec4899', '#84cc16', '#f97316'];
+
+function cgFmtMoney(n) { return '$' + Math.round(n || 0).toLocaleString('es-EC'); }
+function cgLineColor(i) { return CG_LINE_PALETTE[i % CG_LINE_PALETTE.length]; }
+
+async function cgCargarDatos() {
+  const res = await fetch(API_URL + '?action=cgGetFacturacion', { cache: 'no-store' });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'Error al cargar facturación');
+  cgDataCache = json.filas || [];
+  cgAllEjecutivas = [...new Set(cgDataCache.map(d => d['Ejecutiva']).filter(Boolean))].sort();
+}
+
+// Filtro base: año/mes/tipo, SIN ejecutiva — así el ranking puede seguir
+// mostrando todas las barras aunque ya haya ejecutivas seleccionadas.
+function cgGetBaseFilteredData() {
+  return (cgDataCache || []).filter(d => {
+    if (cgState.year && String(d['Año']) !== String(cgState.year)) return false;
+    if (cgState.monthFrom && Number(d['Mes']) < Number(cgState.monthFrom)) return false;
+    if (cgState.monthTo && Number(d['Mes']) > Number(cgState.monthTo)) return false;
+    if (cgState.tipo && d['Tipo de Elemento'] !== cgState.tipo) return false;
+    return true;
+  });
+}
+function cgGetFilteredData() {
+  const base = cgGetBaseFilteredData();
+  if (!cgState.ejecutivas.length) return base;
+  const set = new Set(cgState.ejecutivas);
+  return base.filter(d => set.has(d['Ejecutiva']));
+}
+
+function cgPintarKpis() {
+  const data = cgGetFilteredData();
+  let neto = 0, bruto = 0, iva = 0, utilidad = 0;
+  const facturas = new Set();
+  data.forEach(d => {
+    neto += Number(d['Neto (Stotal)']) || 0;
+    bruto += Number(d['Bruto (PBase)']) || 0;
+    iva += Number(d['IVA']) || 0;
+    utilidad += Number(d['Utilidad']) || 0;
+    if (d['Comprobante']) facturas.add(d['Comprobante']);
+  });
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('cgKpiNeto', cgFmtMoney(neto));
+  set('cgKpiBruto', cgFmtMoney(bruto));
+  set('cgKpiIva', cgFmtMoney(iva));
+  set('cgKpiUtilidad', cgFmtMoney(utilidad));
+  set('cgKpiFacturas', facturas.size.toLocaleString('es-EC'));
+}
+
+function cgPintarRanking() {
+  const ctx = document.getElementById('cgChartEjecutivas');
+  if (!ctx || typeof Chart === 'undefined') return;
+  const base = cgGetBaseFilteredData();
+  const totals = {};
+  base.forEach(d => { const k = d['Ejecutiva'] || 'Sin asignar'; totals[k] = (totals[k] || 0) + (Number(d['Neto (Stotal)']) || 0); });
+  const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  const labels = sorted.map(e => e[0]);
+  const values = sorted.map(e => e[1]);
+  if (cgCharts.ejecutivas) cgCharts.ejecutivas.destroy();
+  cgCharts.ejecutivas = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: labels, datasets: [{ label: 'Neto', data: values, backgroundColor: labels.map(l => cgState.ejecutivas.includes(l) ? '#f59e0b' : '#3b82f6') }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => cgFmtMoney(c.parsed.x) } } },
+      scales: { x: { ticks: { callback: v => cgFmtMoney(v) } } },
+      onClick: (evt, elements) => { if (!elements.length) return; cgToggleEjecutiva(labels[elements[0].index]); }
+    }
+  });
+}
+
+function cgPintarTendencia() {
+  const ctx = document.getElementById('cgChartTendencia');
+  if (!ctx || typeof Chart === 'undefined') return;
+  const base = cgGetBaseFilteredData();
+  let datasets, allLabels;
+  if (cgState.ejecutivas.length) {
+    const perEj = {}; const labelSet = new Set();
+    cgState.ejecutivas.forEach(e => perEj[e] = {});
+    base.forEach(d => {
+      const e = d['Ejecutiva'];
+      if (!cgState.ejecutivas.includes(e)) return;
+      const key = d['Año'] + '-' + String(d['Mes']).padStart(2, '0');
+      labelSet.add(key);
+      perEj[e][key] = (perEj[e][key] || 0) + (Number(d['Neto (Stotal)']) || 0);
+    });
+    allLabels = [...labelSet].sort();
+    datasets = cgState.ejecutivas.map((e, i) => ({ label: e, data: allLabels.map(k => perEj[e][k] || 0), borderColor: cgLineColor(i), backgroundColor: cgLineColor(i), tension: 0.25, fill: false }));
+  } else {
+    const totals = {};
+    base.forEach(d => { const key = d['Año'] + '-' + String(d['Mes']).padStart(2, '0'); totals[key] = (totals[key] || 0) + (Number(d['Neto (Stotal)']) || 0); });
+    allLabels = Object.keys(totals).sort();
+    datasets = [{ label: 'Neto mensual', data: allLabels.map(k => totals[k]), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.15)', tension: 0.25, fill: true }];
+  }
+  const displayLabels = allLabels.map(k => { const p = k.split('-'); return CG_MONTH_NAMES[Number(p[1])] + ' ' + p[0]; });
+  if (cgCharts.tendencia) cgCharts.tendencia.destroy();
+  cgCharts.tendencia = new Chart(ctx, {
+    type: 'line',
+    data: { labels: displayLabels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: datasets.length > 1, position: 'bottom' }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + cgFmtMoney(c.parsed.y) } } },
+      scales: { y: { ticks: { callback: v => cgFmtMoney(v) } } }
+    }
+  });
+}
+
+function cgPintarTipoElemento() {
+  const ctx = document.getElementById('cgChartTipo');
+  if (!ctx || typeof Chart === 'undefined') return;
+  const data = cgGetFilteredData();
+  const totals = {};
+  data.forEach(d => { const k = d['Tipo de Elemento'] || 'Otros'; totals[k] = (totals[k] || 0) + (Number(d['Neto (Stotal)']) || 0); });
+  const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const labels = sorted.map(e => e[0]);
+  const values = sorted.map(e => e[1]);
+  if (cgCharts.tipo) cgCharts.tipo.destroy();
+  cgCharts.tipo = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: labels, datasets: [{ label: 'Neto', data: values, backgroundColor: labels.map(l => cgState.tipo === l ? '#f59e0b' : '#10b981') }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => cgFmtMoney(c.parsed.y) } } },
+      scales: { y: { ticks: { callback: v => cgFmtMoney(v) } }, x: { ticks: { autoSkip: false, maxRotation: 40, minRotation: 20, font: { size: 9 } } } },
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const l = labels[elements[0].index];
+        cgState.tipo = cgState.tipo === l ? '' : l;
+        cgSincronizarFiltrosUI();
+        cgRepintarTodo();
+      }
+    }
+  });
+}
+
+function cgPintarTablaClientes() {
+  const tbody = document.getElementById('cgTablaClientesBody');
+  if (!tbody) return;
+  const data = cgGetFilteredData();
+  const porCliente = {};
+  data.forEach(d => {
+    const cli = d['Cliente'] || 'Sin nombre';
+    if (!porCliente[cli]) porCliente[cli] = { neto: 0, ejecutivas: new Set(), facturas: new Set() };
+    porCliente[cli].neto += Number(d['Neto (Stotal)']) || 0;
+    if (d['Ejecutiva']) porCliente[cli].ejecutivas.add(d['Ejecutiva']);
+    if (d['Comprobante']) porCliente[cli].facturas.add(d['Comprobante']);
+  });
+  let rows = Object.entries(porCliente).map(([cliente, v]) => ({ cliente: cliente, neto: v.neto, ejecutivas: [...v.ejecutivas], facturas: v.facturas.size }));
+  const q = (document.getElementById('cgClienteBusqueda')?.value || '').toLowerCase().trim();
+  if (q) rows = rows.filter(r => r.cliente.toLowerCase().includes(q));
+  rows.sort((a, b) => b.neto - a.neto);
+  rows = rows.slice(0, 200);
+  tbody.innerHTML = rows.map(r =>
+    '<tr><td>' + esc(r.cliente) + (r.ejecutivas.length > 1 ? ' <span style="background:rgba(245,158,11,.15);color:var(--accent);font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;margin-left:6px">' + r.ejecutivas.length + ' EJECUTIVAS</span>' : '') + '</td>' +
+    '<td>' + esc(r.ejecutivas.join(', ')) + '</td>' +
+    '<td style="text-align:right">' + r.facturas + '</td>' +
+    '<td style="text-align:right;font-weight:700;color:var(--accent)">' + cgFmtMoney(r.neto) + '</td></tr>'
+  ).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">Sin resultados</td></tr>';
+}
+
+function cgToggleEjecutiva(name) {
+  const idx = cgState.ejecutivas.indexOf(name);
+  if (idx === -1) cgState.ejecutivas.push(name); else cgState.ejecutivas.splice(idx, 1);
+  cgSincronizarFiltrosUI();
+  cgRepintarTodo();
+}
+
+function cgRenderEjecutivaOptions(filterText) {
+  const cont = document.getElementById('cgEjecutivaOptions');
+  if (!cont) return;
+  const q = (filterText || '').trim().toLowerCase();
+  const list = cgAllEjecutivas.filter(e => e.toLowerCase().includes(q));
+  cont.innerHTML = list.map(e => {
+    const checked = cgState.ejecutivas.includes(e) ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;font-size:12px;cursor:pointer"><input type="checkbox" ' + checked + ' onchange="cgToggleEjecutiva(\'' + e.replace(/'/g, "\\'") + '\')"> ' + esc(e) + '</label>';
+  }).join('') || '<p style="font-size:12px;color:var(--muted);margin:4px 0">Sin resultados</p>';
+}
+
+function cgSincronizarFiltrosUI() {
+  const label = document.getElementById('cgEjecutivaToggleLabel');
+  if (label) label.textContent = cgState.ejecutivas.length ? (cgState.ejecutivas.length + ' seleccionada' + (cgState.ejecutivas.length > 1 ? 's' : '')) : 'Todas';
+  cgRenderEjecutivaOptions(document.getElementById('cgEjecutivaSearch')?.value || '');
+  const chipsRow = document.getElementById('cgChipsRow');
+  if (chipsRow) {
+    chipsRow.innerHTML = cgState.ejecutivas.map(e =>
+      '<span class="cg-chip">' + esc(e) + '<button type="button" onclick="cgToggleEjecutiva(\'' + e.replace(/'/g, "\\'") + '\')">✕</button></span>'
+    ).join('');
+  }
+}
+
+function cgRepintarTodo() {
+  cgPintarKpis();
+  cgPintarRanking();
+  cgPintarTendencia();
+  cgPintarTipoElemento();
+  cgPintarTablaClientes();
+}
+
+function cgCambiarFiltro(campo, valor) {
+  cgState[campo] = valor;
+  cgRepintarTodo();
+}
+
+function cgLimpiarFiltros() {
+  cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [] };
+  ['cgFilterYear', 'cgFilterMonthFrom', 'cgFilterMonthTo', 'cgFilterTipo'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  cgSincronizarFiltrosUI();
+  cgRepintarTodo();
+}
+
+function cgExportarCsv() {
+  const data = cgGetFilteredData();
+  if (!data.length) { showToast('No hay datos para exportar', 'info'); return; }
+  const headers = Object.keys(data[0]);
+  const rows = [headers.join(',')];
+  data.forEach(d => {
+    rows.push(headers.map(h => {
+      const val = d[h] === null || d[h] === undefined ? '' : String(d[h]);
+      return '"' + val.replace(/"/g, '""') + '"';
+    }).join(','));
+  });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'zazacorp_comercial_' + Date.now() + '.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function renderComercialGeneral(container) {
+  container.innerHTML = '<div id="cgBoard"><div class="empty"><div class="spinner"></div><p>Cargando facturación...</p></div></div>';
+  if (typeof Chart === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
+      s.onload = resolve;
+      s.onerror = () => {
+        const s2 = document.createElement('script');
+        s2.src = 'https://unpkg.com/chart.js@4.4.4/dist/chart.umd.min.js';
+        s2.onload = resolve; s2.onerror = reject;
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s);
+    });
+  }
+  try {
+    if (!cgDataCache) await cgCargarDatos();
+  } catch (e) {
+    document.getElementById('cgBoard').innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>No se pudo cargar la facturación</p><p style="color:var(--muted);font-size:12px">' + esc(e.message) + '</p></div>';
+    return;
+  }
+
+  const years = [...new Set(cgDataCache.map(d => d['Año']))].filter(Boolean).sort();
+  const tipos = [...new Set(cgDataCache.map(d => d['Tipo de Elemento']))].filter(Boolean).sort();
+  const monthOpts = ['<option value="">Todos</option>'];
+  for (let m = 1; m <= 12; m++) monthOpts.push('<option value="' + m + '">' + CG_MONTH_NAMES[m] + '</option>');
+
+  const board = document.getElementById('cgBoard');
+  board.innerHTML =
+    '<div class="cg-filters">' +
+      '<div class="cg-filter-group"><label>Año</label><select id="cgFilterYear" onchange="cgCambiarFiltro(\'year\',this.value)"><option value="">Todos</option>' + years.map(y => '<option value="' + y + '">' + y + '</option>').join('') + '</select></div>' +
+      '<div class="cg-filter-group"><label>Mes desde</label><select id="cgFilterMonthFrom" onchange="cgCambiarFiltro(\'monthFrom\',this.value)">' + monthOpts.join('') + '</select></div>' +
+      '<div class="cg-filter-group"><label>Mes hasta</label><select id="cgFilterMonthTo" onchange="cgCambiarFiltro(\'monthTo\',this.value)">' + monthOpts.join('') + '</select></div>' +
+      '<div class="cg-filter-group"><label>Tipo de elemento</label><select id="cgFilterTipo" onchange="cgCambiarFiltro(\'tipo\',this.value)"><option value="">Todos</option>' + tipos.map(t => '<option value="' + esc(t) + '">' + esc(t) + '</option>').join('') + '</select></div>' +
+      '<div class="cg-filter-group" style="position:relative">' +
+        '<label>Ejecutiva(s)</label>' +
+        '<div onclick="document.getElementById(\'cgEjecutivaPanel\').style.display = document.getElementById(\'cgEjecutivaPanel\').style.display===\'block\'?\'none\':\'block\'" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;min-width:130px;justify-content:space-between;font-size:12px"><span id="cgEjecutivaToggleLabel">Todas</span><span style="color:var(--muted)">▾</span></div>' +
+        '<div id="cgEjecutivaPanel" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:240px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:10px">' +
+          '<input id="cgEjecutivaSearch" type="text" placeholder="Buscar ejecutiva..." oninput="cgRenderEjecutivaOptions(this.value)" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:8px">' +
+          '<div id="cgEjecutivaOptions" style="max-height:200px;overflow-y:auto"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="cg-filter-group" style="margin-left:auto;flex-direction:row;gap:8px">' +
+        '<button onclick="cgLimpiarFiltros()" style="background:transparent;border:1px dashed var(--border);color:var(--muted);border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer">Limpiar filtros</button>' +
+        '<button onclick="cgExportarCsv()" style="background:rgba(74,222,128,.08);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">⬇ Exportar CSV</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="cg-chips-row" id="cgChipsRow"></div>' +
+    '<div class="cg-kpis">' +
+      '<div class="cg-kpi-card"><span class="cg-kpi-label">Neto Total</span><span class="cg-kpi-value" id="cgKpiNeto">—</span></div>' +
+      '<div class="cg-kpi-card" style="border-left-color:var(--accent)"><span class="cg-kpi-label">Bruto Total</span><span class="cg-kpi-value" id="cgKpiBruto">—</span></div>' +
+      '<div class="cg-kpi-card" style="border-left-color:var(--accent)"><span class="cg-kpi-label">IVA</span><span class="cg-kpi-value" id="cgKpiIva">—</span></div>' +
+      '<div class="cg-kpi-card" style="border-left-color:var(--green)"><span class="cg-kpi-label">Utilidad</span><span class="cg-kpi-value" id="cgKpiUtilidad">—</span></div>' +
+      '<div class="cg-kpi-card"><span class="cg-kpi-label"># Facturas</span><span class="cg-kpi-value" id="cgKpiFacturas">—</span></div>' +
+    '</div>' +
+    '<div class="cg-charts-grid">' +
+      '<div class="cg-chart-card"><h4>Ranking de ejecutivas <small>(clic en una barra para comparar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartEjecutivas"></canvas></div></div>' +
+      '<div class="cg-chart-card"><h4>Tendencia mensual del Neto</h4><div class="cg-chart-wrap"><canvas id="cgChartTendencia"></canvas></div></div>' +
+    '</div>' +
+    '<div class="cg-charts-grid">' +
+      '<div class="cg-chart-card"><h4>Por tipo de elemento <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartTipo"></canvas></div></div>' +
+      '<div class="cg-chart-card">' +
+        '<h4>Clientes</h4>' +
+        '<input id="cgClienteBusqueda" type="text" placeholder="🔍 Buscar cliente..." oninput="cgPintarTablaClientes()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:10px">' +
+        '<div style="max-height:280px;overflow-y:auto"><table class="cg-table"><thead><tr><th>Cliente</th><th>Ejecutiva(s)</th><th style="text-align:right">Facturas</th><th style="text-align:right">Neto</th></tr></thead><tbody id="cgTablaClientesBody"></tbody></table></div>' +
+      '</div>' +
+    '</div>';
+
+  document.addEventListener('click', function cgCerrarPanelFuera(e) {
+    const panel = document.getElementById('cgEjecutivaPanel');
+    if (panel && !e.target.closest('.cg-filter-group')) panel.style.display = 'none';
+  });
+
+  cgSincronizarFiltrosUI();
+  cgRepintarTodo();
+}
+
 function switchTab(t) {
   state.tab = t; state.page = 1;
   document.querySelectorAll('.tab').forEach((el,i) =>
-    el.classList.toggle('active', ['inventario','disponibles','reservadas','alertas','led','mapa','dashboard','cotizador','pipeline'][i] === t));
+    el.classList.toggle('active', ['inventario','disponibles','reservadas','alertas','led','mapa','dashboard','cotizador','pipeline','comercialgeneral'][i] === t));
   const mainToolbar = document.getElementById('mainToolbar');
-  if (mainToolbar) mainToolbar.style.display = (t === 'cotizador' || t === 'pipeline') ? 'none' : '';
-  if (t === 'cotizador' || t === 'pipeline') { render(); return; }
+  if (mainToolbar) mainToolbar.style.display = (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral') ? 'none' : '';
+  if (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral') { render(); return; }
   document.getElementById('viewToggle').style.display = (t === 'alertas' || t === 'mapa' || t === 'led') ? 'none' : '';
   const mfEj = document.getElementById('mf-ejecutiva');
   if (mfEj) mfEj.style.display = (t === 'led') ? 'none' : '';
@@ -1795,6 +2155,10 @@ function render() {
   if (state.tab === 'pipeline') {
     // Mismo motivo que Cotizador: no reconstruir en cada render() de fondo.
     if (!document.getElementById('qzPipelineBoard')) renderPipeline(content);
+    return;
+  }
+  if (state.tab === 'comercialgeneral') {
+    if (!document.getElementById('cgBoard')) renderComercialGeneral(content);
     return;
   }
 
