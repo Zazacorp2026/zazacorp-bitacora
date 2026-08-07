@@ -1762,36 +1762,83 @@ const CG_LABEL_BOX_PLUGIN = {
     if (!xScale || !chart.chartArea) return;
     const ctx = chart.ctx;
     const labels = chart.data.labels || [];
+
+    function roundedRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    function wrapLabel(text, maxWidth, maxLines) {
+      const words = String(text || '').split(/\s+/).filter(Boolean);
+      const lines = [];
+      let line = '';
+      words.forEach(word => {
+        const test = line ? line + ' ' + word : word;
+        if (ctx.measureText(test).width <= maxWidth) {
+          line = test;
+        } else {
+          if (line) lines.push(line);
+          if (ctx.measureText(word).width <= maxWidth) {
+            line = word;
+          } else {
+            let cut = word;
+            while (cut.length > 3 && ctx.measureText(cut + '…').width > maxWidth) cut = cut.slice(0, -1);
+            lines.push(cut + '…');
+            line = '';
+          }
+        }
+      });
+      if (line) lines.push(line);
+      if (lines.length > maxLines) {
+        const kept = lines.slice(0, maxLines);
+        let last = kept[maxLines - 1];
+        while (last.length > 3 && ctx.measureText(last + '…').width > maxWidth) last = last.slice(0, -1);
+        kept[maxLines - 1] = last + '…';
+        return kept;
+      }
+      return lines.length ? lines : [''];
+    }
+
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '700 10px Space Grotesk, sans-serif';
+    ctx.font = '800 10px Space Grotesk, sans-serif';
+
+    const area = chart.chartArea;
+    const tickGap = labels.length > 1
+      ? Math.abs(xScale.getPixelForTick(1) - xScale.getPixelForTick(0))
+      : Math.max(90, area.right - area.left);
+    const boxWidth = Math.max(74, Math.min(126, tickGap - 8));
+    const boxTop = area.bottom + 28;
+    const lineHeight = 12;
+
     labels.forEach((label, i) => {
       const x = xScale.getPixelForTick(i);
-      const y = chart.chartArea.bottom + 34;
-      const raw = String(label || '');
-      const txt = raw.length > 22 ? raw.slice(0, 21) + '…' : raw;
-      const w = Math.min(108, Math.max(54, ctx.measureText(txt).width + 18));
-      const h = 22;
-      const r = 8;
-      const left = x - w / 2;
+      const lines = wrapLabel(label, boxWidth - 14, 3);
+      const h = Math.max(30, 12 + lines.length * lineHeight);
+      const left = Math.max(area.left, Math.min(x - boxWidth / 2, area.right - boxWidth));
+      const top = boxTop;
+
       ctx.fillStyle = opts.fillStyle || '#f59e0b';
-      ctx.strokeStyle = opts.strokeStyle || 'rgba(255,255,255,.12)';
+      ctx.strokeStyle = opts.strokeStyle || 'rgba(255,255,255,.14)';
       ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(left + r, y - h / 2);
-      ctx.lineTo(left + w - r, y - h / 2);
-      ctx.quadraticCurveTo(left + w, y - h / 2, left + w, y - h / 2 + r);
-      ctx.lineTo(left + w, y + h / 2 - r);
-      ctx.quadraticCurveTo(left + w, y + h / 2, left + w - r, y + h / 2);
-      ctx.lineTo(left + r, y + h / 2);
-      ctx.quadraticCurveTo(left, y + h / 2, left, y + h / 2 - r);
-      ctx.lineTo(left, y - h / 2 + r);
-      ctx.quadraticCurveTo(left, y - h / 2, left + r, y - h / 2);
-      ctx.closePath();
-      ctx.fill(); ctx.stroke();
+      roundedRect(ctx, left, top, boxWidth, h, 8);
+      ctx.fill();
+      ctx.stroke();
+
       ctx.fillStyle = '#0a0c10';
-      ctx.fillText(txt, x, y);
+      const textX = left + boxWidth / 2;
+      const startY = top + h / 2 - ((lines.length - 1) * lineHeight) / 2;
+      lines.forEach((line, idx) => ctx.fillText(line, textX, startY + idx * lineHeight));
     });
     ctx.restore();
   }
@@ -2018,7 +2065,7 @@ function cgPintarTipoElemento() {
     data: { labels: labels, datasets: [{ label: 'Neto', data: values, backgroundColor: labels.map(l => cgState.tipo === l ? '#f59e0b' : '#10b981') }] },
     plugins: [CG_LABEL_BOX_PLUGIN],
     options: {
-      responsive: true, maintainAspectRatio: false, layout: { padding: { bottom: 56 } },
+      responsive: true, maintainAspectRatio: false, layout: { padding: { bottom: 96 } },
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => cgFmtMoney(c.parsed.y) } }, cgLabelBoxes: { enabled: true } },
       scales: { y: { ticks: { callback: v => cgFmtMoney(v) } }, x: { ticks: { display: false } } },
       onClick: (evt, elements) => {
@@ -2305,7 +2352,7 @@ async function renderComercialGeneral(container) {
       '<div class="cg-chart-card"><h4>Resumen por año</h4><div style="max-height:280px;overflow-y:auto"><table class="cg-table"><thead><tr><th>Año</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">IVA</th><th style="text-align:right">Neto</th></tr></thead><tbody id="cgTablaAniosBody"></tbody></table></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
-      '<div class="cg-chart-card"><h4>Por tipo de elemento <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartTipo"></canvas></div></div>' +
+      '<div class="cg-chart-card"><h4>Por tipo de elemento <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap" style="height:330px"><canvas id="cgChartTipo"></canvas></div></div>' +
       '<div class="cg-chart-card">' +
         '<h4>Clientes</h4>' +
         '<input id="cgClienteBusqueda" type="text" placeholder="🔍 Buscar cliente o marca..." oninput="cgPintarTablaClientes()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:10px">' +
