@@ -316,6 +316,17 @@
   .cg-filter-group{display:flex;flex-direction:column;gap:4px;}
   .cg-filter-group>label{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700;}
   .cg-filter-group>select,.cg-filter-group>input{padding:7px 9px;border-radius:8px;border:1px solid var(--border);font-size:12px;min-width:130px;background:var(--surface2);color:var(--text);color-scheme:dark;font-family:inherit;}
+  .cg-multi-select{position:relative;min-width:190px;}
+  .cg-multi-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:7px 9px;border-radius:8px;border:1px solid var(--border);font-size:12px;background:var(--surface2);color:var(--text);font-family:inherit;cursor:pointer;}
+  .cg-multi-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .cg-multi-panel{display:none;position:absolute;top:calc(100% + 5px);left:0;z-index:9999;width:280px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.55);padding:8px;}
+  .cg-multi-panel.open{display:block;}
+  .cg-multi-panel input.cg-multi-search{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:7px;font-family:inherit;}
+  .cg-multi-list{max-height:230px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
+  .cg-multi-item{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:7px;font-size:12px;cursor:pointer;color:var(--text);}
+  .cg-multi-item:hover{background:var(--surface2);}
+  .cg-multi-item input{accent-color:var(--accent);}
+  .cg-multi-empty{font-size:12px;color:var(--muted);padding:10px;text-align:center;}
   .cg-ejecutiva-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:260px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:10px;}
   .cg-ejecutiva-panel input[type="text"]{width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:8px;}
   .cg-ejecutiva-panel label{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;font-size:12px;font-weight:400;text-transform:none;color:var(--text);cursor:pointer;white-space:nowrap;}
@@ -1736,12 +1747,55 @@ let cgAllEjecutivas = [];
 let cgAllClientes = [];
 let cgAllMarcas = [];
 let cgCharts = {};
-let cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [], cliente: '', marca: '', groupBy: 'Cliente' };
+let cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [], clientes: [], marcas: [], groupBy: 'Cliente' };
 const CG_MONTH_NAMES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const CG_LINE_PALETTE = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4', '#eab308', '#ec4899', '#84cc16', '#f97316'];
 
 function cgFmtMoney(n) { return '$' + Math.round(n || 0).toLocaleString('es-EC'); }
 function cgLineColor(i) { return CG_LINE_PALETTE[i % CG_LINE_PALETTE.length]; }
+
+const CG_LABEL_BOX_PLUGIN = {
+  id: 'cgLabelBoxes',
+  afterDraw(chart, args, opts) {
+    if (!opts || !opts.enabled) return;
+    const xScale = chart.scales.x;
+    if (!xScale || !chart.chartArea) return;
+    const ctx = chart.ctx;
+    const labels = chart.data.labels || [];
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '700 10px Space Grotesk, sans-serif';
+    labels.forEach((label, i) => {
+      const x = xScale.getPixelForTick(i);
+      const y = chart.chartArea.bottom + 34;
+      const raw = String(label || '');
+      const txt = raw.length > 22 ? raw.slice(0, 21) + '…' : raw;
+      const w = Math.min(108, Math.max(54, ctx.measureText(txt).width + 18));
+      const h = 22;
+      const r = 8;
+      const left = x - w / 2;
+      ctx.fillStyle = opts.fillStyle || '#f59e0b';
+      ctx.strokeStyle = opts.strokeStyle || 'rgba(255,255,255,.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(left + r, y - h / 2);
+      ctx.lineTo(left + w - r, y - h / 2);
+      ctx.quadraticCurveTo(left + w, y - h / 2, left + w, y - h / 2 + r);
+      ctx.lineTo(left + w, y + h / 2 - r);
+      ctx.quadraticCurveTo(left + w, y + h / 2, left + w - r, y + h / 2);
+      ctx.lineTo(left + r, y + h / 2);
+      ctx.quadraticCurveTo(left, y + h / 2, left, y + h / 2 - r);
+      ctx.lineTo(left, y - h / 2 + r);
+      ctx.quadraticCurveTo(left, y - h / 2, left + r, y - h / 2);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#0a0c10';
+      ctx.fillText(txt, x, y);
+    });
+    ctx.restore();
+  }
+};
 
 async function cgCargarDatos(forzar) {
   const url = API_URL + '?action=cgGetFacturacion' + (forzar ? '&forzar=1' : '');
@@ -1771,9 +1825,13 @@ async function cgActualizarDatos() {
   }
 }
 
-// Filtro base: año/mes/tipo, SIN ejecutiva — así el ranking puede seguir
-// mostrando todas las barras aunque ya haya ejecutivas seleccionadas.
-function cgMatchTexto(valor, filtro) {
+function cgJsStr(v) { return String(v || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' '); }
+function cgNormal(v) { return String(v || '').trim(); }
+function cgEnSeleccion(valor, lista) {
+  if (!lista || !lista.length) return true;
+  return new Set(lista.map(cgNormal)).has(cgNormal(valor));
+}
+function cgFiltroTextoLista(valor, filtro) {
   const q = String(filtro || '').trim().toLowerCase();
   if (!q) return true;
   return String(valor || '').toLowerCase().includes(q);
@@ -1787,8 +1845,8 @@ function cgGetBaseFilteredData() {
     if (cgState.monthFrom && Number(d['Mes']) < Number(cgState.monthFrom)) return false;
     if (cgState.monthTo && Number(d['Mes']) > Number(cgState.monthTo)) return false;
     if (cgState.tipo && d['Tipo de Elemento'] !== cgState.tipo) return false;
-    if (!cgMatchTexto(d['Cliente'], cgState.cliente)) return false;
-    if (!cgMatchTexto(d['Marca'], cgState.marca)) return false;
+    if (!cgEnSeleccion(d['Cliente'], cgState.clientes)) return false;
+    if (!cgEnSeleccion(d['Marca'], cgState.marcas)) return false;
     return true;
   });
 }
@@ -1806,8 +1864,8 @@ function cgGetDataParaCompararAnios() {
     if (cgState.monthFrom && Number(d['Mes']) < Number(cgState.monthFrom)) return false;
     if (cgState.monthTo && Number(d['Mes']) > Number(cgState.monthTo)) return false;
     if (cgState.tipo && d['Tipo de Elemento'] !== cgState.tipo) return false;
-    if (!cgMatchTexto(d['Cliente'], cgState.cliente)) return false;
-    if (!cgMatchTexto(d['Marca'], cgState.marca)) return false;
+    if (!cgEnSeleccion(d['Cliente'], cgState.clientes)) return false;
+    if (!cgEnSeleccion(d['Marca'], cgState.marcas)) return false;
     if (setEj.size && !setEj.has(d['Ejecutiva'])) return false;
     return true;
   });
@@ -1958,10 +2016,11 @@ function cgPintarTipoElemento() {
   cgCharts.tipo = new Chart(ctx, {
     type: 'bar',
     data: { labels: labels, datasets: [{ label: 'Neto', data: values, backgroundColor: labels.map(l => cgState.tipo === l ? '#f59e0b' : '#10b981') }] },
+    plugins: [CG_LABEL_BOX_PLUGIN],
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => cgFmtMoney(c.parsed.y) } } },
-      scales: { y: { ticks: { callback: v => cgFmtMoney(v) } }, x: { ticks: { autoSkip: false, maxRotation: 40, minRotation: 20, font: { size: 9 } } } },
+      responsive: true, maintainAspectRatio: false, layout: { padding: { bottom: 56 } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => cgFmtMoney(c.parsed.y) } }, cgLabelBoxes: { enabled: true } },
+      scales: { y: { ticks: { callback: v => cgFmtMoney(v) } }, x: { ticks: { display: false } } },
       onClick: (evt, elements) => {
         if (!elements.length) return;
         const l = labels[elements[0].index];
@@ -2045,20 +2104,87 @@ function cgRenderEjecutivaOptions(filterText) {
   const list = cgAllEjecutivas.filter(e => e.toLowerCase().includes(q));
   cont.innerHTML = list.map(e => {
     const checked = cgState.ejecutivas.includes(e) ? 'checked' : '';
-    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;font-size:12px;cursor:pointer"><input type="checkbox" ' + checked + ' onchange="cgToggleEjecutiva(\'' + e.replace(/'/g, "\\'") + '\')"> ' + esc(e) + '</label>';
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;font-size:12px;cursor:pointer"><input type="checkbox" ' + checked + ' onchange="cgToggleEjecutiva(\'' + cgJsStr(e) + '\')"> ' + esc(e) + '</label>';
   }).join('') || '<p style="font-size:12px;color:var(--muted);margin:4px 0">Sin resultados</p>';
+}
+
+function cgOpcionesClientes() {
+  let data = cgDataCache || [];
+  if (cgState.year) data = data.filter(d => String(d['Año']) === String(cgState.year));
+  if (cgState.monthFrom) data = data.filter(d => Number(d['Mes']) >= Number(cgState.monthFrom));
+  if (cgState.monthTo) data = data.filter(d => Number(d['Mes']) <= Number(cgState.monthTo));
+  if (cgState.tipo) data = data.filter(d => d['Tipo de Elemento'] === cgState.tipo);
+  if (cgState.marcas.length) data = data.filter(d => cgEnSeleccion(d['Marca'], cgState.marcas));
+  if (cgState.ejecutivas.length) data = data.filter(d => new Set(cgState.ejecutivas).has(d['Ejecutiva']));
+  return [...new Set(data.map(d => d['Cliente']).filter(Boolean))].sort();
+}
+
+function cgOpcionesMarcas() {
+  let data = cgDataCache || [];
+  if (cgState.year) data = data.filter(d => String(d['Año']) === String(cgState.year));
+  if (cgState.monthFrom) data = data.filter(d => Number(d['Mes']) >= Number(cgState.monthFrom));
+  if (cgState.monthTo) data = data.filter(d => Number(d['Mes']) <= Number(cgState.monthTo));
+  if (cgState.tipo) data = data.filter(d => d['Tipo de Elemento'] === cgState.tipo);
+  if (cgState.clientes.length) data = data.filter(d => cgEnSeleccion(d['Cliente'], cgState.clientes));
+  if (cgState.ejecutivas.length) data = data.filter(d => new Set(cgState.ejecutivas).has(d['Ejecutiva']));
+  return [...new Set(data.map(d => d['Marca']).filter(Boolean))].sort();
+}
+
+function cgRenderMultiOptions(tipo, filterText) {
+  const cont = document.getElementById(tipo === 'clientes' ? 'cgClienteOptions' : 'cgMarcaOptions');
+  if (!cont) return;
+  const q = (filterText || '').trim().toLowerCase();
+  const opciones = (tipo === 'clientes' ? cgOpcionesClientes() : cgOpcionesMarcas()).filter(v => String(v).toLowerCase().includes(q));
+  const seleccion = tipo === 'clientes' ? cgState.clientes : cgState.marcas;
+  cont.innerHTML = opciones.slice(0, 500).map(v => {
+    const checked = seleccion.includes(v) ? 'checked' : '';
+    return '<label class="cg-multi-item"><input type="checkbox" ' + checked + ' onchange="cgToggleSeleccion(\'' + tipo + '\',\'' + cgJsStr(v) + '\')"><span>' + esc(v) + '</span></label>';
+  }).join('') || '<div class="cg-multi-empty">Sin opciones para los filtros actuales</div>';
+}
+
+function cgToggleSeleccion(tipo, valor) {
+  const arr = tipo === 'clientes' ? cgState.clientes : cgState.marcas;
+  const idx = arr.indexOf(valor);
+  if (idx === -1) arr.push(valor); else arr.splice(idx, 1);
+  if (tipo === 'clientes' && cgState.marcas.length) {
+    const disponibles = new Set(cgOpcionesMarcas());
+    cgState.marcas = cgState.marcas.filter(m => disponibles.has(m));
+  }
+  cgSincronizarFiltrosUI();
+  cgRepintarTodo();
+}
+
+function cgLimpiarSeleccion(tipo) {
+  if (tipo === 'clientes') cgState.clientes = [];
+  if (tipo === 'marcas') cgState.marcas = [];
+  cgSincronizarFiltrosUI();
+  cgRepintarTodo();
+}
+
+function cgToggleMultiPanel(id) {
+  const panel = document.getElementById(id);
+  if (!panel) return;
+  const isOpen = panel.classList.contains('open');
+  document.querySelectorAll('.cg-multi-panel').forEach(p => p.classList.remove('open'));
+  if (!isOpen) panel.classList.add('open');
 }
 
 function cgSincronizarFiltrosUI() {
   const label = document.getElementById('cgEjecutivaToggleLabel');
   if (label) label.textContent = cgState.ejecutivas.length ? (cgState.ejecutivas.length + ' seleccionada' + (cgState.ejecutivas.length > 1 ? 's' : '')) : 'Todas';
+  const cliLabel = document.getElementById('cgClienteToggleLabel');
+  if (cliLabel) cliLabel.textContent = cgState.clientes.length ? (cgState.clientes.length + ' seleccionado' + (cgState.clientes.length > 1 ? 's' : '')) : 'Todos';
+  const marLabel = document.getElementById('cgMarcaToggleLabel');
+  if (marLabel) marLabel.textContent = cgState.marcas.length ? (cgState.marcas.length + ' seleccionada' + (cgState.marcas.length > 1 ? 's' : '')) : 'Todas';
   cgRenderEjecutivaOptions(document.getElementById('cgEjecutivaSearch')?.value || '');
+  cgRenderMultiOptions('clientes', document.getElementById('cgClienteSearch')?.value || '');
+  cgRenderMultiOptions('marcas', document.getElementById('cgMarcaSearch')?.value || '');
   const chipsRow = document.getElementById('cgChipsRow');
   if (chipsRow) {
     const chips = [];
-    cgState.ejecutivas.forEach(e => chips.push('<span class="cg-chip">' + esc(e) + '<button type="button" onclick="cgToggleEjecutiva(\'' + e.replace(/'/g, "\\'") + '\')">✕</button></span>'));
-    if (cgState.cliente) chips.push('<span class="cg-chip">Cliente: ' + esc(cgState.cliente) + '<button type="button" onclick="cgCambiarFiltro(\'cliente\',\'\')">✕</button></span>');
-    if (cgState.marca) chips.push('<span class="cg-chip">Marca: ' + esc(cgState.marca) + '<button type="button" onclick="cgCambiarFiltro(\'marca\',\'\')">✕</button></span>');
+    cgState.ejecutivas.forEach(e => chips.push('<span class="cg-chip">' + esc(e) + '<button type="button" onclick="cgToggleEjecutiva(\'' + cgJsStr(e) + '\')">✕</button></span>'));
+    cgState.clientes.forEach(c => chips.push('<span class="cg-chip">Cliente: ' + esc(c) + '<button type="button" onclick="cgToggleSeleccion(\'clientes\',\'' + cgJsStr(c) + '\')">✕</button></span>'));
+    cgState.marcas.forEach(m => chips.push('<span class="cg-chip">Marca: ' + esc(m) + '<button type="button" onclick="cgToggleSeleccion(\'marcas\',\'' + cgJsStr(m) + '\')">✕</button></span>'));
     chipsRow.innerHTML = chips.join('');
   }
 }
@@ -2075,16 +2201,20 @@ function cgRepintarTodo() {
 
 function cgCambiarFiltro(campo, valor) {
   cgState[campo] = valor;
-  if (campo === 'cliente') { const el = document.getElementById('cgFilterCliente'); if (el && el.value !== valor) el.value = valor; }
-  if (campo === 'marca') { const el = document.getElementById('cgFilterMarca'); if (el && el.value !== valor) el.value = valor; }
+  if (['year','monthFrom','monthTo','tipo'].includes(campo) && cgState.marcas.length) {
+    const disponibles = new Set(cgOpcionesMarcas());
+    cgState.marcas = cgState.marcas.filter(m => disponibles.has(m));
+  }
   cgSincronizarFiltrosUI();
   cgRepintarTodo();
 }
 
 function cgLimpiarFiltros() {
-  cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [], cliente: '', marca: '', groupBy: 'Cliente' };
-  ['cgFilterYear', 'cgFilterMonthFrom', 'cgFilterMonthTo', 'cgFilterTipo', 'cgFilterCliente', 'cgFilterMarca'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [], clientes: [], marcas: [], groupBy: 'Cliente' };
+  ['cgFilterYear', 'cgFilterMonthFrom', 'cgFilterMonthTo', 'cgFilterTipo'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const gb = document.getElementById('cgGroupBy'); if (gb) gb.value = 'Cliente';
+  const cs = document.getElementById('cgClienteSearch'); if (cs) cs.value = '';
+  const ms = document.getElementById('cgMarcaSearch'); if (ms) ms.value = '';
   cgSincronizarFiltrosUI();
   cgRepintarTodo();
 }
@@ -2132,8 +2262,6 @@ async function renderComercialGeneral(container) {
 
   const years = [...new Set(cgDataCache.map(d => d['Año']))].filter(Boolean).sort();
   const tipos = [...new Set(cgDataCache.map(d => d['Tipo de Elemento']))].filter(Boolean).sort();
-  const clienteOpts = cgAllClientes.slice(0, 1200).map(c => '<option value="' + esc(c) + '"></option>').join('');
-  const marcaOpts = cgAllMarcas.slice(0, 1200).map(m => '<option value="' + esc(m) + '"></option>').join('');
   const monthOpts = ['<option value="">Todos</option>'];
   for (let m = 1; m <= 12; m++) monthOpts.push('<option value="' + m + '">' + CG_MONTH_NAMES[m] + '</option>');
 
@@ -2144,8 +2272,8 @@ async function renderComercialGeneral(container) {
       '<div class="cg-filter-group"><label>Mes desde</label><select id="cgFilterMonthFrom" onchange="cgCambiarFiltro(\'monthFrom\',this.value)">' + monthOpts.join('') + '</select></div>' +
       '<div class="cg-filter-group"><label>Mes hasta</label><select id="cgFilterMonthTo" onchange="cgCambiarFiltro(\'monthTo\',this.value)">' + monthOpts.join('') + '</select></div>' +
       '<div class="cg-filter-group"><label>Tipo de elemento</label><select id="cgFilterTipo" onchange="cgCambiarFiltro(\'tipo\',this.value)"><option value="">Todos</option>' + tipos.map(t => '<option value="' + esc(t) + '">' + esc(t) + '</option>').join('') + '</select></div>' +
-      '<div class="cg-filter-group"><label>Cliente</label><input id="cgFilterCliente" list="cgClientesList" placeholder="Todos" oninput="cgCambiarFiltro(\'cliente\',this.value)"><datalist id="cgClientesList">' + clienteOpts + '</datalist></div>' +
-      '<div class="cg-filter-group"><label>Marca</label><input id="cgFilterMarca" list="cgMarcasList" placeholder="Todas" oninput="cgCambiarFiltro(\'marca\',this.value)"><datalist id="cgMarcasList">' + marcaOpts + '</datalist></div>' +
+      '<div class="cg-filter-group"><label>Cliente</label><div class="cg-multi-select"><button type="button" class="cg-multi-btn" onclick="cgToggleMultiPanel(\'cgClientePanel\')"><span id="cgClienteToggleLabel">Todos</span><span style="color:var(--muted)">▾</span></button><div id="cgClientePanel" class="cg-multi-panel"><input id="cgClienteSearch" class="cg-multi-search" type="text" placeholder="Buscar cliente..." oninput="cgRenderMultiOptions(\'clientes\',this.value)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><button type="button" onclick="cgLimpiarSeleccion(\'clientes\')" style="background:transparent;border:0;color:var(--muted);font-size:11px;cursor:pointer">Limpiar clientes</button><span style="font-size:10px;color:var(--muted)">multiselección</span></div><div id="cgClienteOptions" class="cg-multi-list"></div></div></div></div>' +
+      '<div class="cg-filter-group"><label>Marca</label><div class="cg-multi-select"><button type="button" class="cg-multi-btn" onclick="cgToggleMultiPanel(\'cgMarcaPanel\')"><span id="cgMarcaToggleLabel">Todas</span><span style="color:var(--muted)">▾</span></button><div id="cgMarcaPanel" class="cg-multi-panel"><input id="cgMarcaSearch" class="cg-multi-search" type="text" placeholder="Buscar marca..." oninput="cgRenderMultiOptions(\'marcas\',this.value)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><button type="button" onclick="cgLimpiarSeleccion(\'marcas\')" style="background:transparent;border:0;color:var(--muted);font-size:11px;cursor:pointer">Limpiar marcas</button><span style="font-size:10px;color:var(--muted)">según cliente</span></div><div id="cgMarcaOptions" class="cg-multi-list"></div></div></div></div>' +
       '<div class="cg-filter-group" style="position:relative">' +
         '<label>Ejecutiva(s)</label>' +
         '<div onclick="document.getElementById(\'cgEjecutivaPanel\').style.display = document.getElementById(\'cgEjecutivaPanel\').style.display===\'block\'?\'none\':\'block\'" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;min-width:130px;justify-content:space-between;font-size:12px"><span id="cgEjecutivaToggleLabel">Todas</span><span style="color:var(--muted)">▾</span></div>' +
@@ -2192,6 +2320,7 @@ async function renderComercialGeneral(container) {
   document.addEventListener('click', function cgCerrarPanelFuera(e) {
     const panel = document.getElementById('cgEjecutivaPanel');
     if (panel && !e.target.closest('.cg-filter-group')) panel.style.display = 'none';
+    if (!e.target.closest('.cg-multi-select')) document.querySelectorAll('.cg-multi-panel').forEach(p => p.classList.remove('open'));
   });
 
   cgSincronizarFiltrosUI();
