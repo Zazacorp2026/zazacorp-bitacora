@@ -314,8 +314,13 @@
   /* ── Comercial General (facturación completa, solo Jorge) ── */
   .cg-filters{display:flex;flex-wrap:wrap;gap:14px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;}
   .cg-filter-group{display:flex;flex-direction:column;gap:4px;}
-  .cg-filter-group label{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700;}
-  .cg-filter-group select,.cg-filter-group input{padding:7px 9px;border-radius:8px;border:1px solid var(--border);font-size:12px;min-width:130px;background:var(--surface2);color:var(--text);color-scheme:dark;font-family:inherit;}
+  .cg-filter-group>label{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700;}
+  .cg-filter-group>select,.cg-filter-group>input{padding:7px 9px;border-radius:8px;border:1px solid var(--border);font-size:12px;min-width:130px;background:var(--surface2);color:var(--text);color-scheme:dark;font-family:inherit;}
+  .cg-ejecutiva-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:260px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:10px;}
+  .cg-ejecutiva-panel input[type="text"]{width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:8px;}
+  .cg-ejecutiva-panel label{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;font-size:12px;font-weight:400;text-transform:none;color:var(--text);cursor:pointer;white-space:nowrap;}
+  .cg-ejecutiva-panel label:hover{background:var(--surface);}
+  .cg-ejecutiva-panel input[type="checkbox"]{min-width:auto;width:14px;height:14px;padding:0;border-radius:3px;background:none;accent-color:var(--blue);flex-shrink:0;}
   .cg-chips-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
   .cg-chip{background:var(--surface2);color:var(--text);padding:6px 10px;border-radius:20px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:8px;border:1px solid var(--border);}
   .cg-chip button{background:var(--accent);border:none;color:#0a0c10;width:16px;height:16px;border-radius:50%;cursor:pointer;font-size:9px;line-height:1;}
@@ -1736,12 +1741,30 @@ const CG_LINE_PALETTE = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', 
 function cgFmtMoney(n) { return '$' + Math.round(n || 0).toLocaleString('es-EC'); }
 function cgLineColor(i) { return CG_LINE_PALETTE[i % CG_LINE_PALETTE.length]; }
 
-async function cgCargarDatos() {
-  const res = await fetch(API_URL + '?action=cgGetFacturacion', { cache: 'no-store' });
+async function cgCargarDatos(forzar) {
+  const url = API_URL + '?action=cgGetFacturacion' + (forzar ? '&forzar=1' : '');
+  const res = await fetch(url, { cache: 'no-store' });
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'Error al cargar facturación');
   cgDataCache = json.filas || [];
   cgAllEjecutivas = [...new Set(cgDataCache.map(d => d['Ejecutiva']).filter(Boolean))].sort();
+}
+
+// Fuerza saltarse el caché de 10 min del servidor — para cuando Jorge
+// acaba de cargar facturas nuevas y quiere verlas ya, sin esperar.
+async function cgActualizarDatos() {
+  const btn = document.getElementById('cgBtnActualizar');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Actualizando...'; }
+  try {
+    await cgCargarDatos(true);
+    cgSincronizarFiltrosUI();
+    cgRepintarTodo();
+    showToast('✅ Datos actualizados', 'success');
+  } catch (e) {
+    showToast('❌ Error: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Actualizar datos'; }
+  }
 }
 
 // Filtro base: año/mes/tipo, SIN ejecutiva — así el ranking puede seguir
@@ -1998,12 +2021,13 @@ async function renderComercialGeneral(container) {
       '<div class="cg-filter-group" style="position:relative">' +
         '<label>Ejecutiva(s)</label>' +
         '<div onclick="document.getElementById(\'cgEjecutivaPanel\').style.display = document.getElementById(\'cgEjecutivaPanel\').style.display===\'block\'?\'none\':\'block\'" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;min-width:130px;justify-content:space-between;font-size:12px"><span id="cgEjecutivaToggleLabel">Todas</span><span style="color:var(--muted)">▾</span></div>' +
-        '<div id="cgEjecutivaPanel" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:240px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:10px">' +
-          '<input id="cgEjecutivaSearch" type="text" placeholder="Buscar ejecutiva..." oninput="cgRenderEjecutivaOptions(this.value)" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:8px">' +
+        '<div id="cgEjecutivaPanel" class="cg-ejecutiva-panel" style="display:none">' +
+          '<input id="cgEjecutivaSearch" type="text" placeholder="Buscar ejecutiva..." oninput="cgRenderEjecutivaOptions(this.value)">' +
           '<div id="cgEjecutivaOptions" style="max-height:200px;overflow-y:auto"></div>' +
         '</div>' +
       '</div>' +
       '<div class="cg-filter-group" style="margin-left:auto;flex-direction:row;gap:8px">' +
+        '<button id="cgBtnActualizar" onclick="cgActualizarDatos()" style="background:rgba(59,130,246,.08);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">🔄 Actualizar datos</button>' +
         '<button onclick="cgLimpiarFiltros()" style="background:transparent;border:1px dashed var(--border);color:var(--muted);border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer">Limpiar filtros</button>' +
         '<button onclick="cgExportarCsv()" style="background:rgba(74,222,128,.08);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">⬇ Exportar CSV</button>' +
       '</div>' +
