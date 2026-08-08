@@ -344,9 +344,12 @@
   .cg-chart-card h4{margin:0 0 10px;font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
   .cg-chart-card h4 small{text-transform:none;font-weight:400;color:var(--muted);}
   .cg-chart-wrap{position:relative;height:280px;}
+  .cg-chart-card.cg-full{grid-column:1 / -1;}
+  .cg-chart-card.cg-full .cg-chart-wrap{height:470px;}
   .cg-table{width:100%;border-collapse:collapse;font-size:12px;}
   .cg-table th{text-align:left;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--border);}
   .cg-table td{padding:7px 8px;border-bottom:1px solid var(--border);}
+  .cg-table.cg-sticky-head thead th{position:sticky;top:0;z-index:3;background:var(--surface);box-shadow:0 1px 0 var(--border);}
   .cg-table tr:hover td{background:var(--surface2);}
   @media (max-width:900px){.cg-kpis{grid-template-columns:repeat(2,1fr);}.cg-charts-grid{grid-template-columns:1fr;}}
 
@@ -2352,16 +2355,11 @@ async function renderComercialGeneral(container) {
       '<div class="cg-chart-card"><h4>Resumen por año</h4><div style="max-height:280px;overflow-y:auto"><table class="cg-table"><thead><tr><th>Año</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">IVA</th><th style="text-align:right">Neto</th></tr></thead><tbody id="cgTablaAniosBody"></tbody></table></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
-      '<div class="cg-chart-card"><h4>Por tipo de elemento <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap" style="height:330px"><canvas id="cgChartTipo"></canvas></div></div>' +
-      '<div class="cg-chart-card">' +
-        '<h4>Clientes</h4>' +
-        '<input id="cgClienteBusqueda" type="text" placeholder="🔍 Buscar cliente o marca..." oninput="cgPintarTablaClientes()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12px;margin-bottom:10px">' +
-        '<div style="max-height:280px;overflow-y:auto"><table class="cg-table"><thead><tr><th>Cliente</th><th>Marca(s)</th><th>Ejecutiva(s)</th><th style="text-align:right">Facturas</th><th style="text-align:right">Neto</th></tr></thead><tbody id="cgTablaClientesBody"></tbody></table></div>' +
-      '</div>' +
+      '<div class="cg-chart-card cg-full"><h4>Por tipo de elemento <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartTipo"></canvas></div></div>' +
     '</div>' +
     '<div class="cg-chart-card" style="margin-bottom:16px">' +
       '<h4 id="cgDetalleEjTitulo">Detalle por cliente y ejecutiva</h4>' +
-      '<div style="max-height:360px;overflow:auto"><table class="cg-table"><thead><tr><th>Cliente / Marca</th><th>Ejecutiva</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th><th style="text-align:right">% del grupo</th></tr></thead><tbody id="cgTablaDetalleEjBody"></tbody></table></div>' +
+      '<div style="max-height:460px;overflow:auto;border-top:1px solid var(--border)"><table class="cg-table cg-sticky-head"><thead><tr><th>Cliente / Marca</th><th>Ejecutiva</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th><th style="text-align:right">% del grupo</th></tr></thead><tbody id="cgTablaDetalleEjBody"></tbody></table></div>' +
     '</div>';
 
   document.addEventListener('click', function cgCerrarPanelFuera(e) {
