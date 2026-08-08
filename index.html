@@ -351,7 +351,44 @@
   .cg-table td{padding:7px 8px;border-bottom:1px solid var(--border);}
   .cg-table.cg-sticky-head thead th{position:sticky;top:0;z-index:3;background:var(--surface);box-shadow:0 1px 0 var(--border);}
   .cg-table tr:hover td{background:var(--surface2);}
-  @media (max-width:900px){.cg-kpis{grid-template-columns:repeat(2,1fr);}.cg-charts-grid{grid-template-columns:1fr;}}
+
+  .cg-exec-summary{background:linear-gradient(135deg,rgba(245,158,11,.13),rgba(59,130,246,.08));border:1px solid rgba(245,158,11,.32);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:flex-start;}
+  .cg-exec-summary .cg-summary-icon{font-size:22px;line-height:1;margin-top:2px;}
+  .cg-exec-summary h4{margin:0 0 6px;font-size:12px;color:var(--accent);font-weight:900;text-transform:uppercase;letter-spacing:.4px;}
+  .cg-exec-summary p{margin:0;color:var(--text);font-size:13px;line-height:1.55;}
+  .cg-insight-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px;}
+  .cg-insight-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;min-height:100px;}
+  .cg-insight-card.cg-span-2{grid-column:span 2;}
+  .cg-insight-card h4{margin:0 0 10px;font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.4px;}
+  .cg-big-number{font-size:20px;font-weight:900;color:var(--text);line-height:1.1;}
+  .cg-micro-label{font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.35px;}
+  .cg-pulse-list{display:grid;grid-template-columns:1fr;gap:8px;}
+  .cg-pulse-row{display:flex;justify-content:space-between;gap:12px;align-items:center;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:7px;}
+  .cg-pulse-row:last-child{border-bottom:0;padding-bottom:0;}
+  .cg-pulse-value{font-size:12px;font-weight:900;color:var(--text);text-align:right;}
+  .cg-var-pos{color:#10b981!important;}
+  .cg-var-neg{color:#ef4444!important;}
+  .cg-var-flat{color:var(--muted)!important;}
+  .cg-pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:900;background:rgba(245,158,11,.14);color:var(--accent);white-space:nowrap;}
+  .cg-pill.green{background:rgba(16,185,129,.14);color:#10b981;}
+  .cg-pill.red{background:rgba(239,68,68,.14);color:#ef4444;}
+  .cg-pill.blue{background:rgba(59,130,246,.14);color:#3b82f6;}
+  .cg-card-muted{font-size:11px;color:var(--muted);line-height:1.45;}
+  .cg-mini-bars{display:flex;flex-direction:column;gap:8px;}
+  .cg-mini-bar-row{display:grid;grid-template-columns:minmax(120px,1fr) 90px;gap:10px;align-items:center;font-size:11px;}
+  .cg-mini-bar-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-weight:700;}
+  .cg-mini-track{height:7px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:3px;}
+  .cg-mini-fill{height:100%;border-radius:999px;background:var(--accent);}
+  .cg-table-wrap{max-height:320px;overflow:auto;border-top:1px solid var(--border);}
+  .cg-table.compact{font-size:11px;}
+  .cg-table.compact td{padding:6px 8px;}
+  .cg-sem-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .cg-sem-card{border-radius:10px;padding:10px;border:1px solid var(--border);background:var(--surface2);}
+  .cg-sem-card .num{font-size:20px;font-weight:900;margin-bottom:2px;}
+  .cg-sem-card .lbl{font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;}
+  .cg-sem-card.green .num{color:#10b981;}.cg-sem-card.yellow .num{color:#f59e0b;}.cg-sem-card.red .num{color:#ef4444;}
+
+  @media (max-width:900px){.cg-kpis{grid-template-columns:repeat(2,1fr);}.cg-charts-grid{grid-template-columns:1fr;}.cg-insight-grid{grid-template-columns:1fr;}.cg-insight-card.cg-span-2{grid-column:span 1;}}
 
   .edit-form{background:var(--surface2);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:16px;margin-top:14px;}
   .edit-form h4{font-size:13px;font-weight:600;margin-bottom:14px;color:var(--accent);}
@@ -1921,6 +1958,205 @@ function cgGetDataParaCompararAnios() {
   });
 }
 
+
+function cgNum(d, campo) { return Number(d && d[campo]) || 0; }
+function cgFacturaKey(d) { return d['Comprobante'] || d['N Documento'] || ''; }
+function cgTotales(data) {
+  const out = { neto: 0, bruto: 0, iva: 0, facturas: new Set() };
+  (data || []).forEach(d => {
+    out.neto += cgNum(d, 'Neto (Stotal)');
+    out.bruto += cgNum(d, 'Bruto (PBase)');
+    out.iva += cgNum(d, 'IVA');
+    const f = cgFacturaKey(d);
+    if (f) out.facturas.add(f);
+  });
+  out.facturasCount = out.facturas.size;
+  out.ticket = out.facturasCount ? out.neto / out.facturasCount : 0;
+  return out;
+}
+function cgFmtPct(v) {
+  if (v === null || v === undefined || !isFinite(v)) return '—';
+  const sign = v > 0 ? '+' : '';
+  return sign + Math.round(v) + '%';
+}
+function cgClaseVar(v) {
+  if (v === null || v === undefined || !isFinite(v)) return 'cg-var-flat';
+  if (v > 3) return 'cg-var-pos';
+  if (v < -3) return 'cg-var-neg';
+  return 'cg-var-flat';
+}
+function cgVariacion(actual, anterior) {
+  if (!anterior) return actual ? null : 0;
+  return ((actual - anterior) / anterior) * 100;
+}
+function cgMesLabel(m) { return CG_MONTH_NAMES[Number(m)] || ''; }
+function cgAgrupar(data, campo) {
+  const map = {};
+  (data || []).forEach(d => {
+    const k = d[campo] || ('Sin ' + String(campo).toLowerCase());
+    if (!map[k]) map[k] = { nombre: k, neto: 0, bruto: 0, iva: 0, facturas: new Set(), ejecutivas: new Set(), marcas: new Set() };
+    map[k].neto += cgNum(d, 'Neto (Stotal)');
+    map[k].bruto += cgNum(d, 'Bruto (PBase)');
+    map[k].iva += cgNum(d, 'IVA');
+    const f = cgFacturaKey(d); if (f) map[k].facturas.add(f);
+    if (d['Ejecutiva']) map[k].ejecutivas.add(d['Ejecutiva']);
+    if (d['Marca']) map[k].marcas.add(d['Marca']);
+  });
+  return Object.values(map);
+}
+function cgPeriodoComparativo() {
+  const data = cgGetDataParaCompararAnios();
+  const years = [...new Set(data.map(d => Number(d['Año'])).filter(Boolean))].sort((a, b) => a - b);
+  if (!years.length) return null;
+  const actualYear = cgState.year ? Number(cgState.year) : years[years.length - 1];
+  let prevYear = actualYear - 1;
+  if (!years.includes(prevYear)) prevYear = years.filter(y => y < actualYear).pop() || null;
+  const monthsActual = data.filter(d => Number(d['Año']) === actualYear).map(d => Number(d['Mes'])).filter(Boolean);
+  const mFrom = cgState.monthFrom ? Number(cgState.monthFrom) : 1;
+  const mTo = cgState.monthTo ? Number(cgState.monthTo) : (monthsActual.length ? Math.max(...monthsActual) : 12);
+  const actualRows = data.filter(d => Number(d['Año']) === actualYear && Number(d['Mes']) >= mFrom && Number(d['Mes']) <= mTo);
+  const prevRows = prevYear ? data.filter(d => Number(d['Año']) === prevYear && Number(d['Mes']) >= mFrom && Number(d['Mes']) <= mTo) : [];
+  return { actualYear, prevYear, mFrom, mTo, actualRows, prevRows, actual: cgTotales(actualRows), anterior: cgTotales(prevRows) };
+}
+function cgTopNombre(rows, campo) {
+  const grupos = cgAgrupar(rows, campo).sort((a, b) => b.neto - a.neto);
+  return grupos.length ? grupos[0] : null;
+}
+function cgRowsCrecimientoEjecutiva() {
+  const c = cgPeriodoComparativo();
+  if (!c || !c.prevYear) return [];
+  const actual = {}; const anterior = {};
+  c.actualRows.forEach(d => { const e = d['Ejecutiva'] || 'Sin asignar'; actual[e] = (actual[e] || 0) + cgNum(d, 'Neto (Stotal)'); });
+  c.prevRows.forEach(d => { const e = d['Ejecutiva'] || 'Sin asignar'; anterior[e] = (anterior[e] || 0) + cgNum(d, 'Neto (Stotal)'); });
+  return [...new Set([...Object.keys(actual), ...Object.keys(anterior)])].map(e => {
+    const a = actual[e] || 0; const p = anterior[e] || 0; const v = cgVariacion(a, p);
+    return { ejecutiva: e, actual: a, anterior: p, diff: a - p, varPct: v };
+  }).filter(r => r.actual || r.anterior);
+}
+function cgPintarGerencial() {
+  const data = cgGetFilteredData();
+  const total = cgTotales(data);
+  const comp = cgPeriodoComparativo();
+  const topCliente = cgTopNombre(data, 'Cliente');
+  const topMarca = cgTopNombre(data, 'Marca');
+  const topTipo = cgTopNombre(data, 'Tipo de Elemento');
+  const topEj = cgTopNombre(data, 'Ejecutiva');
+
+  const resumen = document.getElementById('cgResumenEjecutivoTexto');
+  if (resumen) {
+    let txt = 'La facturación neta filtrada es de ' + cgFmtMoney(total.neto) + ', con ' + total.facturasCount.toLocaleString('es-EC') + ' facturas y ticket promedio de ' + cgFmtMoney(total.ticket) + '.';
+    if (comp && comp.prevYear && comp.anterior.neto) {
+      const v = cgVariacion(comp.actual.neto, comp.anterior.neto);
+      txt += ' Al mismo corte (' + cgMesLabel(comp.mFrom) + '–' + cgMesLabel(comp.mTo) + '), ' + comp.actualYear + ' va ' + cgFmtPct(v) + ' frente a ' + comp.prevYear + '.';
+    }
+    if (topEj) txt += ' La ejecutiva líder es ' + topEj.nombre + ' con ' + cgFmtMoney(topEj.neto) + '.';
+    if (topCliente) txt += ' El cliente principal es ' + topCliente.nombre + '.';
+    if (topTipo) txt += ' El tipo dominante es ' + topTipo.nombre + '.';
+    resumen.textContent = txt;
+  }
+
+  const pulso = document.getElementById('cgPulsoBody');
+  if (pulso) {
+    let varHtml = '—';
+    if (comp && comp.prevYear && comp.anterior.neto) {
+      const v = cgVariacion(comp.actual.neto, comp.anterior.neto);
+      varHtml = '<span class="' + cgClaseVar(v) + '">' + cgFmtPct(v) + '</span>';
+    }
+    const meses = {};
+    data.forEach(d => { const k = String(d['Año']) + '-' + String(d['Mes']).padStart(2, '0'); meses[k] = (meses[k] || 0) + cgNum(d, 'Neto (Stotal)'); });
+    const mejorMes = Object.entries(meses).sort((a, b) => b[1] - a[1])[0];
+    const mejorMesTxt = mejorMes ? (cgMesLabel(mejorMes[0].split('-')[1]) + ' ' + mejorMes[0].split('-')[0]) : '—';
+    pulso.innerHTML =
+      '<div class="cg-pulse-row"><span class="cg-micro-label">Vs año anterior</span><span class="cg-pulse-value">' + varHtml + '</span></div>' +
+      '<div class="cg-pulse-row"><span class="cg-micro-label">Mejor mes</span><span class="cg-pulse-value">' + esc(mejorMesTxt) + '</span></div>' +
+      '<div class="cg-pulse-row"><span class="cg-micro-label">Cliente #1</span><span class="cg-pulse-value">' + esc(topCliente ? topCliente.nombre : '—') + '</span></div>' +
+      '<div class="cg-pulse-row"><span class="cg-micro-label">Marca #1</span><span class="cg-pulse-value">' + esc(topMarca ? topMarca.nombre : '—') + '</span></div>';
+  }
+
+  const corte = document.getElementById('cgCorteBody');
+  if (corte) {
+    if (!comp || !comp.prevYear || !comp.anterior.neto) {
+      corte.innerHTML = '<div class="cg-card-muted">No hay base de año anterior suficiente para comparar al mismo corte.</div>';
+    } else {
+      const vNeto = cgVariacion(comp.actual.neto, comp.anterior.neto);
+      const vFact = cgVariacion(comp.actual.facturasCount, comp.anterior.facturasCount);
+      const vTicket = cgVariacion(comp.actual.ticket, comp.anterior.ticket);
+      corte.innerHTML =
+        '<div class="cg-pulse-list">' +
+        '<div><div class="cg-card-muted">' + comp.actualYear + ' vs ' + comp.prevYear + ' · ' + cgMesLabel(comp.mFrom) + '–' + cgMesLabel(comp.mTo) + '</div><div class="cg-big-number ' + cgClaseVar(vNeto) + '">' + cgFmtPct(vNeto) + '</div></div>' +
+        '<div class="cg-pulse-row"><span class="cg-micro-label">Neto</span><span class="cg-pulse-value">' + cgFmtMoney(comp.actual.neto) + ' / ' + cgFmtMoney(comp.anterior.neto) + '</span></div>' +
+        '<div class="cg-pulse-row"><span class="cg-micro-label">Facturas</span><span class="cg-pulse-value ' + cgClaseVar(vFact) + '">' + cgFmtPct(vFact) + '</span></div>' +
+        '<div class="cg-pulse-row"><span class="cg-micro-label">Ticket promedio</span><span class="cg-pulse-value ' + cgClaseVar(vTicket) + '">' + cgFmtPct(vTicket) + '</span></div>' +
+        '</div>';
+    }
+  }
+
+  cgPintarConcentracionClientes(data);
+  cgPintarTopMarcas(data);
+  cgPintarTicketEjecutiva(data);
+  cgPintarCrecimientoEjecutiva();
+  cgPintarClientesCompartidos(data);
+  cgPintarMixProducto(data);
+}
+function cgPintarConcentracionClientes(data) {
+  const body = document.getElementById('cgConcentracionBody');
+  if (!body) return;
+  const total = cgTotales(data).neto;
+  const grupos = cgAgrupar(data, 'Cliente').sort((a, b) => b.neto - a.neto);
+  const top5 = grupos.slice(0, 5).reduce((s, r) => s + r.neto, 0);
+  const top10 = grupos.slice(0, 10).reduce((s, r) => s + r.neto, 0);
+  const rows = grupos.slice(0, 6);
+  body.innerHTML = '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap"><span class="cg-pill">Top 5: ' + (total ? Math.round(top5 / total * 100) : 0) + '%</span><span class="cg-pill blue">Top 10: ' + (total ? Math.round(top10 / total * 100) : 0) + '%</span></div>' +
+    '<div class="cg-mini-bars">' + rows.map(r => '<div class="cg-mini-bar-row"><div><div class="cg-mini-bar-name" title="' + esc(r.nombre) + '">' + esc(r.nombre) + '</div><div class="cg-mini-track"><div class="cg-mini-fill" style="width:' + (total ? Math.max(3, Math.round(r.neto / total * 100)) : 0) + '%"></div></div></div><div class="cg-pulse-value">' + Math.round(total ? r.neto / total * 100 : 0) + '%</div></div>').join('') + '</div>';
+}
+function cgPintarTopMarcas(data) {
+  const body = document.getElementById('cgTopMarcasBody');
+  if (!body) return;
+  const total = cgTotales(data).neto;
+  const rows = cgAgrupar(data, 'Marca').sort((a, b) => b.neto - a.neto).slice(0, 8);
+  body.innerHTML = '<div class="cg-mini-bars">' + rows.map(r => '<div class="cg-mini-bar-row"><div><div class="cg-mini-bar-name" title="' + esc(r.nombre) + '">' + esc(r.nombre) + '</div><div class="cg-mini-track"><div class="cg-mini-fill" style="width:' + (total ? Math.max(3, Math.round(r.neto / total * 100)) : 0) + '%"></div></div></div><div class="cg-pulse-value">' + cgFmtMoney(r.neto) + '</div></div>').join('') + '</div>' || '<div class="cg-card-muted">Sin marcas para los filtros actuales.</div>';
+}
+function cgPintarTicketEjecutiva(data) {
+  const tbody = document.getElementById('cgTicketEjBody');
+  if (!tbody) return;
+  const grupos = cgAgrupar(data, 'Ejecutiva').map(r => ({ ...r, facturasCount: r.facturas.size, ticket: r.facturas.size ? r.neto / r.facturas.size : 0 })).sort((a, b) => b.ticket - a.ticket).slice(0, 12);
+  tbody.innerHTML = grupos.map(r => '<tr><td>' + esc(r.nombre) + '</td><td style="text-align:right">' + r.facturasCount.toLocaleString('es-EC') + '</td><td style="text-align:right">' + cgFmtMoney(r.neto) + '</td><td style="text-align:right;font-weight:800;color:var(--accent)">' + cgFmtMoney(r.ticket) + '</td></tr>').join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">Sin datos</td></tr>';
+}
+function cgPintarCrecimientoEjecutiva() {
+  const tbody = document.getElementById('cgCrecimientoEjBody');
+  const sem = document.getElementById('cgSemaforoBody');
+  if (!tbody && !sem) return;
+  const rowsAll = cgRowsCrecimientoEjecutiva();
+  if (sem) {
+    const verdes = rowsAll.filter(r => r.varPct !== null && r.varPct > 20).length;
+    const estables = rowsAll.filter(r => r.varPct !== null && r.varPct >= -5 && r.varPct <= 5).length;
+    const rojos = rowsAll.filter(r => r.varPct !== null && r.varPct < -10).length;
+    sem.innerHTML = '<div class="cg-sem-grid"><div class="cg-sem-card green"><div class="num">' + verdes + '</div><div class="lbl">Crecen +20%</div></div><div class="cg-sem-card yellow"><div class="num">' + estables + '</div><div class="lbl">Estables</div></div><div class="cg-sem-card red"><div class="num">' + rojos + '</div><div class="lbl">Caen -10%</div></div></div>';
+  }
+  if (!tbody) return;
+  if (!rowsAll.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:18px">Sin base comparativa</td></tr>'; return; }
+  const rows = rowsAll.sort((a, b) => (b.diff - a.diff)).slice(0, 12);
+  tbody.innerHTML = rows.map(r => '<tr><td>' + esc(r.ejecutiva) + '</td><td style="text-align:right">' + cgFmtMoney(r.anterior) + '</td><td style="text-align:right">' + cgFmtMoney(r.actual) + '</td><td style="text-align:right" class="' + cgClaseVar(r.varPct) + '">' + cgFmtPct(r.varPct) + '</td><td style="text-align:right">' + cgFmtMoney(r.diff) + '</td></tr>').join('');
+}
+function cgPintarClientesCompartidos(data) {
+  const tbody = document.getElementById('cgClientesCompartidosBody');
+  if (!tbody) return;
+  const rows = cgAgrupar(data, 'Cliente').filter(r => r.ejecutivas.size > 1).sort((a, b) => b.neto - a.neto).slice(0, 12);
+  tbody.innerHTML = rows.map(r => {
+    const porEj = {};
+    data.filter(d => (d['Cliente'] || 'Sin cliente') === r.nombre).forEach(d => { const e = d['Ejecutiva'] || 'Sin asignar'; porEj[e] = (porEj[e] || 0) + cgNum(d, 'Neto (Stotal)'); });
+    const principal = Object.entries(porEj).sort((a, b) => b[1] - a[1])[0];
+    return '<tr><td>' + esc(r.nombre) + '</td><td style="text-align:right">' + r.ejecutivas.size + '</td><td style="text-align:right">' + cgFmtMoney(r.neto) + '</td><td>' + esc(principal ? principal[0] : '—') + '</td></tr>';
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">No hay clientes compartidos en este filtro</td></tr>';
+}
+function cgPintarMixProducto(data) {
+  const body = document.getElementById('cgMixBody');
+  if (!body) return;
+  const total = cgTotales(data).neto;
+  const rows = cgAgrupar(data, 'Tipo de Elemento').sort((a, b) => b.neto - a.neto).slice(0, 5);
+  body.innerHTML = rows.map(r => '<div class="cg-pulse-row"><span class="cg-micro-label">' + esc(r.nombre) + '</span><span class="cg-pulse-value">' + Math.round(total ? r.neto / total * 100 : 0) + '%</span></div>').join('') || '<div class="cg-card-muted">Sin mix para mostrar.</div>';
+}
+
 function cgPintarKpis() {
   const data = cgGetFilteredData();
   let neto = 0, bruto = 0, iva = 0;
@@ -2241,6 +2477,7 @@ function cgSincronizarFiltrosUI() {
 
 function cgRepintarTodo() {
   cgPintarKpis();
+  cgPintarGerencial();
   cgPintarRanking();
   cgPintarTendencia();
   cgPintarComparativoAnios();
@@ -2346,17 +2583,33 @@ async function renderComercialGeneral(container) {
       '<div class="cg-kpi-card" style="border-left-color:var(--accent)"><span class="cg-kpi-label">IVA</span><span class="cg-kpi-value" id="cgKpiIva">—</span></div>' +
       '<div class="cg-kpi-card"><span class="cg-kpi-label"># Facturas</span><span class="cg-kpi-value" id="cgKpiFacturas">—</span></div>' +
     '</div>' +
+    '<div class="cg-exec-summary"><div class="cg-summary-icon">📌</div><div><h4>Resumen ejecutivo automático</h4><p id="cgResumenEjecutivoTexto">—</p></div></div>' +
+    '<div class="cg-insight-grid">' +
+      '<div class="cg-insight-card"><h4>Pulso comercial</h4><div id="cgPulsoBody" class="cg-pulse-list"></div></div>' +
+      '<div class="cg-insight-card"><h4>2026 vs 2025 al mismo corte</h4><div id="cgCorteBody"></div></div>' +
+      '<div class="cg-insight-card"><h4>Concentración de clientes</h4><div id="cgConcentracionBody"></div></div>' +
+      '<div class="cg-insight-card"><h4>Semáforo comercial</h4><div id="cgSemaforoBody"></div><div class="cg-card-muted" style="margin-top:8px">Por ejecutiva frente al mismo corte del año anterior.</div></div>' +
+    '</div>' +
     '<div class="cg-charts-grid">' +
-      '<div class="cg-chart-card"><h4>Ranking de ejecutivas <small>(clic en una barra para comparar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartEjecutivas"></canvas></div></div>' +
+      '<div class="cg-chart-card"><h4>Ranking de ejecutivas · Neto <small>(clic en una barra para comparar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartEjecutivas"></canvas></div></div>' +
       '<div class="cg-chart-card"><h4>Tendencia mensual del Neto</h4><div class="cg-chart-wrap"><canvas id="cgChartTendencia"></canvas></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
-      '<div class="cg-chart-card"><h4>Comparativo mensual por año <small>(respeta filtros, ignora solo Año)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartComparativoAnios"></canvas></div></div>' +
+      '<div class="cg-chart-card"><h4>Comparativo mensual por año · Neto <small>(respeta filtros, ignora solo Año)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartComparativoAnios"></canvas></div></div>' +
       '<div class="cg-chart-card"><h4>Resumen por año</h4><div style="max-height:280px;overflow-y:auto"><table class="cg-table"><thead><tr><th>Año</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">IVA</th><th style="text-align:right">Neto</th></tr></thead><tbody id="cgTablaAniosBody"></tbody></table></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
-      '<div class="cg-chart-card cg-full"><h4>Por tipo de elemento <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartTipo"></canvas></div></div>' +
+      '<div class="cg-chart-card cg-full"><h4>Por tipo de elemento · Neto <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartTipo"></canvas></div></div>' +
     '</div>' +
+    '<div class="cg-charts-grid">' +
+      '<div class="cg-chart-card"><h4>Top marcas por neto</h4><div id="cgTopMarcasBody"></div></div>' +
+      '<div class="cg-chart-card"><h4>Mix de productos</h4><div id="cgMixBody" class="cg-pulse-list"></div></div>' +
+    '</div>' +
+    '<div class="cg-charts-grid">' +
+      '<div class="cg-chart-card"><h4>Ticket promedio por ejecutiva</h4><div class="cg-table-wrap"><table class="cg-table compact cg-sticky-head"><thead><tr><th>Ejecutiva</th><th style="text-align:right">Facturas</th><th style="text-align:right">Neto</th><th style="text-align:right">Ticket</th></tr></thead><tbody id="cgTicketEjBody"></tbody></table></div></div>' +
+      '<div class="cg-chart-card"><h4>Crecimiento por ejecutiva</h4><div class="cg-table-wrap"><table class="cg-table compact cg-sticky-head"><thead><tr><th>Ejecutiva</th><th style="text-align:right">Año ant.</th><th style="text-align:right">Actual</th><th style="text-align:right">Var.</th><th style="text-align:right">Dif.</th></tr></thead><tbody id="cgCrecimientoEjBody"></tbody></table></div></div>' +
+    '</div>' +
+    '<div class="cg-chart-card" style="margin-bottom:16px"><h4>Clientes compartidos entre ejecutivas</h4><div class="cg-table-wrap"><table class="cg-table compact cg-sticky-head"><thead><tr><th>Cliente</th><th style="text-align:right">Ejecutivas</th><th style="text-align:right">Neto</th><th>Ejecutiva principal</th></tr></thead><tbody id="cgClientesCompartidosBody"></tbody></table></div></div>' +
     '<div class="cg-chart-card" style="margin-bottom:16px">' +
       '<h4 id="cgDetalleEjTitulo">Detalle por cliente y ejecutiva</h4>' +
       '<div style="max-height:460px;overflow:auto;border-top:1px solid var(--border)"><table class="cg-table cg-sticky-head"><thead><tr><th>Cliente / Marca</th><th>Ejecutiva</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th><th style="text-align:right">% del grupo</th></tr></thead><tbody id="cgTablaDetalleEjBody"></tbody></table></div>' +
