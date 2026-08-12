@@ -1459,21 +1459,28 @@ function qzRenderListaElementos() {
   const total = d.length;
   d = d.slice(0, 100);
   if (!d.length) return '<div class="empty" style="padding:30px 10px"><p>Sin elementos disponibles con estos filtros</p></div>';
-  let html = d.map(v => {
-    const checked = selectedQz.has(v.codigo) ? 'checked' : '';
-    const estadoTxt = v.estado === 'DISPONIBLE' ? 'Disponible' : ('Libre desde ' + (v.termino || '').substring(0, 10));
-    return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;background:' + (checked ? 'rgba(245,158,11,.07)' : 'transparent') + '">' +
-      '<input type="checkbox" ' + checked + ' onchange="qzToggleElemento(\'' + String(v.codigo).replace(/'/g, "\\'") + '\')">' +
-      qzFotoThumb(v, 40) +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="font-weight:800;font-size:12.5px;color:var(--text)">' + esc(v.codigo) + ' <span style="color:var(--muted);font-weight:500">· ' + esc(v.tipo || '—') + '</span></div>' +
-        '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v.lugar || '') + (v.direccion ? ' — ' + esc(v.direccion) : '') + '</div>' +
-        '<div style="font-size:10px;color:var(--green);font-weight:700;margin-top:2px">' + esc(estadoTxt) + '</div>' +
-      '</div>' +
-      '<div style="font-size:11px;color:var(--accent);font-weight:800;white-space:nowrap">' + qzMoney(qzPrecioReal(v)) + '<br><span style="font-size:9px;color:var(--muted);font-weight:600">/mes</span></div>' +
-    '</label>';
-  }).join('');
-  if (total > 100) html += '<div style="padding:8px 12px;font-size:11px;color:var(--muted);text-align:center">Mostrando 100 de ' + total + ' — refina la búsqueda para ver más</div>';
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;padding:12px">' +
+    d.map(v => {
+      const checked = selectedQz.has(v.codigo) ? 'checked' : '';
+      const estadoTxt = v.estado === 'DISPONIBLE' ? 'Disponible' : ('Libre desde ' + (v.termino || '').substring(0, 10));
+      const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 400);
+      const fotoHtml = (foto && String(foto).startsWith('http'))
+        ? '<img src="' + foto + '" style="width:100%;height:120px;object-fit:cover;display:block">'
+        : '<div style="width:100%;height:120px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:32px;color:var(--muted)">📷</div>';
+      return '<label style="display:block;cursor:pointer;border-radius:12px;overflow:hidden;border:2px solid ' + (checked ? 'var(--accent)' : 'var(--border)') + ';background:var(--surface2);position:relative;transition:border-color .15s">' +
+        '<input type="checkbox" ' + checked + ' onchange="qzToggleElemento(\'' + String(v.codigo).replace(/'/g, "\\'") + '\')" style="position:absolute;top:8px;left:8px;width:19px;height:19px;z-index:2;cursor:pointer">' +
+        (checked ? '<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(245,158,11,.12);z-index:1;pointer-events:none"></div>' : '') +
+        fotoHtml +
+        '<div style="padding:9px 10px;background:var(--surface)">' +
+          '<div style="font-weight:800;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(v.codigo) + '</div>' +
+          '<div style="font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">' + esc(v.tipo || '—') + ' · ' + esc(v.lugar || '') + '</div>' +
+          '<div style="font-size:10px;color:var(--green);font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(estadoTxt) + '</div>' +
+          '<div style="margin-top:7px;font-size:16px;font-weight:900;color:var(--accent)">' + qzMoney(qzPrecioReal(v)) + '<span style="font-size:9.5px;color:var(--muted);font-weight:700"> /mes</span></div>' +
+        '</div>' +
+      '</label>';
+    }).join('') +
+  '</div>';
+  if (total > 100) html += '<div style="padding:10px 12px;font-size:11px;color:var(--muted);text-align:center">Mostrando 100 de ' + total + ' — refina la búsqueda para ver más</div>';
   return html;
 }
 
