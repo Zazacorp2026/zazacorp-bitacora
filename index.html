@@ -1299,6 +1299,11 @@ let qzCotizacionActual = null;
 let qzFiltroTipo = '';
 let qzFiltroCiudad = '';
 let qzUltimoEscenario = null;
+// Wizard de 4 pasos: 1 Elementos, 2 Campaña, 3 Calcular, 4 Guardar/Exportar.
+// qzWizardMaxStep es el paso más lejano ya alcanzado — permite volver
+// atrás libremente pero no saltar adelante sin completar el paso actual.
+let qzWizardStep = 1;
+let qzWizardMaxStep = 1;
 // { [codigo]: {nuevoValorMensual, valorMinimo} } — precio real y piso por
 // elemento, sin ningún dato de comisión/over de agencia. Se usa para
 // mostrar el precio correcto en el Cotizador y para bloquear la
@@ -1336,6 +1341,50 @@ function qzValorMinimoDe(codigo) {
 function qzMoney(n) { return '$' + Number(n || 0).toLocaleString('es-EC', { maximumFractionDigits: 2 }); }
 function qzPct(n) { return (Number(n || 0) * 100).toFixed(1) + '%'; }
 function qzClean(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// Miniatura del elemento — misma fuente que usa el resto de Nexus
+// (localStorage local del navegador si existe, si no la foto de Cloudinary
+// del inventario). Si no hay foto todavía, un ícono placeholder — igual
+// que se ve en Report cuando falta la referencia.
+function qzFotoThumb(v, px) {
+  const size = px || 44;
+  const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, size * 3);
+  if (foto && String(foto).startsWith('http')) {
+    return '<img src="' + foto + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:8px;object-fit:cover;background:var(--surface2);flex-shrink:0">';
+  }
+  return '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:' + Math.round(size*0.45) + 'px;color:var(--muted);flex-shrink:0">📷</div>';
+}
+
+// ── Navegación del wizard (4 pasos) ─────────────────────────────
+function qzPasosBarHTML() {
+  const pasos = ['📍 Elementos', '📝 Campaña', '🧮 Calcular', '💾 Guardar'];
+  return pasos.map((label, i) => {
+    const n = i + 1;
+    const activo = n === qzWizardStep;
+    const hecho = n < qzWizardMaxStep || (n <= qzWizardMaxStep && n < qzWizardStep);
+    const clickable = n <= qzWizardMaxStep;
+    const color = activo ? 'var(--accent)' : (hecho ? 'var(--green)' : 'var(--muted)');
+    const bg = activo ? 'rgba(245,158,11,.12)' : (hecho ? 'rgba(74,222,128,.08)' : 'var(--surface2)');
+    const conector = i > 0 ? '<div style="flex:1;height:2px;min-width:14px;background:' + (n <= qzWizardMaxStep ? 'var(--green)' : 'var(--border)') + '"></div>' : '';
+    return conector +
+      '<div onclick="qzIrPaso(' + n + ')" style="cursor:' + (clickable ? 'pointer' : 'default') + ';display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:20px;background:' + bg + ';border:1px solid ' + color + ';color:' + color + ';font-size:11.5px;font-weight:800;white-space:nowrap">' + (hecho ? '✓' : n) + '. ' + label + '</div>';
+  }).join('');
+}
+
+function qzIrPaso(n) {
+  if (n < 1 || n > 4) return;
+  if (n > qzWizardMaxStep + 1) return; // no saltar pasos sin completar el actual
+  qzWizardStep = n;
+  qzWizardMaxStep = Math.max(qzWizardMaxStep, n);
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('qzStep' + i);
+    if (el) el.style.display = (i === n) ? '' : 'none';
+  }
+  const barEl = document.getElementById('qzPasosBar');
+  if (barEl) barEl.innerHTML = qzPasosBarHTML();
+  const topEl = document.getElementById('qzWizardTop');
+  if (topEl) topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 function qzMesesDesde(mesInicio, cantidad) {
   const out = [];
@@ -1415,6 +1464,7 @@ function qzRenderListaElementos() {
     const estadoTxt = v.estado === 'DISPONIBLE' ? 'Disponible' : ('Libre desde ' + (v.termino || '').substring(0, 10));
     return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;background:' + (checked ? 'rgba(245,158,11,.07)' : 'transparent') + '">' +
       '<input type="checkbox" ' + checked + ' onchange="qzToggleElemento(\'' + String(v.codigo).replace(/'/g, "\\'") + '\')">' +
+      qzFotoThumb(v, 40) +
       '<div style="flex:1;min-width:0">' +
         '<div style="font-weight:800;font-size:12.5px;color:var(--text)">' + esc(v.codigo) + ' <span style="color:var(--muted);font-weight:500">· ' + esc(v.tipo || '—') + '</span></div>' +
         '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v.lugar || '') + (v.direccion ? ' — ' + esc(v.direccion) : '') + '</div>' +
@@ -1449,9 +1499,10 @@ function qzSetEscenario(meses, desc) {
 function qzRenderChipsSeleccion() {
   if (!selectedQz.size) return '<div style="color:var(--muted);font-size:12px;padding:6px 0">Selecciona elementos disponibles para armar la propuesta.</div>';
   return Array.from(selectedQz).map(codigo => {
-    const v = DATA.find(x => x.codigo === codigo) || {};
-    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px 10px;margin-bottom:6px">' +
-      '<div style="min-width:0"><div style="font-size:12px;font-weight:800;color:var(--text)">' + esc(codigo) + '<span style="color:var(--muted);font-weight:500"> · ' + esc(v.tipo || '') + '</span></div>' +
+    const v = DATA.find(x => x.codigo === codigo) || { codigo };
+    return '<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px 10px;margin-bottom:6px">' +
+      qzFotoThumb(v, 36) +
+      '<div style="min-width:0;flex:1"><div style="font-size:12px;font-weight:800;color:var(--text)">' + esc(codigo) + '<span style="color:var(--muted);font-weight:500"> · ' + esc(v.tipo || '') + '</span></div>' +
       '<div style="font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(v.lugar || '') + ' · ' + qzMoney(qzPrecioReal(v)) + '/mes</div></div>' +
       '<span onclick="qzQuitarElemento(\'' + String(codigo).replace(/'/g, "\\'") + '\')" style="cursor:pointer;color:var(--red);font-weight:900">✕</span>' +
     '</div>';
@@ -1475,6 +1526,8 @@ function qzRefrescarPanelDerecho() {
   if (el) el.innerHTML = qzRenderChipsSeleccion();
   const countEl = document.getElementById('qzSeleccionCount');
   if (countEl) countEl.textContent = selectedQz.size;
+  const count1El = document.getElementById('qzStep1Count');
+  if (count1El) count1El.textContent = selectedQz.size;
   qzPintarResumenSeleccion();
 }
 function qzToggleElemento(codigo) { if (selectedQz.has(codigo)) selectedQz.delete(codigo); else selectedQz.add(codigo); qzOnBuscarInput(); qzRefrescarPanelDerecho(); }
@@ -1525,10 +1578,11 @@ function qzBuildPayload() {
 }
 
 async function qzCalcular() {
-  if (!selectedQz.size) { showToast('Selecciona al menos un elemento', 'info'); return; }
+  if (!selectedQz.size) { showToast('Selecciona al menos un elemento', 'info'); return false; }
   const payload = qzBuildPayload();
   const btn = document.getElementById('qzBtnCalcular');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando...'; }
+  let ok = false;
   try {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzCalcularCotizacion', elementos: payload.elementos, agencia: payload.agencia, descuentoPct: payload.descuentoPct }) });
     const json = await res.json();
@@ -1536,8 +1590,14 @@ async function qzCalcular() {
     qzCotizacionActual = Object.assign({}, payload, json);
     qzPintarResultado();
     qzPintarAprobacion();
+    ok = true;
   } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = '🧮 Calcular cotización'; } }
+  return ok;
+}
+
+async function qzCalcularYContinuar() {
+  if (await qzCalcular()) qzIrPaso(3);
 }
 
 function qzPintarResultado() {
@@ -1572,10 +1632,11 @@ function qzPintarAprobacion() {
 }
 
 async function qzGuardar() {
-  if (!qzCotizacionActual) { showToast('Primero calcula la cotización', 'info'); return; }
+  if (!qzCotizacionActual) { showToast('Primero calcula la cotización', 'info'); return false; }
   const payload = Object.assign(qzCotizacionActual, qzBuildPayload());
   const btn = document.getElementById('qzBtnGuardar');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando...'; }
+  let ok = false;
   try {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ action: 'qzCrearCotizacion' }, payload)) });
     const json = await res.json();
@@ -1584,8 +1645,23 @@ async function qzGuardar() {
     qzPintarResultado();
     qzPintarAprobacion();
     showToast('✅ Cotización guardada en pipeline', 'success');
+    ok = true;
   } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar cotización'; } }
+  return ok;
+}
+
+async function qzGuardarYContinuar() {
+  if (await qzGuardar()) qzIrPaso(4);
+}
+
+function qzNuevaCotizacion() {
+  selectedQz.clear();
+  qzCotizacionActual = null;
+  qzWizardStep = 1;
+  qzWizardMaxStep = 1;
+  const content = document.getElementById('mainContent');
+  if (content) renderCotizador(content);
 }
 
 async function qzAprobarPin() {
@@ -1660,40 +1736,94 @@ async function qzExportarCotizacionPPT() {
   finally { if (btn) { btn.disabled = false; btn.textContent = '⬇ Exportar PPT'; } }
 }
 
+function qzIrPasoDesdeElementos() {
+  if (!selectedQz.size) { showToast('Selecciona al menos un elemento', 'info'); return; }
+  qzIrPaso(2);
+}
+
 function renderCotizador(container) {
   container.innerHTML =
-    '<div style="display:grid;grid-template-columns:minmax(360px,1.15fr) minmax(360px,.85fr);gap:16px;align-items:start;padding:4px 0">' +
+    '<div id="qzWizardTop"></div>' +
+    '<div id="qzPasosBar" style="display:flex;align-items:center;gap:0;margin-bottom:16px;flex-wrap:wrap">' + qzPasosBarHTML() + '</div>' +
+
+    // ── PASO 1 · Elegir elementos ──────────────────────────────
+    '<div id="qzStep1">' +
       '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden">' +
         '<div style="padding:13px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:9px">' +
-          '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-weight:900;color:var(--text)">📍 Selección de elementos</div><div style="font-size:11px;color:var(--muted)">Disponibilidad desde el mes elegido</div></div>' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-weight:900;color:var(--text)">📍 Elige los elementos para esta cotización</div><div style="font-size:11px;color:var(--accent);font-weight:800"><b id="qzStep1Count">' + selectedQz.size + '</b> seleccionados</div></div>' +
           '<input id="qzBuscarInput" type="text" placeholder="🔍 Código, ubicación, dirección, tipo..." oninput="qzOnBuscarInput()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px;font-family:inherit">' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><select id="qzFiltroTipo" onchange="qzOnBuscarInput()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark"></select><select id="qzFiltroCiudad" onchange="qzOnBuscarInput()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark"></select></div>' +
-          '<div style="display:flex;gap:8px;align-items:center"><input id="qzMesInicio" type="month" value="' + new Date().toISOString().slice(0, 7) + '" onchange="qzOnFiltroMesChange()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark"><input id="qzCantidadMeses" type="number" min="1" max="24" value="3" oninput="qzPintarResumenSeleccion()" title="Cantidad de meses" style="width:74px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit"><button onclick="qzSeleccionarTodosVisibles()" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);padding:7px 9px;font-size:11px;cursor:pointer">Seleccionar visibles</button><button onclick="qzLimpiarSeleccion()" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);padding:7px 9px;font-size:11px;cursor:pointer">Limpiar</button></div>' +
+          '<div style="display:flex;gap:8px;align-items:center"><input id="qzMesInicio" type="month" value="' + new Date().toISOString().slice(0, 7) + '" onchange="qzOnFiltroMesChange()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark" title="Disponibilidad desde este mes"><button onclick="qzSeleccionarTodosVisibles()" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);padding:7px 9px;font-size:11px;cursor:pointer">Seleccionar visibles</button><button onclick="qzLimpiarSeleccion()" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);padding:7px 9px;font-size:11px;cursor:pointer">Limpiar</button></div>' +
         '</div>' +
-        '<div id="qzElementosList" style="max-height:560px;overflow-y:auto"></div>' +
+        '<div id="qzElementosList" style="max-height:520px;overflow-y:auto"></div>' +
       '</div>' +
-      '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between"><div style="font-weight:900;font-size:14px;color:var(--text)">🧮 Cotización</div><span style="font-size:11px;color:var(--muted)"><b id="qzSeleccionCount">' + selectedQz.size + '</b> elementos</span></div>' +
-        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px"><div style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px"><div style="font-size:9px;color:var(--muted);font-weight:900">ELEM.</div><b id="qzMiniElementos">0</b></div><div style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px"><div style="font-size:9px;color:var(--muted);font-weight:900">MESES</div><b id="qzMiniMeses">3</b></div><div style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px"><div style="font-size:9px;color:var(--muted);font-weight:900">$/MES</div><b id="qzMiniMensual">$0</b></div><div style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px"><div style="font-size:9px;color:var(--muted);font-weight:900">BRUTO</div><b id="qzMiniBruto">$0</b></div></div>' +
-        '<div id="qzSeleccionPanel">' + qzRenderChipsSeleccion() + '</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:10px;color:var(--muted);font-weight:900">CLIENTE</label><input id="qzClienteInput" type="text" placeholder="Nombre del cliente" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px"></div><div><label style="font-size:10px;color:var(--muted);font-weight:900">MARCA</label><input id="qzMarcaInput" type="text" placeholder="Marca / producto" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px"></div></div>' +
-        '<div><label style="font-size:10px;color:var(--muted);font-weight:900">CAMPAÑA</label><input id="qzCampaniaInput" type="text" placeholder="Ej: Campaña Q4 / Lanzamiento / Navidad" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px"></div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:10px;color:var(--muted);font-weight:900">AGENCIA</label><select id="qzAgenciaSelect" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;color-scheme:dark"><option value="">Cargando...</option></select></div><div><label style="font-size:10px;color:var(--muted);font-weight:900">VIGENCIA OFERTA</label><input id="qzVigenciaInput" type="date" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;color-scheme:dark"></div></div>' +
-        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"><button onclick="qzSetEscenario(1,0)" style="background:rgba(59,130,246,.08);border:1px solid var(--blue);border-radius:9px;color:var(--blue);padding:8px;font-size:11px;font-weight:800;cursor:pointer">1 mes<br><small>sin desc.</small></button><button onclick="qzSetEscenario(3,5)" style="background:rgba(245,158,11,.1);border:1px solid var(--accent);border-radius:9px;color:var(--accent);padding:8px;font-size:11px;font-weight:800;cursor:pointer">3 meses<br><small>5%</small></button><button onclick="qzSetEscenario(6,10)" style="background:rgba(74,222,128,.1);border:1px solid var(--green);border-radius:9px;color:var(--green);padding:8px;font-size:11px;font-weight:800;cursor:pointer">6 meses<br><small>10%</small></button></div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><div><label style="font-size:10px;color:var(--muted);font-weight:900">DESCUENTO %</label><input id="qzDescuentoInput" type="number" min="0" max="100" step="0.5" value="0" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px"></div><div><label style="font-size:10px;color:var(--muted);font-weight:900">PROB. CIERRE</label><select id="qzProbabilidadInput" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;color-scheme:dark"><option value="25">25%</option><option value="50" selected>50%</option><option value="75">75%</option><option value="90">90%</option></select></div><div><label style="font-size:10px;color:var(--muted);font-weight:900">SEGUIMIENTO</label><input id="qzSeguimientoInput" type="date" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;color-scheme:dark"></div></div>' +
-        '<div><label style="font-size:10px;color:var(--muted);font-weight:900">NOTAS / CONDICIONES</label><textarea id="qzNotasInput" placeholder="Condiciones comerciales, observaciones, próximos pasos..." style="width:100%;min-height:58px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;resize:vertical"></textarea></div>' +
-        '<button id="qzBtnCalcular" onclick="qzCalcular()" style="background:rgba(59,130,246,.15);border:1px solid var(--blue);border-radius:8px;color:var(--blue);font-weight:800;font-size:12.5px;padding:10px;cursor:pointer">🧮 Calcular cotización</button>' +
-        '<div id="qzResultadoPanel" style="font-size:12px;color:var(--muted)">Selecciona elementos y calcula para ver el precio.</div>' +
-        '<div id="qzPinPanel" style="display:none;gap:8px;align-items:center;background:rgba(239,68,68,.08);border:1px solid var(--red);border-radius:8px;padding:10px"><input id="qzPinInput" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit"><button onclick="qzAprobarPin()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:11.5px;padding:8px 10px;cursor:pointer">Aprobar</button></div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button id="qzBtnGuardar" onclick="qzGuardar()" disabled style="background:rgba(74,222,128,.12);border:1px solid var(--green);border-radius:8px;color:var(--green);font-weight:800;font-size:12.5px;padding:10px;cursor:pointer">💾 Guardar</button><button id="qzBtnVistaPDF" onclick="qzAbrirPropuestaImprimible()" disabled style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-weight:800;font-size:12.5px;padding:10px;cursor:pointer">🧾 Vista PDF</button></div>' +
-        '<button id="qzBtnExportar" onclick="qzExportarCotizacionPPT()" disabled style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-weight:800;font-size:12.5px;padding:10px;cursor:pointer">⬇ Exportar PPT</button>' +
+      '<div style="display:flex;justify-content:flex-end;margin-top:14px">' +
+        '<button onclick="qzIrPasoDesdeElementos()" style="background:var(--accent);border:1px solid var(--accent);border-radius:9px;color:#1a1a1a;font-weight:900;font-size:13px;padding:11px 20px;cursor:pointer">Siguiente: Datos de campaña →</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── PASO 2 · Datos de la campaña ────────────────────────────
+    '<div id="qzStep2" style="display:none">' +
+      '<div style="display:grid;grid-template-columns:minmax(280px,.9fr) minmax(320px,1.1fr);gap:16px;align-items:start">' +
+        '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px">' +
+          '<div style="font-weight:900;font-size:13px;color:var(--text)">Elementos elegidos (<b id="qzSeleccionCount">' + selectedQz.size + '</b>)</div>' +
+          '<div id="qzSeleccionPanel">' + qzRenderChipsSeleccion() + '</div>' +
+          '<button onclick="qzIrPaso(1)" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);padding:8px;font-size:11.5px;cursor:pointer">+ Agregar o quitar elementos</button>' +
+        '</div>' +
+        '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px">' +
+          '<div style="font-weight:900;font-size:14px;color:var(--text)">📝 Datos de la campaña</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:10px;color:var(--muted);font-weight:900">CLIENTE</label><input id="qzClienteInput" type="text" placeholder="Nombre del cliente" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px"></div><div><label style="font-size:10px;color:var(--muted);font-weight:900">MARCA</label><input id="qzMarcaInput" type="text" placeholder="Marca / producto" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px"></div></div>' +
+          '<div><label style="font-size:10px;color:var(--muted);font-weight:900">AGENCIA</label><select id="qzAgenciaSelect" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;color-scheme:dark"><option value="">Cargando...</option></select></div>' +
+          '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"><button onclick="qzSetEscenario(1,0)" style="background:rgba(59,130,246,.08);border:1px solid var(--blue);border-radius:9px;color:var(--blue);padding:8px;font-size:11px;font-weight:800;cursor:pointer">1 mes<br><small>sin desc.</small></button><button onclick="qzSetEscenario(3,5)" style="background:rgba(245,158,11,.1);border:1px solid var(--accent);border-radius:9px;color:var(--accent);padding:8px;font-size:11px;font-weight:800;cursor:pointer">3 meses<br><small>5%</small></button><button onclick="qzSetEscenario(6,10)" style="background:rgba(74,222,128,.1);border:1px solid var(--green);border-radius:9px;color:var(--green);padding:8px;font-size:11px;font-weight:800;cursor:pointer">6 meses<br><small>10%</small></button></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:10px;color:var(--muted);font-weight:900">MESES</label><input id="qzCantidadMeses" type="number" min="1" max="24" value="3" oninput="qzPintarResumenSeleccion()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px"></div><div><label style="font-size:10px;color:var(--muted);font-weight:900">DESCUENTO %</label><input id="qzDescuentoInput" type="number" min="0" max="100" step="0.5" value="0" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px"></div></div>' +
+          '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px"><div style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px"><div style="font-size:9px;color:var(--muted);font-weight:900">ELEM.</div><b id="qzMiniElementos">0</b></div><div style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px"><div style="font-size:9px;color:var(--muted);font-weight:900">MESES</div><b id="qzMiniMeses">3</b></div><div style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px"><div style="font-size:9px;color:var(--muted);font-weight:900">$/MES</div><b id="qzMiniMensual">$0</b></div><div style="background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px"><div style="font-size:9px;color:var(--muted);font-weight:900">BRUTO EST.</div><b id="qzMiniBruto">$0</b></div></div>' +
+          '<details style="border:1px solid var(--border);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-size:11px;color:var(--muted);font-weight:800">+ Más detalles (opcional): campaña, vigencia, probabilidad, seguimiento, notas</summary>' +
+            '<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">' +
+              '<div><label style="font-size:10px;color:var(--muted);font-weight:900">CAMPAÑA</label><input id="qzCampaniaInput" type="text" placeholder="Ej: Campaña Q4 / Lanzamiento / Navidad" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px"></div>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:10px;color:var(--muted);font-weight:900">VIGENCIA OFERTA</label><input id="qzVigenciaInput" type="date" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;color-scheme:dark"></div><div><label style="font-size:10px;color:var(--muted);font-weight:900">PROB. CIERRE</label><select id="qzProbabilidadInput" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;color-scheme:dark"><option value="25">25%</option><option value="50" selected>50%</option><option value="75">75%</option><option value="90">90%</option></select></div></div>' +
+              '<div><label style="font-size:10px;color:var(--muted);font-weight:900">SEGUIMIENTO</label><input id="qzSeguimientoInput" type="date" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;color-scheme:dark"></div>' +
+              '<div><label style="font-size:10px;color:var(--muted);font-weight:900">NOTAS / CONDICIONES</label><textarea id="qzNotasInput" placeholder="Condiciones comerciales, observaciones, próximos pasos..." style="width:100%;min-height:58px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px;font-size:12.5px;font-family:inherit;margin-top:4px;resize:vertical"></textarea></div>' +
+            '</div>' +
+          '</details>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:14px">' +
+        '<button onclick="qzIrPaso(1)" style="background:transparent;border:1px solid var(--border);border-radius:9px;color:var(--muted);font-weight:800;font-size:13px;padding:11px 20px;cursor:pointer">← Atrás</button>' +
+        '<button id="qzBtnCalcular" onclick="qzCalcularYContinuar()" style="background:var(--accent);border:1px solid var(--accent);border-radius:9px;color:#1a1a1a;font-weight:900;font-size:13px;padding:11px 20px;cursor:pointer">🧮 Calcular y continuar →</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── PASO 3 · Revisar y calcular ─────────────────────────────
+    '<div id="qzStep3" style="display:none">' +
+      '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;max-width:560px;margin:0 auto">' +
+        '<div style="font-weight:900;font-size:14px;color:var(--text);margin-bottom:12px">🧮 Resultado de la cotización</div>' +
+        '<div id="qzResultadoPanel" style="font-size:12px;color:var(--muted)">Calculando...</div>' +
+        '<div id="qzPinPanel" style="display:none;gap:8px;align-items:center;background:rgba(239,68,68,.08);border:1px solid var(--red);border-radius:8px;padding:10px;margin-top:12px"><input id="qzPinInput" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit"><button onclick="qzAprobarPin()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:11.5px;padding:8px 10px;cursor:pointer">Aprobar</button></div>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:14px;max-width:560px;margin-left:auto;margin-right:auto">' +
+        '<button onclick="qzIrPaso(2)" style="background:transparent;border:1px solid var(--border);border-radius:9px;color:var(--muted);font-weight:800;font-size:13px;padding:11px 20px;cursor:pointer">← Atrás</button>' +
+        '<button id="qzBtnGuardar" onclick="qzGuardarYContinuar()" disabled style="background:var(--green);border:1px solid var(--green);border-radius:9px;color:#0a1a0a;font-weight:900;font-size:13px;padding:11px 20px;cursor:pointer">💾 Guardar y continuar →</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── PASO 4 · Guardar / Exportar ─────────────────────────────
+    '<div id="qzStep4" style="display:none">' +
+      '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:480px;margin:0 auto;text-align:center;display:flex;flex-direction:column;gap:12px">' +
+        '<div style="font-size:32px">✅</div>' +
+        '<div style="font-weight:900;font-size:15px;color:var(--text)">Cotización guardada en el pipeline</div>' +
+        '<div style="font-size:12px;color:var(--muted)">Ya puedes exportarla para enviarla al cliente.</div>' +
+        '<button id="qzBtnVistaPDF" onclick="qzAbrirPropuestaImprimible()" style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:9px;color:var(--accent);font-weight:800;font-size:13px;padding:12px;cursor:pointer">🧾 Vista PDF (propuesta imprimible)</button>' +
+        '<button id="qzBtnExportar" onclick="qzExportarCotizacionPPT()" style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:9px;color:var(--accent);font-weight:800;font-size:13px;padding:12px;cursor:pointer">⬇ Exportar PPT</button>' +
+        '<button onclick="qzNuevaCotizacion()" style="background:transparent;border:1px dashed var(--border);border-radius:9px;color:var(--muted);font-weight:800;font-size:12.5px;padding:10px;cursor:pointer;margin-top:6px">+ Nueva cotización</button>' +
       '</div>' +
     '</div>';
   qzRenderFiltrosSelects();
   qzOnBuscarInput();
   qzCargarAgencias();
   qzPintarResumenSeleccion();
-  qzCargarPreciosPublicos().then(function () { qzOnBuscarInput(); });
+  qzCargarPreciosPublicos().then(function () { qzOnBuscarInput(); qzRefrescarPanelDerecho(); });
+  if (qzCotizacionActual) { qzPintarResultado(); qzPintarAprobacion(); }
+  qzIrPaso(qzWizardStep);
 }
 
 // ══════════════════════════════════════════════════════════════
