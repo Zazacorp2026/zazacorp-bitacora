@@ -1442,8 +1442,10 @@ function qzRenderFiltrosSelects() {
 function qzRenderListaElementos() {
   const term = (document.getElementById('qzBuscarInput')?.value || '').toLowerCase().trim();
   const mes = qzGetMesInicioActual();
-  qzFiltroTipo = document.getElementById('qzFiltroTipo')?.value || qzFiltroTipo || '';
-  qzFiltroCiudad = document.getElementById('qzFiltroCiudad')?.value || qzFiltroCiudad || '';
+  const tipoElF = document.getElementById('qzFiltroTipo');
+  const ciudadElF = document.getElementById('qzFiltroCiudad');
+  if (tipoElF) qzFiltroTipo = tipoElF.value;
+  if (ciudadElF) qzFiltroCiudad = ciudadElF.value;
   let d = DATA.filter(v => qzEstaDisponibleEnMes(v, mes));
   if (qzFiltroTipo) d = d.filter(v => v.tipo === qzFiltroTipo);
   if (qzFiltroCiudad) d = d.filter(v => v.lugar === qzFiltroCiudad);
