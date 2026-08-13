@@ -1315,8 +1315,13 @@ function qzGetDescuentoDe(codigo) { return Number(qzDescuentosPorElemento[codigo
 // contratación por debajo del mínimo (unitaria y múltiple).
 let qzPreciosPublicosCache = null;
 
-async function qzCargarPreciosPublicos() {
-  if (qzPreciosPublicosCache) return qzPreciosPublicosCache;
+// forzar=true vuelve a pedir los precios al servidor aunque ya haya un
+// caché en memoria — se usa cada vez que se abre la pestaña Cotizador,
+// para no quedarse con precios viejos de hace rato si Jorge editó algo
+// en la BITÁCORA mientras tanto (el precargado del login no fuerza,
+// solo deja algo listo por si acaso).
+async function qzCargarPreciosPublicos(forzar) {
+  if (qzPreciosPublicosCache && !forzar) return qzPreciosPublicosCache;
   try {
     const res = await fetch(API_URL + '?action=qzGetPreciosPublicos', { cache: 'no-store' });
     const json = await res.json();
@@ -1928,7 +1933,7 @@ function renderCotizador(container) {
   qzOnBuscarInput();
   qzCargarAgencias();
   qzPintarResumenSeleccion();
-  qzCargarPreciosPublicos().then(function () { qzOnBuscarInput(); qzRefrescarPanelDerecho(); });
+  qzCargarPreciosPublicos(true).then(function () { qzOnBuscarInput(); qzRefrescarPanelDerecho(); });
   if (qzCotizacionActual) { qzPintarResultado(); qzPintarAprobacion(); }
   qzIrPaso(qzWizardStep);
 }
@@ -1995,7 +2000,7 @@ function qzRenderTarjetaCotizacion(c) {
         '<input id="qzMontoCobro_' + c.cotId + '" type="number" placeholder="Monto cobrado" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px;font-size:11px;margin-bottom:6px">';
     }
     if (puedeMover) {
-      html += '<button onclick="qzConfirmarMoverEtapa(\'' + c.cotId + '\',\'' + siguiente + '\')" style="width:100%;background:var(--green);border:none;border-radius:6px;color:#fff;font-weight:700;font-size:11px;padding:6px;cursor:pointer">Confirmar</button>';
+      html += '<button id="qzBtnMover_' + c.cotId + '" onclick="qzConfirmarMoverEtapa(\'' + c.cotId + '\',\'' + siguiente + '\')" style="width:100%;background:var(--green);border:none;border-radius:6px;color:#fff;font-weight:700;font-size:11px;padding:6px;cursor:pointer">Confirmar</button>';
     }
     html += '</div>';
   }
@@ -2009,6 +2014,14 @@ function qzToggleMoverForm(cotId) {
 }
 
 async function qzConfirmarMoverEtapa(cotId, etapaDestino) {
+  // Bloquear el botón de inmediato — si la respuesta demora, un doble
+  // clic antes NO debe crear dos movimientos de etapa duplicados.
+  const btn = document.getElementById('qzBtnMover_' + cotId);
+  if (btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Moviendo...';
+  }
   const body = { action: 'qzMoverEtapaPipeline', cotId: cotId, etapaDestino: etapaDestino };
   if (etapaDestino === 'FACTURADO') {
     body.montoFacturado = document.getElementById('qzMontoFact_' + cotId)?.value || '';
@@ -2026,6 +2039,7 @@ async function qzConfirmarMoverEtapa(cotId, etapaDestino) {
     qzPintarPipeline();
   } catch (e) {
     showToast('❌ Error: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
   }
 }
 
@@ -3660,10 +3674,36 @@ function renderMapa(container) {
     _mapaYaEncuadrado = false;
     _mapInstance = L.map('mapContainer', { zoomControl: true }).setView([-1.8312, -78.1834], 7);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CARTO',
-      subdomains: 'abcd', maxZoom: 19
-    }).addTo(_mapInstance);
+    // Tres capas base — el usuario elige con el selector de capas de Leaflet
+    // (ícono de capas, esquina superior derecha del mapa):
+    //  - Oscuro: el estilo de siempre.
+    //  - Calles: OpenStreetMap estándar, que YA trae dibujados íconos de
+    //    farmacias, restaurantes, bancos, tiendas, etc. — sin depender de
+    //    ninguna consulta externa que pueda fallar.
+    //  - Satélite: imágenes satelitales reales (Esri, gratis) con nombres
+    //    de calles y lugares superpuestos — el equivalente a "vista híbrida"
+    //    de Google Maps.
+    const capaOscura = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
+    });
+    const capaCalles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap', subdomains: 'abc', maxZoom: 19
+    });
+    const capaSatelite = L.layerGroup([
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '© Esri', maxZoom: 19
+      }),
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19
+      })
+    ]);
+
+    capaOscura.addTo(_mapInstance);
+    L.control.layers({
+      '🌙 Oscuro': capaOscura,
+      '🗺️ Calles': capaCalles,
+      '🛰️ Satélite': capaSatelite
+    }, null, { position: 'topright' }).addTo(_mapInstance);
 
     updateMapMarkers();
   }, 50);
