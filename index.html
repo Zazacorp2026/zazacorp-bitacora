@@ -559,6 +559,7 @@
   <div class="tab" id="tabCotizador" onclick="switchTab('cotizador')">🧮 Cotizador</div>
   <div class="tab" id="tabPipeline" onclick="switchTab('pipeline')">📈 Pipeline</div>
   <div class="tab" id="tabComercialGeneral" onclick="switchTab('comercialgeneral')">💼 Comercial General</div>
+  <div class="tab" id="tabWallet" onclick="switchTab('wallet')">💰 Wallet</div>
 </div>
 
 <div class="toolbar" id="mainToolbar">
@@ -804,6 +805,19 @@ function aplicarPermisoComercialGeneral() {
   if (!tieneAcceso && state.tab === 'comercialgeneral') switchTab('inventario');
 }
 
+// Por ahora, mientras se termina de cargar la lista de pasivos y se
+// prueba con datos reales, el Wallet queda oculto para todas menos
+// Jorge — cuando esté listo para las demás, este gate se quita (o se
+// amplía) tanto aquí como en el backend (qzGetWalletMes/
+// qzCongelarWalletMes ya están restringidos a JORGE del lado del
+// servidor también, no solo aquí en pantalla).
+function aplicarPermisoWallet() {
+  const tieneAcceso = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const tab = document.getElementById('tabWallet');
+  if (tab) tab.style.display = tieneAcceso ? '' : 'none';
+  if (!tieneAcceso && state.tab === 'wallet') switchTab('inventario');
+}
+
 function checkLogin() {
   const saved = sessionStorage.getItem('zz_usuario');
   if (saved && USUARIOS_NOMBRES.includes(saved) && !sesionExpirada()) {
@@ -813,6 +827,7 @@ function checkLogin() {
     aplicarPermisoDashboard();
     aplicarPermisoCotizador();
     aplicarPermisoComercialGeneral();
+    aplicarPermisoWallet();
     return true;
   }
   if (saved) forzarLogoutPorExpiracion();
@@ -859,6 +874,7 @@ function completarLoginExitoso(user, data) {
   aplicarPermisoDashboard();
   aplicarPermisoCotizador();
   aplicarPermisoComercialGeneral();
+  aplicarPermisoWallet();
   registrarAccesoSilencioso(user, true, '');
   qzCargarPreciosPublicos(); // precargar para que ya esté listo al contratar
   init(); // Cargar la app después del login
@@ -2128,6 +2144,145 @@ async function renderPipeline(container) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ── WALLET (prefijo qz) — comisión de ejecutivas por cliente/mes ──
+// Visible para TODAS las ejecutivas (a diferencia de Cotizador/
+// Pipeline): cada una ve solo sus propias filas; Jorge ve todas,
+// agrupadas por ejecutiva. Los datos vienen ya calculados y
+// CONGELADOS del servidor (qzGetWalletMes) — esta pantalla no
+// recalcula nada, solo muestra y (si eres Jorge) dispara el cálculo.
+// ══════════════════════════════════════════════════════════════
+let qzWalletMes = new Date().toISOString().slice(0, 7);
+let qzWalletData = null;
+const QZ_WALLET_TIPO_COLOR = { ACTIVO: 'var(--green)', PASIVO: 'var(--accent)', NUEVO: 'var(--blue)' };
+
+function qzCambiarMesWallet() {
+  const el = document.getElementById('qzWalletMesInput');
+  qzWalletMes = (el && el.value) || new Date().toISOString().slice(0, 7);
+  qzCargarWallet();
+}
+
+async function qzCargarWallet() {
+  const board = document.getElementById('qzWalletBoard');
+  if (board) board.innerHTML = '<div class="empty"><p>Cargando wallet...</p></div>';
+  try {
+    const res = await fetch(API_URL + '?action=qzGetWalletMes&mes=' + encodeURIComponent(qzWalletMes), { cache: 'no-store' });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error al cargar');
+    qzWalletData = json;
+  } catch (e) {
+    if (board) board.innerHTML = '<div class="empty"><p>⚠️ No se pudo cargar el wallet: ' + esc(e.message) + '</p>' +
+      '<button onclick="qzCargarWallet()" style="margin-top:10px;background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-weight:800;font-size:12px;padding:8px 14px;cursor:pointer">🔄 Reintentar</button></div>';
+    return;
+  }
+  qzPintarWallet();
+}
+
+async function qzCongelarWalletMesUI(forzar) {
+  const btn = document.getElementById('qzBtnCongelarWallet');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando...'; }
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzCongelarWalletMes', mes: qzWalletMes, forzar: !!forzar }) });
+    const json = await res.json();
+    if (!json.ok && json.yaCongelado) {
+      if (btn) { btn.disabled = false; btn.textContent = '❄️ Congelar este mes'; }
+      if (confirm('Este mes ya está congelado. ¿Seguro que quieres recalcularlo y reemplazar los montos guardados?')) {
+        await qzCongelarWalletMesUI(true);
+      }
+      return;
+    }
+    if (!json.ok) throw new Error(json.error || 'Error al congelar');
+    showToast('✅ Wallet de ' + qzWalletMes + ' congelado: ' + json.filasGuardadas + ' filas', 'success');
+    if (json.sinMapear && json.sinMapear.length) {
+      showToast('⚠️ Ejecutivas sin mapear (quedaron fuera): ' + json.sinMapear.join(', '), 'info');
+    }
+    await qzCargarWallet();
+  } catch (e) {
+    showToast('❌ Error: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '❄️ Congelar este mes'; }
+  }
+}
+
+function qzFilaWalletHTML_(f) {
+  const color = QZ_WALLET_TIPO_COLOR[f.tipoCliente] || 'var(--muted)';
+  return '<tr style="border-bottom:1px solid var(--border)">' +
+    '<td style="padding:8px 6px;font-size:12px;color:var(--text)">' + esc(f.cliente) + (f.esAgencia ? '<div style="font-size:9.5px;color:var(--muted)">vía ' + esc(f.agenciaNombre) + '</div>' : '') + '</td>' +
+    '<td style="padding:8px 6px;text-align:center"><span style="font-size:9.5px;font-weight:800;color:' + color + ';background:' + color + '1a;border:1px solid ' + color + ';border-radius:10px;padding:2px 8px">' + f.tipoCliente + '</span></td>' +
+    '<td style="padding:8px 6px;text-align:right;font-size:12px;color:var(--text)">$' + f.ventaNeta.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
+    '<td style="padding:8px 6px;text-align:right;font-size:12px;color:var(--muted)">$' + f.netoPostAgencia.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
+    '<td style="padding:8px 6px;text-align:right;font-size:11.5px;color:var(--muted)">' + (f.comisionPct * 100).toFixed(1) + '%</td>' +
+    '<td style="padding:8px 6px;text-align:right;font-size:13px;font-weight:800;color:var(--accent)">$' + f.comisionMonto.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</td>' +
+    '</tr>';
+}
+
+function qzTablaWalletHTML_(filas) {
+  const totalComision = filas.reduce((s, f) => s + f.comisionMonto, 0);
+  return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:inherit">' +
+    '<thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">CLIENTE</th><th style="padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">TIPO</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">VENTA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">NETO POST-AGENCIA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">%</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">COMISIÓN</th></tr></thead>' +
+    '<tbody>' + filas.map(qzFilaWalletHTML_).join('') + '</tbody>' +
+    '<tfoot><tr style="border-top:2px solid var(--border)"><td colspan="5" style="padding:8px 6px;font-size:11px;font-weight:900;color:var(--text)">TOTAL COMISIÓN</td><td style="padding:8px 6px;text-align:right;font-size:14px;font-weight:900;color:var(--accent)">$' + totalComision.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</td></tr></tfoot>' +
+    '</table></div>';
+}
+
+function qzPintarWallet() {
+  const board = document.getElementById('qzWalletBoard');
+  if (!board || !qzWalletData) return;
+  const esJorge = qzEsAdmin();
+  const filas = qzWalletData.filas || [];
+
+  if (!qzWalletData.congelado) {
+    board.innerHTML = '<div class="empty" style="padding:30px 10px">' +
+      '<p>El wallet de ' + qzWalletMes + ' todavía no se ha calculado.</p>' +
+      (esJorge
+        ? '<button id="qzBtnCongelarWallet" onclick="qzCongelarWalletMesUI(false)" style="margin-top:12px;background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-weight:800;font-size:12.5px;padding:10px 16px;cursor:pointer">❄️ Congelar este mes</button>'
+        : '<p style="font-size:11px;color:var(--muted);margin-top:6px">Solo Jorge puede calcularlo.</p>') +
+      '</div>';
+    return;
+  }
+
+  if (!filas.length) {
+    board.innerHTML = '<div class="empty"><p>No hay ventas registradas para ' + qzWalletMes + (esJorge ? '' : ' a tu nombre') + '.</p></div>';
+    return;
+  }
+
+  let html = '';
+  if (esJorge) {
+    const porEjecutiva = {};
+    filas.forEach(f => { (porEjecutiva[f.ejecutiva] = porEjecutiva[f.ejecutiva] || []).push(f); });
+    const totalGeneral = filas.reduce((s, f) => s + f.comisionMonto, 0);
+    html += '<div style="background:rgba(245,158,11,.08);border:1px solid var(--accent);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-weight:900;font-size:13px;color:var(--text)">TOTAL COMISIONES DEL MES</div>' +
+      '<div style="font-weight:900;font-size:18px;color:var(--accent)">$' + totalGeneral.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div></div>';
+    Object.keys(porEjecutiva).sort().forEach(ej => {
+      const subtotal = porEjecutiva[ej].reduce((s, f) => s + f.comisionMonto, 0);
+      html += '<div style="margin-bottom:16px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:900;font-size:12.5px;color:var(--text)">👤 ' + esc(ej) + '</div><div style="font-weight:800;font-size:12.5px;color:var(--accent)">$' + subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div></div>' +
+        qzTablaWalletHTML_(porEjecutiva[ej]) +
+        '</div>';
+    });
+  } else {
+    html += qzTablaWalletHTML_(filas);
+  }
+
+  html += '<div style="margin-top:10px;font-size:10px;color:var(--muted)">Congelado el ' + esc((filas[0] && filas[0].fechaCongelado) || '') +
+    (esJorge ? ' · <span onclick="qzCongelarWalletMesUI(false)" style="color:var(--accent);cursor:pointer;text-decoration:underline">recalcular</span>' : '') + '</div>';
+
+  board.innerHTML = html;
+}
+
+function renderWallet(container) {
+  container.innerHTML =
+    '<div style="padding:4px 0">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
+        '<label style="font-size:11px;color:var(--muted);font-weight:700">MES</label>' +
+        '<input id="qzWalletMesInput" type="month" value="' + qzWalletMes + '" onchange="qzCambiarMesWallet()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark">' +
+      '</div>' +
+      '<div id="qzWalletBoard"><div class="empty"><p>Cargando wallet...</p></div></div>' +
+    '</div>';
+  qzCargarWallet();
+}
+
+// ══════════════════════════════════════════════════════════════
 // ── COMERCIAL GENERAL (prefijo cg) · solo Jorge ────────────────
 // Dashboard de facturación completa (Sheet ZazaCorp_Facturacion_Master),
 // portado del prototipo standalone en DASHBOARD COMERCIAL/zazacorp2026
@@ -2982,10 +3137,10 @@ async function renderComercialGeneral(container) {
 function switchTab(t) {
   state.tab = t; state.page = 1;
   document.querySelectorAll('.tab').forEach((el,i) =>
-    el.classList.toggle('active', ['inventario','disponibles','reservadas','alertas','led','mapa','dashboard','cotizador','pipeline','comercialgeneral'][i] === t));
+    el.classList.toggle('active', ['inventario','disponibles','reservadas','alertas','led','mapa','dashboard','cotizador','pipeline','comercialgeneral','wallet'][i] === t));
   const mainToolbar = document.getElementById('mainToolbar');
-  if (mainToolbar) mainToolbar.style.display = (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral') ? 'none' : '';
-  if (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral') { render(); return; }
+  if (mainToolbar) mainToolbar.style.display = (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral' || t === 'wallet') ? 'none' : '';
+  if (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral' || t === 'wallet') { render(); return; }
   document.getElementById('viewToggle').style.display = (t === 'alertas' || t === 'mapa' || t === 'led') ? 'none' : '';
   const mfEj = document.getElementById('mf-ejecutiva');
   if (mfEj) mfEj.style.display = (t === 'led') ? 'none' : '';
@@ -3100,6 +3255,10 @@ function render() {
   }
   if (state.tab === 'comercialgeneral') {
     if (!document.getElementById('cgBoard')) renderComercialGeneral(content);
+    return;
+  }
+  if (state.tab === 'wallet') {
+    if (!document.getElementById('qzWalletBoard')) renderWallet(content);
     return;
   }
 
@@ -5916,7 +6075,7 @@ setInterval(() => {
     // — llamar render() aquí de todos modos podía, en algún momento
     // de la transición al entrar a esas pestañas, terminar pintando
     // otra cosa en #mainContent por encima ("saltaba" a otro módulo).
-    if (state.tab !== 'cotizador' && state.tab !== 'pipeline' && state.tab !== 'comercialgeneral') {
+    if (state.tab !== 'cotizador' && state.tab !== 'pipeline' && state.tab !== 'comercialgeneral' && state.tab !== 'wallet') {
       render();
     }
     updateStats();
