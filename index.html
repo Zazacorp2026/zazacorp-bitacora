@@ -1800,37 +1800,111 @@ async function qzExportarCotizacionPPT() {
     cover.addText('COTIZACIÓN COMERCIAL', { x: 0, y: 3.8, w: 13.3, h: 0.55, align: 'center', fontSize: 23, bold: true, color: WHITE, fontFace: 'Arial' });
     cover.addText((r.campania || 'Campaña OOH') + ' · ' + (r.cliente || 'Cliente'), { x: 0, y: 4.35, w: 13.3, h: 0.45, align: 'center', fontSize: 14, color: 'D1D5DB', fontFace: 'Arial' });
     const detalle = r.detalle || [];
-    const resumen = pres.addSlide(); resumen.background = { color: WHITE };
-    resumen.addText('RESUMEN EJECUTIVO', { x: 0.5, y: 0.35, w: 7, h: 0.45, fontSize: 18, bold: true, color: NAVY, fontFace: 'Arial' });
-    // Mismos campos de resumen que las tarjetas de arriba del PDF y las
-    // filas de encabezado del Excel — los tres deben decir lo mismo.
-    const filas = [
-      ['Cliente', r.cliente || '—'], ['Marca', r.marca || '—'], ['Agencia', r.agencia || 'Venta directa'], ['Campaña', r.campania || '—'],
-      ['Vigencia', r.vigenciaHasta || '—'], ['Mes inicio', r.mesInicio || '—'], ['Elementos', String(detalle.length)], ['Duración', (r.cantidadMeses || '—') + ' meses'],
-      ['Tarifa bruta', qzMoney(r.tarifaBruta)], ['Descuento total', '-' + qzMoney(r.descuentoMontoTotal) + ' (' + qzPct(r.descuentoPct) + ' prom.)'], ['Precio final', qzMoney(r.precioFinal)]
+    const BORDE = 'E5E7EB', ROJO = 'DC2626', GRIS_ZEBRA = 'F8F9FB';
+    // Mismo diseño visual que la propuesta en PDF (qzPropuestaHTML): header
+    // navy con logo, dos filas de 4 tarjetas de resumen, y una sola tabla
+    // (con miniatura por fila) en vez de una diapositiva por elemento.
+    const MARGEN_X = 0.4, ANCHO_SLIDE = 13.333;
+    const COLS = [
+      { key: 'thumb', label: '', w: 0.5 },
+      { key: 'elemento', label: 'Elemento', w: 1.85 },
+      { key: 'ciudad', label: 'Ciudad', w: 1.15 },
+      { key: 'direccion', label: 'Dirección', w: 2.68 },
+      { key: 'meses', label: 'Meses', w: 0.55, align: 'center' },
+      { key: 'tarifa', label: 'Tarifa mensual', w: 1.45, align: 'right' },
+      { key: 'bruto', label: 'Bruto', w: 1.3, align: 'right' },
+      { key: 'descuento', label: 'Descuento', w: 1.55, align: 'right' },
+      { key: 'total', label: 'Total', w: 1.5, align: 'right' }
     ];
-    filas.forEach((f, i) => { const esUltimo = i === filas.length - 1; const y = 1 + i * 0.45; resumen.addText(f[0], { x: 0.6, y, w: 2.5, h: 0.32, fontSize: 10, color: LABEL, bold: true, fontFace: 'Arial' }); resumen.addText(f[1], { x: 3, y, w: 7.5, h: 0.35, fontSize: esUltimo ? 18 : 12, color: esUltimo ? ORANGE : NAVY, bold: true, fontFace: 'Arial' }); });
-    detalle.forEach(function(d) {
+    let acumX = MARGEN_X;
+    COLS.forEach(c => { c.x = acumX; acumX += c.w; });
+    const anchoTabla = acumX - MARGEN_X;
+
+    function dibujarCard(slide, x, y, w, h, label, valor, opts) {
+      opts = opts || {};
+      slide.addShape(pres.shapes.RECTANGLE, { x, y, w, h, fill: { color: WHITE }, line: { color: BORDE, width: 1 } });
+      slide.addText(String(label || '').toUpperCase(), { x: x + 0.12, y: y + 0.08, w: w - 0.24, h: 0.2, fontSize: 8, bold: true, color: LABEL, fontFace: 'Arial' });
+      slide.addText(valor === undefined || valor === null || valor === '' ? '—' : String(valor), { x: x + 0.12, y: y + 0.3, w: w - 0.24, h: h - 0.38, fontSize: opts.grande ? 15 : 11, bold: true, color: opts.naranja ? ORANGE : NAVY, fontFace: 'Arial', valign: 'top', wrap: true });
+    }
+
+    function dibujarEncabezadoTabla(slide, y) {
+      slide.addShape(pres.shapes.RECTANGLE, { x: MARGEN_X, y, w: anchoTabla, h: 0.32, fill: { color: ORANGE }, line: { color: ORANGE } });
+      COLS.forEach(c => {
+        if (!c.label) return;
+        slide.addText(c.label, { x: c.x + 0.06, y, w: c.w - 0.12, h: 0.32, fontSize: 9, bold: true, color: WHITE, fontFace: 'Arial', align: c.align || 'left', valign: 'middle' });
+      });
+    }
+
+    function dibujarFilaElemento(slide, d, y, rowH, zebra) {
       const v = DATA.find(x => x.codigo === d.codigo) || { codigo: d.codigo };
-      const slide = pres.addSlide(); slide.background = { color: WHITE };
-      slide.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 13.3, h: 0.9, fill: { color: ORANGE }, line: { color: ORANGE } });
-      slide.addText(d.codigo, { x: 0.45, y: 0.16, w: 8, h: 0.52, fontSize: 22, bold: true, color: WHITE, fontFace: 'Arial Black' });
-      // Mismos campos y mismo orden que la fila de este elemento en el
-      // PDF y en el Excel (Tipo, Ciudad, Dirección, Meses, Tarifa,
-      // Bruto, Descuento, Total) — los tres formatos deben decir
-      // exactamente lo mismo por elemento.
-      const camposElemento = [
-        ['Tipo', v.tipo || '—'], ['Ciudad', v.lugar || '—'], ['Dirección', v.direccion || '—'],
-        ['Meses', String(d.meses)], ['Tarifa mensual', qzMoney(d.tarifaMensual)], ['Bruto', qzMoney(d.tarifaBruta)],
-        ['Descuento', qzPct(d.descuentoPct) + ' (-' + qzMoney(d.descuentoMonto) + ')'], ['Total', qzMoney(d.precioFinal)]
-      ];
-      camposElemento.forEach((f, i) => { const y = 1.3 + i * 0.58; const esUltimo = i === camposElemento.length - 1; slide.addText(f[0], { x: 0.55, y, w: 2.5, h: 0.3, fontSize: 10, color: LABEL, bold: true, fontFace: 'Arial' }); slide.addText(f[1], { x: 3.1, y, w: 6.2, h: 0.44, fontSize: 13, color: esUltimo ? ORANGE : NAVY, bold: esUltimo, fontFace: 'Arial', wrap: true }); });
-      const fotoSlide = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 500);
-      if (fotoSlide && String(fotoSlide).startsWith('http')) {
-        slide.addImage({ path: fotoSlide, x: 9.7, y: 1.3, w: 3.1, h: 2.2, sizing: { type: 'cover', w: 3.1, h: 2.2 } });
+      if (zebra) slide.addShape(pres.shapes.RECTANGLE, { x: MARGEN_X, y, w: anchoTabla, h: rowH, fill: { color: GRIS_ZEBRA }, line: { color: GRIS_ZEBRA } });
+      const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 120);
+      const cThumb = COLS[0];
+      if (foto && String(foto).startsWith('http')) {
+        slide.addImage({ path: foto, x: cThumb.x + 0.04, y: y + 0.03, w: rowH - 0.06, h: rowH - 0.06, sizing: { type: 'cover', w: rowH - 0.06, h: rowH - 0.06 } });
       }
-      slide.addImage({ data: LOGO_ZAZACORP_LIMPIO, x: 11.6, y: 6.9, w: 1.5, h: 0.48 });
-    });
+      const celdas = [
+        [COLS[1], d.codigo + '\n' + (v.tipo || ''), NAVY, false],
+        [COLS[2], v.lugar || '—', NAVY, false],
+        [COLS[3], v.direccion || '—', NAVY, false],
+        [COLS[4], String(d.meses), NAVY, false],
+        [COLS[5], qzMoney(d.tarifaMensual), NAVY, false],
+        [COLS[6], qzMoney(d.tarifaBruta), NAVY, false],
+        [COLS[7], qzPct(d.descuentoPct) + ' (-' + qzMoney(d.descuentoMonto) + ')', ROJO, false],
+        [COLS[8], qzMoney(d.precioFinal), ORANGE, true]
+      ];
+      celdas.forEach(function(c) {
+        const col = c[0];
+        slide.addText(c[1], { x: col.x + 0.06, y: y + 0.02, w: col.w - 0.12, h: rowH - 0.04, fontSize: 8.5, bold: c[3], color: c[2], fontFace: 'Arial', align: col.align || 'left', valign: 'middle', wrap: true });
+      });
+    }
+
+    function dibujarLogoPie(slide) {
+      slide.addImage({ data: LOGO_ZAZACORP_LIMPIO, x: 11.9, y: 7.02, w: 1.0, h: 0.32 });
+    }
+
+    const FILAS_PAGINA_CON_RESUMEN = 8;
+    const FILAS_PAGINA_CONTINUACION = 16;
+    const ROW_H = 0.34;
+    let idx = 0, pagina = 0;
+    while (idx < detalle.length || pagina === 0) {
+      const esPrimera = pagina === 0;
+      const slide = pres.addSlide(); slide.background = { color: WHITE };
+      let y;
+      if (esPrimera) {
+        slide.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: ANCHO_SLIDE, h: 1.15, fill: { color: NAVY }, line: { color: NAVY } });
+        slide.addImage({ data: LOGO_ZAZACORP_LIMPIO, x: 0.45, y: 0.28, w: 1.7, h: 0.54 });
+        slide.addText('COTIZACIÓN COMERCIAL', { x: 2.35, y: 0.15, w: 10.4, h: 0.45, fontSize: 18, bold: true, color: WHITE, fontFace: 'Arial' });
+        slide.addText((r.campania || 'Campaña OOH') + ' · ' + (r.cliente || 'Cliente'), { x: 2.35, y: 0.63, w: 10.4, h: 0.35, fontSize: 12, color: 'D1D5DB', fontFace: 'Arial' });
+        const cardY1 = 1.35, cardY2 = 2.28, cardH = 0.83, cardGap = 0.15;
+        const cardW = (ANCHO_SLIDE - 2 * MARGEN_X - 3 * cardGap) / 4;
+        let cx = MARGEN_X;
+        [['Cliente', r.cliente], ['Marca', r.marca], ['Agencia', r.agencia || 'Venta directa'], ['Vigencia', r.vigenciaHasta]].forEach(f => { dibujarCard(slide, cx, cardY1, cardW, cardH, f[0], f[1]); cx += cardW + cardGap; });
+        cx = MARGEN_X;
+        [['Elementos', String(detalle.length)], ['Mes inicio', r.mesInicio], ['Duración', (r.cantidadMeses || '—') + ' meses'], ['Inversión final', qzMoney(r.precioFinal)]].forEach((f, i) => { dibujarCard(slide, cx, cardY2, cardW, cardH, f[0], f[1], { naranja: i === 3, grande: i === 3 }); cx += cardW + cardGap; });
+        y = cardY2 + cardH + 0.2;
+      } else {
+        slide.addText('COTIZACIÓN COMERCIAL · ' + (r.cliente || 'Cliente') + ' · continuación', { x: MARGEN_X, y: 0.25, w: 12.5, h: 0.35, fontSize: 12, bold: true, color: NAVY, fontFace: 'Arial' });
+        y = 0.75;
+      }
+      dibujarEncabezadoTabla(slide, y);
+      y += 0.32;
+      const filasPagina = esPrimera ? FILAS_PAGINA_CON_RESUMEN : FILAS_PAGINA_CONTINUACION;
+      const fin = Math.min(idx + filasPagina, detalle.length);
+      for (let i = idx; i < fin; i++) { dibujarFilaElemento(slide, detalle[i], y, ROW_H, (i - idx) % 2 === 1); y += ROW_H; }
+      idx = fin;
+      const esUltima = idx >= detalle.length;
+      if (esUltima) {
+        slide.addShape(pres.shapes.RECTANGLE, { x: MARGEN_X, y, w: anchoTabla, h: 0.02, fill: { color: NAVY }, line: { color: NAVY } });
+        y += 0.06;
+        slide.addText('TOTALES', { x: COLS[3].x, y, w: COLS[3].w, h: 0.32, fontSize: 10, bold: true, color: NAVY, fontFace: 'Arial', align: 'right' });
+        slide.addText(qzMoney(r.tarifaBruta), { x: COLS[6].x, y, w: COLS[6].w, h: 0.32, fontSize: 10, bold: true, color: NAVY, fontFace: 'Arial', align: 'right' });
+        slide.addText('-' + qzMoney(r.descuentoMontoTotal), { x: COLS[7].x, y, w: COLS[7].w, h: 0.32, fontSize: 10, bold: true, color: ROJO, fontFace: 'Arial', align: 'right' });
+        slide.addText(qzMoney(r.precioFinal), { x: COLS[8].x, y, w: COLS[8].w, h: 0.32, fontSize: 12, bold: true, color: ORANGE, fontFace: 'Arial', align: 'right' });
+      }
+      dibujarLogoPie(slide);
+      pagina++;
+    }
     await pres.writeFile({ fileName: 'ZAZACORP_Cotizacion_' + (r.cliente || 'Cliente').replace(/[^a-z0-9]/gi, '_') + '_' + new Date().toISOString().slice(0,10) + '.pptx' });
     showToast('✓ Cotización exportada', 'success');
   } catch (e) { showToast('❌ Error: ' + e.message, 'error'); console.error(e); }
@@ -1842,42 +1916,133 @@ async function qzExportarCotizacionExcel() {
   const btn = document.getElementById('qzBtnExcel');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando...'; }
   try {
-    if (typeof XLSX === 'undefined') {
+    // ExcelJS (no SheetJS): la versión gratuita de SheetJS no permite
+    // colores/bordes de celda, y por eso el Excel no podía verse como
+    // el PDF. ExcelJS sí soporta fills, bordes y texto enriquecido.
+    if (typeof ExcelJS === 'undefined') {
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
-        s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
-        s.onload = resolve;
-        s.onerror = () => {
-          const s2 = document.createElement('script');
-          s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-          s2.onload = resolve; s2.onerror = reject;
-          document.head.appendChild(s2);
-        };
-        document.head.appendChild(s);
+        s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+        s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
       });
     }
     const r = Object.assign(qzCotizacionActual, qzBuildPayload());
     const detalle = r.detalle || [];
-    const headers = ['Código', 'Tipo', 'Ciudad', 'Dirección', 'Meses', 'Tarifa mensual', 'Bruto', 'Descuento %', 'Descuento $', 'Total'];
-    // Mismos campos de encabezado que las tarjetas del PDF y el resumen
-    // del PPT — los tres formatos deben decir lo mismo.
-    const wsData = [
-      ['Cliente', r.cliente || ''], ['Marca', r.marca || ''], ['Agencia', r.agencia || 'Venta directa'], ['Campaña', r.campania || ''],
-      ['Vigencia', r.vigenciaHasta || ''], ['Mes inicio', r.mesInicio || ''], ['Elementos', detalle.length], ['Duración', (r.cantidadMeses || '') + ' meses'], []
+    const NAVY = 'FF1A2B4A', ORANGE = 'FFF47B20', WHITE = 'FFFFFFFF', LABEL = 'FF8A9BB5', BORDE = 'FFE5E7EB', ROJO = 'FFDC2626', ZEBRA = 'FFF8F9FB';
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Cotización', { views: [{ showGridLines: false }] });
+    ws.columns = [
+      { width: 14 }, { width: 12 }, { width: 12 }, { width: 30 }, { width: 8 },
+      { width: 14 }, { width: 13 }, { width: 11 }, { width: 13 }, { width: 14 }
     ];
-    wsData.push(headers);
-    detalle.forEach(d => {
-      const v = DATA.find(x => x.codigo === d.codigo) || {};
-      wsData.push([d.codigo, v.tipo || '', v.lugar || '', v.direccion || '', d.meses, d.tarifaMensual, d.tarifaBruta, d.descuentoPct, d.descuentoMonto, d.precioFinal]);
-    });
-    wsData.push(['', '', '', '', '', '', 'TOTALES', r.tarifaBruta, r.descuentoMontoTotal, r.precioFinal]);
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = [{wch:14},{wch:14},{wch:14},{wch:32},{wch:8},{wch:14},{wch:14},{wch:12},{wch:14},{wch:14}];
-    XLSX.utils.book_append_sheet(wb, ws, 'Cotización');
+    function bordear(r1, c1, r2, c2, color) {
+      for (let ri = r1; ri <= r2; ri++) {
+        for (let ci = c1; ci <= c2; ci++) {
+          ws.getCell(ri, ci).border = {
+            top: { style: 'thin', color: { argb: color || BORDE } },
+            bottom: { style: 'thin', color: { argb: color || BORDE } },
+            left: { style: 'thin', color: { argb: color || BORDE } },
+            right: { style: 'thin', color: { argb: color || BORDE } }
+          };
+        }
+      }
+    }
+
+    // Header navy, igual que el hero del PDF/PPT.
+    ws.mergeCells(1, 1, 1, 10);
+    ws.getCell(1, 1).value = 'COTIZACIÓN COMERCIAL';
+    ws.getCell(1, 1).font = { bold: true, size: 16, color: { argb: WHITE } };
+    ws.getCell(1, 1).alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.getRow(1).height = 28;
+    ws.mergeCells(2, 1, 2, 10);
+    ws.getCell(2, 1).value = (r.campania || 'Campaña OOH') + ' · ' + (r.cliente || 'Cliente');
+    ws.getCell(2, 1).font = { size: 11, color: { argb: 'FFD1D5DB' } };
+    ws.getCell(2, 1).alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.getRow(2).height = 20;
+    for (let c = 1; c <= 10; c++) { ws.getCell(1, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } }; ws.getCell(2, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } }; }
+
+    // Tarjetas de resumen (2 filas x 4), igual a las del PDF/PPT.
+    function tarjeta(fila, colIni, label, valor, opts) {
+      opts = opts || {};
+      const colFin = colIni + 1;
+      ws.mergeCells(fila, colIni, fila, colFin);
+      ws.getCell(fila, colIni).value = {
+        richText: [
+          { font: { size: 8, bold: true, color: { argb: LABEL } }, text: String(label).toUpperCase() + '\n' },
+          { font: { size: opts.grande ? 13 : 11, bold: true, color: { argb: opts.naranja ? ORANGE : NAVY } }, text: valor === undefined || valor === null || valor === '' ? '—' : String(valor) }
+        ]
+      };
+      ws.getCell(fila, colIni).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+      bordear(fila, colIni, fila, colFin);
+    }
+    ws.getRow(4).height = 34; ws.getRow(5).height = 34;
+    tarjeta(4, 1, 'Cliente', r.cliente);
+    tarjeta(4, 3, 'Marca', r.marca);
+    tarjeta(4, 5, 'Agencia', r.agencia || 'Venta directa');
+    tarjeta(4, 7, 'Vigencia', r.vigenciaHasta);
+    tarjeta(5, 1, 'Elementos', String(detalle.length));
+    tarjeta(5, 3, 'Mes inicio', r.mesInicio);
+    tarjeta(5, 5, 'Duración', (r.cantidadMeses || '—') + ' meses');
+    tarjeta(5, 7, 'Inversión final', qzMoney(r.precioFinal), { naranja: true, grande: true });
+
+    // Encabezado de tabla naranja, igual al del PDF/PPT.
+    const filaEncabezado = 7;
+    const headers = ['Código', 'Tipo', 'Ciudad', 'Dirección', 'Meses', 'Tarifa mensual', 'Bruto', 'Descuento %', 'Descuento $', 'Total'];
+    headers.forEach((h, i) => {
+      const cell = ws.getCell(filaEncabezado, i + 1);
+      cell.value = h;
+      cell.font = { bold: true, color: { argb: WHITE }, size: 10 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ORANGE } };
+      cell.alignment = { vertical: 'middle', horizontal: i >= 5 ? 'right' : 'left' };
+    });
+    ws.getRow(filaEncabezado).height = 18;
+
+    let filaActual = filaEncabezado + 1;
+    detalle.forEach((d, i) => {
+      const v = DATA.find(x => x.codigo === d.codigo) || {};
+      const fila = ws.getRow(filaActual);
+      fila.getCell(1).value = d.codigo;
+      fila.getCell(2).value = v.tipo || '';
+      fila.getCell(3).value = v.lugar || '';
+      fila.getCell(4).value = v.direccion || '';
+      fila.getCell(5).value = d.meses;
+      fila.getCell(6).value = d.tarifaMensual;
+      fila.getCell(7).value = d.tarifaBruta;
+      fila.getCell(8).value = d.descuentoPct;
+      fila.getCell(9).value = d.descuentoMonto;
+      fila.getCell(10).value = d.precioFinal;
+      fila.getCell(6).numFmt = '$#,##0'; fila.getCell(7).numFmt = '$#,##0'; fila.getCell(9).numFmt = '$#,##0'; fila.getCell(10).numFmt = '$#,##0';
+      fila.getCell(8).numFmt = '0%';
+      fila.getCell(8).font = { color: { argb: ROJO } };
+      fila.getCell(9).font = { color: { argb: ROJO } };
+      fila.getCell(10).font = { bold: true, color: { argb: ORANGE } };
+      if (i % 2 === 1) { for (let c = 1; c <= 10; c++) fila.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA } }; }
+      for (let c = 1; c <= 10; c++) { fila.getCell(c).border = { bottom: { style: 'thin', color: { argb: BORDE } } }; fila.getCell(c).alignment = { vertical: 'middle', horizontal: c >= 6 ? 'right' : (c === 5 ? 'center' : 'left') }; }
+      filaActual++;
+    });
+
+    // Totales, igual al tfoot del PDF/pie del PPT.
+    const filaTotales = filaActual;
+    ws.getCell(filaTotales, 6).value = 'TOTALES';
+    ws.getCell(filaTotales, 6).font = { bold: true, color: { argb: NAVY } };
+    ws.getCell(filaTotales, 7).value = r.tarifaBruta; ws.getCell(filaTotales, 7).numFmt = '$#,##0';
+    ws.getCell(filaTotales, 9).value = -Math.abs(r.descuentoMontoTotal || 0); ws.getCell(filaTotales, 9).numFmt = '$#,##0';
+    ws.getCell(filaTotales, 10).value = r.precioFinal; ws.getCell(filaTotales, 10).numFmt = '$#,##0';
+    for (let c = 1; c <= 10; c++) { ws.getCell(filaTotales, c).border = { top: { style: 'medium', color: { argb: NAVY } } }; }
+    ws.getCell(filaTotales, 7).font = { bold: true, color: { argb: NAVY } };
+    ws.getCell(filaTotales, 9).font = { bold: true, color: { argb: ROJO } };
+    ws.getCell(filaTotales, 10).font = { bold: true, color: { argb: ORANGE }, size: 12 };
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
     const fecha = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, 'ZAZACORP_Cotizacion_' + (r.cliente || 'Cliente').replace(/[^a-z0-9]/gi, '_') + '_' + fecha + '.xlsx');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ZAZACORP_Cotizacion_' + (r.cliente || 'Cliente').replace(/[^a-z0-9]/gi, '_') + '_' + fecha + '.xlsx';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     showToast('✓ Excel exportado', 'success');
   } catch (e) { showToast('❌ Error: ' + e.message, 'error'); console.error(e); }
   finally { if (btn) { btn.disabled = false; btn.textContent = '📊 Exportar Excel'; } }
