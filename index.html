@@ -1677,7 +1677,10 @@ function qzPintarResultado() {
   '</table></div>';
 
   html += '<div style="padding:9px;border-radius:9px;background:' + semColor + '22;border:1px solid ' + semColor + ';color:' + semColor + ';font-weight:800;font-size:12px;text-align:center">' + semTexto + '</div>';
-  if (r.sobreTopeDescuento) html += '<div style="margin-top:8px;padding:10px;border-radius:9px;background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);font-size:12px;font-weight:800">⚠️ Al menos un elemento supera el tope de descuento permitido (' + qzPct(r.topeDescuentoPct) + '). Guarda y aprueba con PIN antes de enviar propuesta final.</div>';
+  // El PIN se pide por MARGEN real, no por superar un % de descuento
+  // fijo — un descuento alto puede seguir dentro del margen, y uno
+  // chico puede romperlo si el elemento ya venía justo.
+  if (r.semaforo === 'REQUIERE_APROBACION') html += '<div style="margin-top:8px;padding:10px;border-radius:9px;background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);font-size:12px;font-weight:800">⚠️ Con este precio, al menos un elemento cae por debajo de su margen mínimo. Guarda y aprueba con PIN antes de enviar propuesta final.</div>';
   el.innerHTML = html;
   ['qzBtnGuardar','qzBtnVistaPDF'].forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
 }
@@ -1799,14 +1802,29 @@ async function qzExportarCotizacionPPT() {
     const detalle = r.detalle || [];
     const resumen = pres.addSlide(); resumen.background = { color: WHITE };
     resumen.addText('RESUMEN EJECUTIVO', { x: 0.5, y: 0.35, w: 7, h: 0.45, fontSize: 18, bold: true, color: NAVY, fontFace: 'Arial' });
-    const filas = [['Cliente', r.cliente || '—'], ['Marca', r.marca || '—'], ['Agencia', r.agencia || 'Venta directa'], ['Campaña', r.campania || '—'], ['Elementos', String(detalle.length)], ['Duración', (r.cantidadMeses || '—') + ' meses'], ['Tarifa bruta', qzMoney(r.tarifaBruta)], ['Descuento total', '-' + qzMoney(r.descuentoMontoTotal) + ' (' + qzPct(r.descuentoPct) + ' prom.)'], ['Precio final', qzMoney(r.precioFinal)]];
-    filas.forEach((f, i) => { const y = 1 + i * 0.48; resumen.addText(f[0], { x: 0.6, y, w: 2.5, h: 0.32, fontSize: 10, color: LABEL, bold: true, fontFace: 'Arial' }); resumen.addText(f[1], { x: 3, y, w: 7.5, h: 0.35, fontSize: i === 8 ? 18 : 12, color: i === 8 ? ORANGE : NAVY, bold: true, fontFace: 'Arial' }); });
+    // Mismos campos de resumen que las tarjetas de arriba del PDF y las
+    // filas de encabezado del Excel — los tres deben decir lo mismo.
+    const filas = [
+      ['Cliente', r.cliente || '—'], ['Marca', r.marca || '—'], ['Agencia', r.agencia || 'Venta directa'], ['Campaña', r.campania || '—'],
+      ['Vigencia', r.vigenciaHasta || '—'], ['Mes inicio', r.mesInicio || '—'], ['Elementos', String(detalle.length)], ['Duración', (r.cantidadMeses || '—') + ' meses'],
+      ['Tarifa bruta', qzMoney(r.tarifaBruta)], ['Descuento total', '-' + qzMoney(r.descuentoMontoTotal) + ' (' + qzPct(r.descuentoPct) + ' prom.)'], ['Precio final', qzMoney(r.precioFinal)]
+    ];
+    filas.forEach((f, i) => { const esUltimo = i === filas.length - 1; const y = 1 + i * 0.45; resumen.addText(f[0], { x: 0.6, y, w: 2.5, h: 0.32, fontSize: 10, color: LABEL, bold: true, fontFace: 'Arial' }); resumen.addText(f[1], { x: 3, y, w: 7.5, h: 0.35, fontSize: esUltimo ? 18 : 12, color: esUltimo ? ORANGE : NAVY, bold: true, fontFace: 'Arial' }); });
     detalle.forEach(function(d) {
       const v = DATA.find(x => x.codigo === d.codigo) || { codigo: d.codigo };
       const slide = pres.addSlide(); slide.background = { color: WHITE };
       slide.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 13.3, h: 0.9, fill: { color: ORANGE }, line: { color: ORANGE } });
       slide.addText(d.codigo, { x: 0.45, y: 0.16, w: 8, h: 0.52, fontSize: 22, bold: true, color: WHITE, fontFace: 'Arial Black' });
-      [['Tipo', v.tipo || '—'], ['Ciudad', v.lugar || '—'], ['Dirección', v.direccion || '—'], ['Tarifa mensual', qzMoney(d.tarifaMensual)], ['Descuento', qzPct(d.descuentoPct) + ' (-' + qzMoney(d.descuentoMonto) + ')'], ['Total', qzMoney(d.precioFinal)]].forEach((f, i) => { const y = 1.3 + i * 0.6; slide.addText(f[0], { x: 0.55, y, w: 2.5, h: 0.3, fontSize: 10, color: LABEL, bold: true, fontFace: 'Arial' }); slide.addText(f[1], { x: 3.1, y, w: 6.2, h: 0.44, fontSize: 13, color: i === 5 ? ORANGE : NAVY, bold: i === 5, fontFace: 'Arial', wrap: true }); });
+      // Mismos campos y mismo orden que la fila de este elemento en el
+      // PDF y en el Excel (Tipo, Ciudad, Dirección, Meses, Tarifa,
+      // Bruto, Descuento, Total) — los tres formatos deben decir
+      // exactamente lo mismo por elemento.
+      const camposElemento = [
+        ['Tipo', v.tipo || '—'], ['Ciudad', v.lugar || '—'], ['Dirección', v.direccion || '—'],
+        ['Meses', String(d.meses)], ['Tarifa mensual', qzMoney(d.tarifaMensual)], ['Bruto', qzMoney(d.tarifaBruta)],
+        ['Descuento', qzPct(d.descuentoPct) + ' (-' + qzMoney(d.descuentoMonto) + ')'], ['Total', qzMoney(d.precioFinal)]
+      ];
+      camposElemento.forEach((f, i) => { const y = 1.3 + i * 0.58; const esUltimo = i === camposElemento.length - 1; slide.addText(f[0], { x: 0.55, y, w: 2.5, h: 0.3, fontSize: 10, color: LABEL, bold: true, fontFace: 'Arial' }); slide.addText(f[1], { x: 3.1, y, w: 6.2, h: 0.44, fontSize: 13, color: esUltimo ? ORANGE : NAVY, bold: esUltimo, fontFace: 'Arial', wrap: true }); });
       const fotoSlide = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 500);
       if (fotoSlide && String(fotoSlide).startsWith('http')) {
         slide.addImage({ path: fotoSlide, x: 9.7, y: 1.3, w: 3.1, h: 2.2, sizing: { type: 'cover', w: 3.1, h: 2.2 } });
@@ -1841,8 +1859,11 @@ async function qzExportarCotizacionExcel() {
     const r = Object.assign(qzCotizacionActual, qzBuildPayload());
     const detalle = r.detalle || [];
     const headers = ['Código', 'Tipo', 'Ciudad', 'Dirección', 'Meses', 'Tarifa mensual', 'Bruto', 'Descuento %', 'Descuento $', 'Total'];
+    // Mismos campos de encabezado que las tarjetas del PDF y el resumen
+    // del PPT — los tres formatos deben decir lo mismo.
     const wsData = [
-      ['Cliente', r.cliente || ''], ['Marca', r.marca || ''], ['Agencia', r.agencia || 'Venta directa'], ['Campaña', r.campania || ''], []
+      ['Cliente', r.cliente || ''], ['Marca', r.marca || ''], ['Agencia', r.agencia || 'Venta directa'], ['Campaña', r.campania || ''],
+      ['Vigencia', r.vigenciaHasta || ''], ['Mes inicio', r.mesInicio || ''], ['Elementos', detalle.length], ['Duración', (r.cantidadMeses || '') + ' meses'], []
     ];
     wsData.push(headers);
     detalle.forEach(d => {
