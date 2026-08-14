@@ -2153,7 +2153,23 @@ async function renderPipeline(container) {
 // ══════════════════════════════════════════════════════════════
 let qzWalletMes = new Date().toISOString().slice(0, 7);
 let qzWalletData = null;
+let qzWalletPorEjecutivaCache = {};
 const QZ_WALLET_TIPO_COLOR = { ACTIVO: 'var(--green)', PASIVO: 'var(--accent)', NUEVO: 'var(--blue)' };
+
+// Arma la tabla de una ejecutiva la primera vez que se expande (no de
+// entrada) y alterna mostrar/ocultar + gira el indicador ▸/▾.
+function qzToggleWalletEjecutiva(idSafe) {
+  const detalle = document.getElementById('qzWalletDetalle_' + idSafe);
+  const chevron = document.getElementById('qzWalletChevron_' + idSafe);
+  if (!detalle) return;
+  const abrir = detalle.style.display === 'none';
+  if (abrir && !detalle.innerHTML) {
+    const ej = Object.keys(qzWalletPorEjecutivaCache).find(k => k.replace(/[^A-Z0-9]/gi, '_') === idSafe);
+    detalle.innerHTML = ej ? qzTablaWalletHTML_(qzWalletPorEjecutivaCache[ej]) : '';
+  }
+  detalle.style.display = abrir ? '' : 'none';
+  if (chevron) chevron.style.transform = abrir ? 'rotate(90deg)' : 'rotate(0deg)';
+}
 
 function qzCambiarMesWallet() {
   const el = document.getElementById('qzWalletMesInput');
@@ -2253,13 +2269,23 @@ function qzPintarWallet() {
     html += '<div style="background:rgba(245,158,11,.08);border:1px solid var(--accent);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">' +
       '<div style="font-weight:900;font-size:13px;color:var(--text)">TOTAL COMISIONES DEL MES</div>' +
       '<div style="font-weight:900;font-size:18px;color:var(--accent)">$' + totalGeneral.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div></div>';
+    // Colapsado por ejecutiva — el detalle solo se arma/muestra al
+    // hacer clic en el nombre, para no mostrar de entrada decenas de
+    // filas de todas las ejecutivas a la vez.
     Object.keys(porEjecutiva).sort().forEach(ej => {
       const subtotal = porEjecutiva[ej].reduce((s, f) => s + f.comisionMonto, 0);
-      html += '<div style="margin-bottom:16px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:900;font-size:12.5px;color:var(--text)">👤 ' + esc(ej) + '</div><div style="font-weight:800;font-size:12.5px;color:var(--accent)">$' + subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div></div>' +
-        qzTablaWalletHTML_(porEjecutiva[ej]) +
-        '</div>';
+      const idSafe = ej.replace(/[^A-Z0-9]/gi, '_');
+      html += '<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:8px;overflow:hidden">' +
+        '<div onclick="qzToggleWalletEjecutiva(\'' + idSafe + '\')" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;background:var(--surface2)">' +
+          '<div style="font-weight:900;font-size:12.5px;color:var(--text)"><span id="qzWalletChevron_' + idSafe + '" style="display:inline-block;transition:transform .15s;margin-right:6px">▸</span>👤 ' + esc(ej) + ' <span style="color:var(--muted);font-weight:500">(' + porEjecutiva[ej].length + ')</span></div>' +
+          '<div style="font-weight:800;font-size:12.5px;color:var(--accent)">$' + subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div>' +
+        '</div>' +
+        '<div id="qzWalletDetalle_' + idSafe + '" style="display:none;padding:10px"></div>' +
+      '</div>';
     });
+    // Guarda el detalle real para armarlo perezosamente al expandir
+    // (evita construir de entrada decenas de tablas nunca vistas).
+    qzWalletPorEjecutivaCache = porEjecutiva;
   } else {
     html += qzTablaWalletHTML_(filas);
   }
@@ -6707,42 +6733,4 @@ async function confirmarMaterialLED(idContrato, playerId, pantalla, cliente, btn
   const linkVNNOX= document.getElementById('mat-link').value.trim();
   const inicioMaterial = document.getElementById('mat-inicio').value;
   const finMaterial    = document.getElementById('mat-fin').value;
-  if (!nombre) { showToast('Ingresa el nombre del material', 'info'); return; }
-  if (!inicioMaterial || !finMaterial) { showToast('Ingresa las fechas de uso del material', 'info'); return; }
-  if (finMaterial < inicioMaterial) { showToast('La fecha "Hasta" no puede ser antes que "Desde"', 'info'); return; }
-  if (_matContratoIni && _matContratoFin && (inicioMaterial < _matContratoIni || finMaterial > _matContratoFin)) {
-    showToast('Las fechas deben estar dentro del período del contrato (' + _matContratoIni + ' a ' + _matContratoFin + ')', 'info');
-    return;
-  }
-  if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = '⏳ Guardando...'; }
-  try {
-    const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({
-      action:'registrarMaterialLED', idContrato, playerId, pantalla, cliente,
-      nombre, version, duracion, linkVNNOX, inicioMaterial, finMaterial,
-      solicitante: _usuarioActual
-    })});
-    const json = await res.json();
-    if (json.error) throw new Error(json.error);
-    showToast('✅ Material registrado', 'success');
-    closeModal();
-    renderLED(document.getElementById('mainContent'));
-  } catch(e) {
-    showToast('❌ ' + e.message, 'error');
-    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '🎬 Registrar Material'; }
-  }
-}
-</script>
-
-<!-- Registro del Service Worker (PWA) -->
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js', { scope: '/zazacorp-bitacora/' })
-      .then(reg => console.log('✅ Service Worker registrado:', reg.scope))
-      .catch(err => console.warn('⚠️ Service Worker error:', err));
-  });
-}
-</script>
-
-</body>
-</html>
+  if (!nombre) { showToast('Ingresa el n
