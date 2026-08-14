@@ -6733,4 +6733,42 @@ async function confirmarMaterialLED(idContrato, playerId, pantalla, cliente, btn
   const linkVNNOX= document.getElementById('mat-link').value.trim();
   const inicioMaterial = document.getElementById('mat-inicio').value;
   const finMaterial    = document.getElementById('mat-fin').value;
-  if (!nombre) { showToast('Ingresa el n
+  if (!nombre) { showToast('Ingresa el nombre del material', 'info'); return; }
+  if (!inicioMaterial || !finMaterial) { showToast('Ingresa las fechas de uso del material', 'info'); return; }
+  if (finMaterial < inicioMaterial) { showToast('La fecha "Hasta" no puede ser antes que "Desde"', 'info'); return; }
+  if (_matContratoIni && _matContratoFin && (inicioMaterial < _matContratoIni || finMaterial > _matContratoFin)) {
+    showToast('Las fechas deben estar dentro del período del contrato (' + _matContratoIni + ' a ' + _matContratoFin + ')', 'info');
+    return;
+  }
+  if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = '⏳ Guardando...'; }
+  try {
+    const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({
+      action:'registrarMaterialLED', idContrato, playerId, pantalla, cliente,
+      nombre, version, duracion, linkVNNOX, inicioMaterial, finMaterial,
+      solicitante: _usuarioActual
+    })});
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ Material registrado', 'success');
+    closeModal();
+    renderLED(document.getElementById('mainContent'));
+  } catch(e) {
+    showToast('❌ ' + e.message, 'error');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '🎬 Registrar Material'; }
+  }
+}
+</script>
+
+<!-- Registro del Service Worker (PWA) -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { scope: '/zazacorp-bitacora/' })
+      .then(reg => console.log('✅ Service Worker registrado:', reg.scope))
+      .catch(err => console.warn('⚠️ Service Worker error:', err));
+  });
+}
+</script>
+
+</body>
+</html>
