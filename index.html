@@ -740,11 +740,6 @@ async function fbUrl(path) {
 // Nombres para el selector — las contraseñas viven solo en el backend (Code.gs).
 const USUARIOS_NOMBRES = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA','DIANA','SASKYA YEPEZ','PAMELA LARA'];
 
-// Usuarios con acceso de solo lectura — pueden ver el inventario completo,
-// pero NO pueden reservar, contratar, editar, liberar ni realizar ninguna
-// acción que modifique el estado de una valla.
-const READONLY_USERS = new Set(['DIANA']);
-
 let _usuarioActual = null;
 
 // La sesión expira sola a las 6h (igual que el token del backend), aunque
@@ -767,16 +762,15 @@ function forzarLogoutPorExpiracion() {
 }
 setInterval(() => { if (_usuarioActual && sesionExpirada()) forzarLogoutPorExpiracion(); }, 5 * 60 * 1000);
 
-// El Dashboard (con montos $ y desglose por ejecutiva) solo lo debe
-// ver Jorge como administrador — al resto se le oculta la pestaña por
-// completo (y si de casualidad quedó esa vista seleccionada de antes,
-// se lo manda de vuelta a Inventario).
+// Deshabilitado a pedido de Jorge (ya no se usa) — se oculta para
+// todos, incluido él. Todo el código de atrás (backend y funciones del
+// front) queda intacto sin tocar, así que reactivarlo más adelante es
+// tan simple como revertir este cambio.
 function aplicarPermisoDashboard() {
   const tab = document.getElementById('tabDashboard');
   if (!tab) return;
-  const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
-  tab.style.display = esAdmin ? '' : 'none';
-  if (!esAdmin && state.tab === 'dashboard') switchTab('inventario');
+  tab.style.display = 'none';
+  if (state.tab === 'dashboard') switchTab('inventario');
 }
 
 // El Cotizador y el Pipeline quedan habilitados para usuarios autorizados.
@@ -875,9 +869,21 @@ function completarLoginExitoso(user, data) {
   aplicarPermisoCotizador();
   aplicarPermisoComercialGeneral();
   aplicarPermisoWallet();
-  registrarAccesoSilencioso(user, true, '');
-  qzCargarPreciosPublicos(); // precargar para que ya esté listo al contratar
-  init(); // Cargar la app después del login
+  // init() es lo único que de verdad estás esperando ver (tu inventario)
+  // — antes se disparaba al mismo tiempo que el registro de acceso y la
+  // precarga de precios del Cotizador, y las 3 llamadas competían por el
+  // mismo backend (medido en vivo: ~10-12s en total). Ninguna de esas
+  // otras dos es urgente, así que ahora esperan a que init() termine.
+  init().then(() => {
+    // Un pequeño retraso al azar antes de disparar estas dos — si 3-4
+    // personas terminan de loguearse casi al mismo segundo (típico en la
+    // mañana), esto evita que sus llamadas de "wave 2" caigan todas en
+    // el mismo instante exacto sobre el backend.
+    setTimeout(() => {
+      registrarAccesoSilencioso(user, true, '');
+      qzCargarPreciosPublicos(); // precargar para que ya esté listo al contratar
+    }, 300 + Math.random() * 1500);
+  });
 }
 
 // ── Login con cuenta de Google corporativa (@zazacorp.com.ec) ──────
@@ -927,8 +933,10 @@ async function doLogin() {
 
   err.textContent = '';
   try {
-    const url = API_URL + '?action=nxLogin&user=' + encodeURIComponent(user) + '&pass=' + encodeURIComponent(pass) + '&_t=' + Date.now();
-    const res = await fetch(url, { cache: 'no-store' });
+    // Antes iba por GET con la contraseña en la URL (queda en los logs
+    // de acceso del servidor en texto plano) — ahora va en el cuerpo,
+    // igual que toda otra acción sensible del sistema.
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'nxLogin', user, pass }) });
     const data = await res.json();
     if (!data.ok) {
       err.textContent = '❌ Usuario o contraseña incorrectos';
@@ -943,8 +951,12 @@ async function doLogin() {
 }
 
 // Devuelve true si el usuario actual es de solo lectura
+// Antes esto usaba una lista aparte, copiada a mano en el frontend
+// (READONLY_USERS) — dos fuentes de verdad que podían desincronizarse.
+// Ahora lee directo el dato que ya manda el backend en el login
+// (zz_readonly), que es el mismo que de verdad hace cumplir el servidor.
 function isReadOnly() {
-  return READONLY_USERS.has(_usuarioActual);
+  return !!sessionStorage.getItem('zz_readonly');
 }
 
 function cerrarSesion() {
@@ -995,7 +1007,21 @@ let state = {
 // ── INICIO ──────────────────────────────────────────────────
 async function init() {
   poblarSelectoresMes();
-  await Promise.all([loadData(), cargarBloqueos(), cargarLedContratosGlobal()]);
+  await Promise.all([loadData(), cargarBloqueos()]);
+  // getVNNOXData (adentro de cargarLedContratosGlobal) es, con diferencia,
+  // la llamada más pesada de todo el login: consulta VNNOX externo, ~5-6s
+  // en frío — y antes se esperaba en el mismo Promise.all que el
+  // inventario, así que CADA login (así el usuario nunca abriera LED)
+  // quedaba atado a esa espera. Con 3-4 personas entrando junto en la
+  // mañana, eso eran 3-4 consultas a VNNOX peleándose a la vez. Los
+  // "espacios LED disponibles" que usa esto ya tienen un valor por
+  // defecto seguro mientras carga (espaciosLEDDisponibles), así que no
+  // hace falta bloquear nada — se carga aparte y solo repinta si hace
+  // falta, igual que el patrón ya usado para no interrumpir Cotizador/
+  // Pipeline/Comercial General/Wallet si el usuario ya está ahí.
+  cargarLedContratosGlobal().then(() => {
+    if (state.tab !== 'cotizador' && state.tab !== 'pipeline' && state.tab !== 'comercialgeneral' && state.tab !== 'wallet') render();
+  });
 }
 async function forzarRecarga() {
   localStorage.removeItem('zz_cache_v2');
@@ -1004,6 +1030,10 @@ async function forzarRecarga() {
   // Forzar sync Sheet → Firebase antes de recargar
   try { await fetch(API_URL + '?action=syncFirebase', { cache: 'no-store' }); } catch(e) {}
   await fetchFresh();
+  // Si estás en LED, también refresca esa pestaña saltándose su caché de
+  // 90s — "Sincronizar" debe traer lo más fresco posible en cualquier
+  // pestaña, no solo en el inventario general.
+  if (state.tab === 'led') await renderLED(document.getElementById('mainContent'), true);
   showToast('✓ Datos actualizados', 'success');
 }
 
@@ -1260,6 +1290,33 @@ function espaciosLEDDisponibles(v) {
 function esLEDtipo(v) { return (v.tipo || '').toUpperCase().indexOf('LED') >= 0; }
 function esLEDtipo_str(tipo) { return (tipo || '').toUpperCase().indexOf('LED') >= 0; }
 
+// Reservas por vencer (bloqueo de 48h) no generaban ninguna alerta en
+// pantalla — solo llegaba un correo a Jorge y la ejecutiva dueña. Este
+// helper calcula lo mismo que ya usa el aviso por correo de "vence en
+// menos de 5 horas" (Code.gs, revisarAlertasReservaPorTerminar), para
+// poder mostrarlo también en la pestaña Alertas.
+function reservaProximaAVencer(v) {
+  if (v.estado !== 'RESERVADA' || !v.bloqueo_expira) return null;
+  const horas = (new Date(v.bloqueo_expira) - new Date()) / 3600000;
+  if (isNaN(horas) || horas <= 0 || horas > 5) return null;
+  return '🟠 RESERVA VENCE EN ' + Math.max(1, Math.round(horas)) + 'H';
+}
+
+// `new Date('YYYY-MM-DD')` parsea la fecha como medianoche UTC, no local
+// — en Ecuador (UTC-5), desde las 7pm en adelante eso hace que "días
+// restantes" de una fecha se calcule con un día de menos. Este helper
+// arma la fecha con año/mes/día por separado (siempre local), igual que
+// ya se hace en otras partes de la app (ej. el contador de "Fin en:" de
+// las cards de Disponibles).
+function diasRestantesLocal(fechaISO) {
+  const p = String(fechaISO || '').split('-');
+  if (p.length !== 3) return NaN;
+  const fin = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  fin.setHours(0, 0, 0, 0);
+  return Math.round((fin - hoy) / 86400000);
+}
+
 function getFiltered() {
   let d = DATA.slice();
   const s = state.search.toLowerCase().trim();
@@ -1287,7 +1344,7 @@ function getFiltered() {
     }
   }
   else if (state.tab === 'reservadas') d = d.filter(v => !esLEDtipo(v) && (v.estado === 'RESERVADA' || (v.estado === 'DISPONIBLE' && isBlocked(v.codigo))));
-  else if (state.tab === 'alertas') d = d.filter(v => v.alerta);
+  else if (state.tab === 'alertas') d = d.filter(v => v.alerta || reservaProximaAVencer(v));
   if (s) d = d.filter(v =>
     (v.codigo||'').toLowerCase().includes(s) ||
     (v.direccion||'').toLowerCase().includes(s) ||
@@ -1376,7 +1433,7 @@ function qzFotoThumb(v, px) {
   const size = px || 44;
   const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, size * 3);
   if (foto && String(foto).startsWith('http')) {
-    return '<img src="' + foto + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:8px;object-fit:cover;background:var(--surface2);flex-shrink:0">';
+    return '<img src="' + foto + '" loading="lazy" style="width:' + size + 'px;height:' + size + 'px;border-radius:8px;object-fit:cover;background:var(--surface2);flex-shrink:0">';
   }
   return '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:' + Math.round(size*0.45) + 'px;color:var(--muted);flex-shrink:0">📷</div>';
 }
@@ -1493,7 +1550,7 @@ function qzRenderListaElementos() {
       const estadoTxt = v.estado === 'DISPONIBLE' ? 'Disponible' : ('Libre desde ' + (v.termino || '').substring(0, 10));
       const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 400);
       const fotoHtml = (foto && String(foto).startsWith('http'))
-        ? '<img src="' + foto + '" style="width:100%;height:120px;object-fit:cover;display:block">'
+        ? '<img src="' + foto + '" loading="lazy" style="width:100%;height:120px;object-fit:cover;display:block">'
         : '<div style="width:100%;height:120px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:32px;color:var(--muted)">📷</div>';
       return '<label style="display:block;cursor:pointer;border-radius:12px;overflow:hidden;border:2px solid ' + (checked ? 'var(--accent)' : 'var(--border)') + ';background:var(--surface2);position:relative;transition:border-color .15s">' +
         '<input type="checkbox" ' + checked + ' onchange="qzToggleElemento(\'' + String(v.codigo).replace(/'/g, "\\'") + '\')" style="position:absolute;top:8px;left:8px;width:19px;height:19px;z-index:2;cursor:pointer">' +
@@ -3529,7 +3586,7 @@ function renderCard(v) {
   const fotoCard = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 500);
   const fotoPosCard = localStorage.getItem('zz_fotopos_' + v.codigo) || 'center';
   const fHtml = fotoCard
-    ? '<img src="' + fotoCard + '" alt="foto" style="width:100%;height:100%;object-fit:cover;object-position:' + fotoPosCard + '">'
+    ? '<img src="' + fotoCard + '" alt="foto" loading="lazy" style="width:100%;height:100%;object-fit:cover;object-position:' + fotoPosCard + '">'
     : '<div class="photo-placeholder"><div class="icon">📷</div><span>Sin foto</span></div>';
   const isVenc = v.alerta && v.alerta.includes('VENCIDO');
   const aHtml = v.alerta ? '<span class="alerta-tag ' + (isVenc ? 'at-danger' : 'at-warn') + '">' + v.alerta + '</span>' : '';
@@ -3665,17 +3722,21 @@ function renderAlerts(container) {
     '<div class="alerts-list">' + data.map(v => {
     const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 180);
     const fotoHtml = foto
-      ? '<img src="' + foto + '" style="width:90px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid var(--border)">'
+      ? '<img src="' + foto + '" loading="lazy" style="width:90px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid var(--border)">'
       : '<div style="width:90px;height:70px;background:var(--surface2);border-radius:8px;flex-shrink:0;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>';
+    const textoAlerta = v.alerta || reservaProximaAVencer(v) || '';
+    const cliente = esc(v.cliente) || esc(v.cliente_reserva) || '—';
+    const ejecutiva = esc(v.ejecutiva) || esc(v.ejecutiva_reserva) || '—';
+    const vence = v.termino || (v.bloqueo_expira ? new Date(v.bloqueo_expira).toLocaleString('es-EC') : '—');
     return '<div class="alert-item" data-codigo="' + v.codigo + '" onclick="openModal(\'' + v.codigo + '\')" style="cursor:pointer">' +
       '<div class="alert-check" onclick="event.stopPropagation();toggleAlerta(\'' + v.codigo + '\')" style="width:20px;height:20px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:10px;transition:all .15s;cursor:pointer" title="Seleccionar para exportar">✓</div>' +
       fotoHtml +
       '<div class="alert-info" style="margin-left:14px">' +
         '<div class="alert-codigo">' + v.codigo + ' · ' + esc(v.lugar) + '</div>' +
         '<div class="alert-dir">' + esc(v.direccion) + '</div>' +
-        '<div class="alert-meta">Cliente: ' + (esc(v.cliente) || '—') + ' · Ejecutiva: ' + (esc(v.ejecutiva) || '—') + ' · Vence: ' + (v.termino || '—') + '</div>' +
+        '<div class="alert-meta">Cliente: ' + cliente + ' · Ejecutiva: ' + ejecutiva + ' · Vence: ' + vence + '</div>' +
       '</div>' +
-      '<span class="alert-badge ' + (v.alerta.includes('VENCIDO') ? 'badge-danger' : 'badge-warning') + '" style="margin-left:14px">' + v.alerta + '</span>' +
+      '<span class="alert-badge ' + (textoAlerta.includes('VENCIDO') ? 'badge-danger' : 'badge-warning') + '" style="margin-left:14px">' + textoAlerta + '</span>' +
     '</div>';
   }).join('') + '</div>';
 
@@ -3984,24 +4045,23 @@ async function cancelarReserva(codigo) {
   }
   showToast('⏳ Cancelando reserva...', 'info');
   try {
-    // 1. Cancelar en Sheet primero (esperar confirmación)
-    try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'cancelarReserva', codigo })
-      });
-      const json = await res.json();
-      if (json.error) throw new Error(json.error);
-    } catch(e) {
-      showToast('⚠️ Error al cancelar en Sheet: ' + e.message, 'error');
-    }
-    // 2. Limpiar Firebase después
+    // Cancelar en Sheet — si falla (p.ej. el estado ya cambió), NO se
+    // limpia el bloqueo de Firebase ni se muestra éxito: antes este error
+    // quedaba atrapado en un try/catch interno y la app decía "reserva
+    // cancelada" aunque el Sheet hubiera rechazado el cambio.
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'cancelarReserva', codigo })
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
     removeBloqueo(codigo);
     showToast('✓ Reserva cancelada', 'info');
     closeModal();
     await loadData(true);
   } catch (err) {
     showToast('❌ Error: ' + err.message, 'error');
+    await loadData(true); // refrescar para mostrar el estado real
   }
 }
 
@@ -4394,7 +4454,9 @@ async function checkAndActivarSegunda(codigo) {
 }
 
 // ── EDITAR VALLA (ADMIN) ──────────────────────────────────────
-let _editPinOk = false;
+// Se guarda el PIN real (no solo un "ya lo validé") para mandarlo en
+// cada guardado — el servidor ahora lo vuelve a verificar de verdad.
+let _editPinCache = '';
 
 async function toggleEditForm(codigo) {
   const container = document.getElementById('editFormContainer');
@@ -4405,10 +4467,10 @@ async function toggleEditForm(codigo) {
     return;
   }
 
-  if (!_editPinOk) {
+  if (!_editPinCache) {
     const pin = prompt('🔐 PIN de administrador para editar:');
     if (!pin || !(await checkAdminPin(pin))) { showToast('❌ PIN incorrecto', 'error'); return; }
-    _editPinOk = true;
+    _editPinCache = pin;
   }
 
   const v = DATA.find(x => x.codigo === codigo);
@@ -4511,6 +4573,7 @@ async function guardarEdicion(codigo) {
   const datos = {
     action: 'editarValla',
     codigo,
+    pin: _editPinCache,
     estado:       document.getElementById('ef-estado')?.value || '',
     ejecutiva:    document.getElementById('ef-ejecutiva')?.value || '',
     cliente:      document.getElementById('ef-cliente')?.value || '',
@@ -4535,7 +4598,7 @@ async function guardarEdicion(codigo) {
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     showToast('✅ Valla actualizada en Sheet', 'success');
-    _editPinOk = false;
+    _editPinCache = '';
     closeModal();
     await loadData(true);
   } catch(err) {
@@ -4764,22 +4827,27 @@ function checkMultiForm() {
   const valores = [...document.querySelectorAll('.mct-valor-valla')];
   const todosConValor = valores.length > 0 && valores.every(inp => parseFloat(inp.value) > 0);
   const bloqueadoPorMinimo = qzValidarValoresMinimoMulti();
+  const fechasInvalidas = !!(i && f && f <= i);
   const btn = document.getElementById('btnMultiContratar');
   if (!btn) return;
-  const ok = c && e && i && f && agencia && comision && todosConValor && _multiPdfBase64 && !bloqueadoPorMinimo;
+  const ok = c && e && i && f && agencia && comision && todosConValor && _multiPdfBase64 && !bloqueadoPorMinimo && !fechasInvalidas;
   btn.disabled = !ok;
-  btn.textContent = bloqueadoPorMinimo ? '❌ Hay valores menores al permitido' : (ok ? '⚡ Confirmar Contratación Múltiple' : (!todosConValor ? '💲 Completa el valor mensual de cada valla' : '📎 Sube el PDF para continuar'));
+  btn.textContent = fechasInvalidas ? '❌ La fecha fin debe ser posterior al inicio' : (bloqueadoPorMinimo ? '❌ Hay valores menores al permitido' : (ok ? '⚡ Confirmar Contratación Múltiple' : (!todosConValor ? '💲 Completa el valor mensual de cada valla' : '📎 Sube el PDF para continuar')));
 }
 
 async function confirmarMultiContratacion() {
+  const inicio = document.getElementById('mct-inicio').value;
+  const fin = document.getElementById('mct-fin').value;
+  if (fin <= inicio) {
+    showToast('❌ La fecha fin debe ser posterior a la fecha de inicio', 'error');
+    return;
+  }
   if (qzValidarValoresMinimoMulti()) {
     showToast('❌ Hay valores por debajo del mínimo permitido', 'error');
     return;
   }
   const cliente = document.getElementById('mct-cliente').value.trim();
   const ejecutiva = document.getElementById('mct-ejecutiva').value;
-  const inicio = document.getElementById('mct-inicio').value;
-  const fin = document.getElementById('mct-fin').value;
   const codigos = [...selectedVallas];
   const agencia = document.getElementById('mct-agencia').value.trim();
   const comision = getMultiComision();
@@ -4846,7 +4914,7 @@ async function liberarValla(codigo) {
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'liberarValla', codigo })
+      body: JSON.stringify({ action: 'liberarValla', codigo, pin })
     });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
@@ -5206,7 +5274,13 @@ let _pdfBase64 = null;
 let _ctCodigoActual = '';
 
 function qzValidarValorMinimoUnitario() {
-  const valor = parseFloat(document.getElementById('ct-valor')?.value) || 0;
+  // Si el campo se deja en blanco, la contratación mantiene el valor que
+  // la valla ya tenía en el inventario (contratar() no lo sobreescribe) —
+  // así que el mínimo se valida contra ESE valor, no contra 0. Dejar el
+  // campo vacío no debe ser una forma de saltarse el mínimo.
+  const campoValor = document.getElementById('ct-valor')?.value;
+  const vActual = DATA.find(x => x.codigo === _ctCodigoActual);
+  const valor = campoValor ? (parseFloat(campoValor) || 0) : Number((vActual && vActual.valor) || 0);
   const min = qzValorMinimoDe(_ctCodigoActual);
   const bloqueado = valor > 0 && min > 0 && valor < min;
   const errEl = document.getElementById('ct-valor-error');
@@ -5469,9 +5543,10 @@ function checkContratarForm() {
   if (!btn) return;
 
   const bloqueadoPorMinimo = qzValidarValorMinimoUnitario();
-  const ok = cliente && ejecutiva && inicio && fin && agencia && comision && _pdfBase64 && !bloqueadoPorMinimo;
+  const fechasInvalidas = !!(inicio && fin && fin <= inicio);
+  const ok = cliente && ejecutiva && inicio && fin && agencia && comision && _pdfBase64 && !bloqueadoPorMinimo && !fechasInvalidas;
   btn.disabled = !ok;
-  btn.textContent = bloqueadoPorMinimo ? '❌ El valor es menor al permitido' : (ok ? '⚡ Confirmar Contratación' : '📎 Sube el PDF para continuar');
+  btn.textContent = fechasInvalidas ? '❌ La fecha fin debe ser posterior al inicio' : (bloqueadoPorMinimo ? '❌ El valor es menor al permitido' : (ok ? '⚡ Confirmar Contratación' : '📎 Sube el PDF para continuar'));
 }
 
 async function confirmarContratacion(codigo) {
@@ -5484,6 +5559,10 @@ async function confirmarContratacion(codigo) {
 
   if (!cliente || !ejecutiva || !inicio || !fin || !agencia || !comision || !_pdfBase64) {
     showToast('Completa todos los campos y sube el PDF', 'info');
+    return;
+  }
+  if (fin <= inicio) {
+    showToast('❌ La fecha fin debe ser posterior a la fecha de inicio', 'error');
     return;
   }
   if (qzValidarValorMinimoUnitario()) {
@@ -5693,17 +5772,22 @@ async function exportarExcelInventario() {
       });
     }
 
-    // Si hay selección, exportar solo las seleccionadas; si no, pedir al Sheet todas
-    const todasIds = selectedInv.size > 0 ? [...selectedInv] : null;
+    // Mismo criterio que "Exportar PPT": si hay selección, exportar solo
+    // esas; si no, respetar los filtros activos (ciudad/tipo/ejecutiva/
+    // cliente) en vez de traer siempre el inventario completo — antes
+    // este botón ignoraba los filtros y el PPT sí los respetaba.
+    const codigosAIncluir = selectedInv.size > 0
+      ? [...selectedInv]
+      : getFiltered().map(v => v.codigo);
 
     btn.textContent = '⏳ Generando Excel...';
     const res  = await fetch(API_URL + '?action=exportarInventario', { cache: 'no-store' });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error al obtener datos');
 
-    let rows = json.rows;
-    if (todasIds) rows = rows.filter(r => todasIds.includes(r.codigo));
-    if (!rows.length) { showToast('No hay datos para exportar', 'info'); return; }
+    const codigosSet = new Set(codigosAIncluir);
+    let rows = json.rows.filter(r => codigosSet.has(r.codigo));
+    if (!rows.length) { showToast('No hay datos con los filtros actuales', 'info'); return; }
 
     // Construir hoja de Excel
     const headers = ['Lugar','Código','Dirección','Tipo','Medidas','Latitud','Longitud','Link Google Maps','Foto URL'];
@@ -5943,7 +6027,11 @@ async function exportarPPTAlertas() {
     const slide = pres.addSlide();
     slide.background = { color: WHITE };
 
-    const isVencido   = v.alerta && v.alerta.includes('VENCIDO');
+    // Las reservas por vencer (RESERVADA) no tienen v.alerta (eso solo
+    // aplica a CONTRATADA) — se arma un texto equivalente para que la
+    // diapositiva no salga en blanco.
+    const alertaTexto = v.alerta || reservaProximaAVencer(v) || 'ALERTA DE VENCIMIENTO';
+    const isVencido   = alertaTexto.includes('VENCIDO');
     const alertColor  = isVencido ? RED : YELLOW;
     const alertBg     = isVencido ? 'FEE2E2' : 'FEF3C7';
 
@@ -5972,7 +6060,7 @@ async function exportarPPTAlertas() {
 
     // Badge ALERTA (rojo/amarillo según si ya venció)
     slide.addShape(pres.shapes.RECTANGLE, { x:rx,y:0.35,w:5.5,h:0.35, fill:{color:alertBg},line:{color:alertColor,width:1} });
-    slide.addText(v.alerta || 'ALERTA DE VENCIMIENTO', { x:rx,y:0.35,w:5.5,h:0.35, fontSize:8,bold:true,color:alertColor,align:'center',fontFace:'Arial',charSpacing:1 });
+    slide.addText(alertaTexto, { x:rx,y:0.35,w:5.5,h:0.35, fontSize:8,bold:true,color:alertColor,align:'center',fontFace:'Arial',charSpacing:1 });
 
     // Código
     slide.addText(v.codigo, { x:rx,y:0.82,w:5.5,h:0.85, fontSize:34,bold:true,color:DARK,fontFace:'Arial Black' });
@@ -5984,8 +6072,8 @@ async function exportarPPTAlertas() {
     const details = [
       {label:'LUGAR',     value: v.lugar     || '—'},
       {label:'TIPO',      value: v.tipo      || '—'},
-      {label:'CLIENTE',   value: v.cliente   || '—'},
-      {label:'EJECUTIVA', value: v.ejecutiva || '—'},
+      {label:'CLIENTE',   value: v.cliente   || v.cliente_reserva   || '—'},
+      {label:'EJECUTIVA', value: v.ejecutiva || v.ejecutiva_reserva || '—'},
     ];
     details.forEach((d, i) => {
       const col = i%2, row = Math.floor(i/2);
@@ -6014,10 +6102,12 @@ async function exportarPPTAlertas() {
         hyperlink:{url:'https://www.google.com/maps?q='+v.lat+','+v.lon} });
     }
 
-    // Vencimiento del contrato — solo fecha, sin período
+    // Vencimiento del contrato (o de la reserva, si no es un contrato)
+    const esReservaAlerta = v.estado === 'RESERVADA';
+    const vencimientoTxt = v.termino || (esReservaAlerta && v.bloqueo_expira ? new Date(v.bloqueo_expira).toLocaleString('es-EC') : '—');
     slide.addShape(pres.shapes.LINE, { x:rx,y:6.15,w:5.5,h:0, line:{color:'E5E7EB',width:1} });
-    slide.addText('VENCIMIENTO DEL CONTRATO', { x:rx,y:6.27,w:5.5,h:0.22, fontSize:7,color:LABEL,bold:true,fontFace:'Arial',charSpacing:1 });
-    slide.addText(v.termino || '—', { x:rx,y:6.5,w:5.5,h:0.45, fontSize:20,bold:true,color:alertColor,fontFace:'Arial Black' });
+    slide.addText(esReservaAlerta ? 'VENCE LA RESERVA' : 'VENCIMIENTO DEL CONTRATO', { x:rx,y:6.27,w:5.5,h:0.22, fontSize:7,color:LABEL,bold:true,fontFace:'Arial',charSpacing:1 });
+    slide.addText(vencimientoTxt, { x:rx,y:6.5,w:5.5,h:0.45, fontSize:20,bold:true,color:alertColor,fontFace:'Arial Black' });
 
     // Logo naranja esquina inferior derecha
     slide.addImage({ data: LOGO_ZAZACORP_LIMPIO, x:11.6,y:6.9,w:1.5,h:0.48 });
@@ -6120,7 +6210,9 @@ const ADMIN_PIN  = null; // el PIN real vive solo en el backend (Code.gs)
 async function checkAdminPin(pin) {
   if (!pin) return false;
   try {
-    const res = await fetch(API_URL + '?action=nxCheckAdminPin&pin=' + encodeURIComponent(pin) + '&_t=' + Date.now(), { cache: 'no-store' });
+    // Antes iba por GET con el PIN en la URL — mismo motivo que el
+    // login, ahora va en el cuerpo.
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'nxCheckAdminPin', pin }) });
     const data = await res.json();
     return !!data.ok;
   } catch (e) {
@@ -6329,10 +6421,10 @@ if (checkLogin()) {
 // ══════════════════════════════════════════════════════════════
 let _ledData = null; // cache en memoria
 
-async function renderLED(container) {
+async function renderLED(container, forzar) {
   container.innerHTML = '<div class="empty"><div class="icon" style="animation:spin 1s linear infinite">⏳</div><p>Cargando pantallas desde VNNOX...</p></div>';
   try {
-    const res  = await fetch(API_URL + '?action=getVNNOXData', { cache: 'no-store' });
+    const res  = await fetch(API_URL + '?action=getVNNOXData' + (forzar ? '&forzar=1' : ''), { cache: 'no-store' });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error VNNOX');
     _ledData = json;
@@ -6455,7 +6547,7 @@ function buildLEDUI(container, data) {
 
       htmlGrupos += '<div class="led-player-card">';
       htmlGrupos += '<div class="led-banner">' +
-        (player.foto ? '<img src="'+cldOptimizar(player.foto, 400)+'">' : '') +
+        (player.foto ? '<img src="'+cldOptimizar(player.foto, 400)+'" loading="lazy">' : '') +
         '<div class="led-player-header" style="padding:0">' +
           '<div class="led-online-dot ' + (player.esExterno ? 'offline' : (player.isOnline ? 'online' : 'offline')) + '"></div>' +
           '<div>' +
@@ -6478,7 +6570,7 @@ function buildLEDUI(container, data) {
       htmlGrupos += '<div class="led-slots-grid">';
       playerContratos.forEach((c, idx) => {
         const mats = materiales.filter(m => m.idContrato === c.id && m.vigente);
-        const diasRestantes = Math.ceil((new Date(c.fin) - new Date()) / 86400000);
+        const diasRestantes = diasRestantesLocal(c.fin);
         const colorDias = diasRestantes <= 7 ? '#f87171' : diasRestantes <= 15 ? '#fbbf24' : '#4ade80';
         const esZaza = c.contratadoPor && c.contratadoPor.toUpperCase() === 'ZAZACORP';
         htmlGrupos += '<div class="led-contrato-item" onclick="openModalDetalleContratoLED(\'' + c.id + '\')" style="cursor:pointer">' +
@@ -6503,8 +6595,8 @@ function buildLEDUI(container, data) {
         }
         htmlGrupos += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" onclick="event.stopPropagation()">' +
           (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar</button>' : '') +
-          (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden-1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
-          (esAdmin && idx < playerContratos.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\','+(c.orden+1)+')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
+          (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+playerContratos[idx-1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
+          (esAdmin && idx < playerContratos.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+playerContratos[idx+1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
         '</div>';
         htmlGrupos += '</div>';
       });
@@ -6661,9 +6753,9 @@ async function confirmarAgregarEspaciosLED(playerId, capacidadActual) {
   } catch(e) { showToast('❌ ' + e.message, 'error'); }
 }
 
-async function moverOrdenLED(id, nuevoOrden) {
+async function moverOrdenLED(idA, idB) {
   try {
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'editarContratoLED', id, orden: nuevoOrden, solicitante: _usuarioActual }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'intercambiarOrdenLED', idA, idB, solicitante: _usuarioActual }) });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     renderLED(document.getElementById('mainContent'));
@@ -6856,6 +6948,10 @@ async function confirmarContratoLED() {
   }
   if (faltantes.length) {
     showToast('Falta completar: ' + faltantes.join(', '), 'info');
+    return;
+  }
+  if (fin <= inicio) {
+    showToast('❌ La fecha fin debe ser posterior a la fecha de inicio', 'error');
     return;
   }
   const valor15 = '', valor7 = '', valor1 = '';
