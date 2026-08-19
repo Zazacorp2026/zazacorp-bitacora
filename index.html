@@ -875,8 +875,14 @@ function completarLoginExitoso(user, data) {
   // mismo backend (medido en vivo: ~10-12s en total). Ninguna de esas
   // otras dos es urgente, así que ahora esperan a que init() termine.
   init().then(() => {
-    registrarAccesoSilencioso(user, true, '');
-    qzCargarPreciosPublicos(); // precargar para que ya esté listo al contratar
+    // Un pequeño retraso al azar antes de disparar estas dos — si 3-4
+    // personas terminan de loguearse casi al mismo segundo (típico en la
+    // mañana), esto evita que sus llamadas de "wave 2" caigan todas en
+    // el mismo instante exacto sobre el backend.
+    setTimeout(() => {
+      registrarAccesoSilencioso(user, true, '');
+      qzCargarPreciosPublicos(); // precargar para que ya esté listo al contratar
+    }, 300 + Math.random() * 1500);
   });
 }
 
@@ -1001,7 +1007,21 @@ let state = {
 // ── INICIO ──────────────────────────────────────────────────
 async function init() {
   poblarSelectoresMes();
-  await Promise.all([loadData(), cargarBloqueos(), cargarLedContratosGlobal()]);
+  await Promise.all([loadData(), cargarBloqueos()]);
+  // getVNNOXData (adentro de cargarLedContratosGlobal) es, con diferencia,
+  // la llamada más pesada de todo el login: consulta VNNOX externo, ~5-6s
+  // en frío — y antes se esperaba en el mismo Promise.all que el
+  // inventario, así que CADA login (así el usuario nunca abriera LED)
+  // quedaba atado a esa espera. Con 3-4 personas entrando junto en la
+  // mañana, eso eran 3-4 consultas a VNNOX peleándose a la vez. Los
+  // "espacios LED disponibles" que usa esto ya tienen un valor por
+  // defecto seguro mientras carga (espaciosLEDDisponibles), así que no
+  // hace falta bloquear nada — se carga aparte y solo repinta si hace
+  // falta, igual que el patrón ya usado para no interrumpir Cotizador/
+  // Pipeline/Comercial General/Wallet si el usuario ya está ahí.
+  cargarLedContratosGlobal().then(() => {
+    if (state.tab !== 'cotizador' && state.tab !== 'pipeline' && state.tab !== 'comercialgeneral' && state.tab !== 'wallet') render();
+  });
 }
 async function forzarRecarga() {
   localStorage.removeItem('zz_cache_v2');
@@ -6350,6 +6370,7 @@ function tiempoRestante(expira) {
 
 // Actualiza contadores en pantalla cada segundo
 let _lastBloqueoCount = 0;
+let _segundaReservaEnProceso = new Set();
 setInterval(() => {
   // Si cambia el número de bloqueos, re-renderizar completo
   const currentCount = Object.keys(_bloqueos).length;
@@ -6382,6 +6403,23 @@ setInterval(() => {
         render();
       }
     }
+  });
+  // Chequeo directo sobre DATA (no depende de que el elemento
+  // [data-countdown] siga en pantalla): en cuanto v.bloqueo_expira ya
+  // pasó, el render normal deja de mostrar el countdown de esa tarjeta
+  // (la condición que lo pinta exige que la fecha siga en el futuro) —
+  // si justo en ese segundo ocurre CUALQUIER otro re-render de fondo
+  // (bloqueos, polling, cambio de pestaña), el elemento desaparece del
+  // DOM antes de que el bucle de arriba llegue a verlo, y la segunda
+  // reserva se quedaba sin activarse nunca en esa sesión. Este chequeo
+  // recorre los datos directamente, así que no depende de qué haya
+  // quedado pintado.
+  DATA.forEach(v => {
+    if (v.estado !== 'RESERVADA' || !v.bloqueo_expira || !v.reserva2_cliente) return;
+    if (new Date(v.bloqueo_expira) >= new Date()) return;
+    if (_segundaReservaEnProceso.has(v.codigo)) return;
+    _segundaReservaEnProceso.add(v.codigo);
+    checkAndActivarSegunda(v.codigo).finally(() => _segundaReservaEnProceso.delete(v.codigo));
   });
 }, 1000);
 
