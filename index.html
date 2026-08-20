@@ -1636,17 +1636,6 @@ function qzRefrescarPanelDerecho() {
 }
 function qzToggleElemento(codigo) { if (selectedQz.has(codigo)) selectedQz.delete(codigo); else selectedQz.add(codigo); qzOnBuscarInput(); qzRefrescarPanelDerecho(); }
 function qzQuitarElemento(codigo) { selectedQz.delete(codigo); delete qzDescuentosPorElemento[codigo]; qzOnBuscarInput(); qzRefrescarPanelDerecho(); }
-function qzSeleccionarTodosVisibles() {
-  document.querySelectorAll('#qzElementosList input[type=checkbox]').forEach(ch => {
-    const label = ch.closest('label');
-    const codeText = label ? label.querySelector('div div')?.textContent || '' : '';
-    const codigo = codeText.split('·')[0].trim();
-    if (codigo) selectedQz.add(codigo);
-  });
-  qzOnBuscarInput(); qzRefrescarPanelDerecho();
-}
-function qzLimpiarSeleccion() { selectedQz.clear(); qzOnBuscarInput(); qzRefrescarPanelDerecho(); }
-
 async function qzCargarAgencias() {
   const sel = document.getElementById('qzAgenciaSelect');
   if (!sel) return;
@@ -2122,8 +2111,11 @@ function renderCotizador(container) {
         '<div style="padding:13px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:9px">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-weight:900;color:var(--text)">📍 Elige los elementos para esta cotización</div><div style="font-size:11px;color:var(--accent);font-weight:800"><b id="qzStep1Count">' + selectedQz.size + '</b> seleccionados</div></div>' +
           '<input id="qzBuscarInput" type="text" placeholder="🔍 Código, ubicación, dirección, tipo..." oninput="qzOnBuscarInput()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px;font-family:inherit">' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><select id="qzFiltroTipo" onchange="qzOnBuscarInput()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark"></select><select id="qzFiltroCiudad" onchange="qzOnBuscarInput()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark"></select></div>' +
-          '<div style="display:flex;gap:8px;align-items:center"><input id="qzMesInicio" type="month" value="' + new Date().toISOString().slice(0, 7) + '" onchange="qzOnFiltroMesChange()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark" title="Disponibilidad desde este mes"><button onclick="qzSeleccionarTodosVisibles()" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);padding:7px 9px;font-size:11px;cursor:pointer">Seleccionar visibles</button><button onclick="qzLimpiarSeleccion()" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);padding:7px 9px;font-size:11px;cursor:pointer">Limpiar</button></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">' +
+            '<select id="qzFiltroTipo" onchange="qzOnBuscarInput()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark"></select>' +
+            '<select id="qzFiltroCiudad" onchange="qzOnBuscarInput()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark"></select>' +
+            '<div><label for="qzMesInicio" style="display:block;font-size:8.5px;color:var(--muted);font-weight:900;margin-bottom:2px;letter-spacing:.3px">SELECCIONAR FECHA DE CONTRATACIÓN</label><input id="qzMesInicio" type="month" value="' + new Date().toISOString().slice(0, 7) + '" onchange="qzOnFiltroMesChange()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;color-scheme:dark" title="Disponibilidad desde este mes"></div>' +
+          '</div>' +
         '</div>' +
         '<div id="qzElementosList" style="max-height:520px;overflow-y:auto"></div>' +
       '</div>' +
