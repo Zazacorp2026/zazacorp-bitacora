@@ -170,6 +170,7 @@
   .alert-item.alert-selected{border-color:var(--accent);background:rgba(245,158,11,.07);}
   .alert-check{color:transparent;font-size:12px;}
   .alert-item.alert-selected .alert-check{background:var(--accent)!important;border-color:var(--accent)!important;color:#000!important;font-weight:900;}
+  .alert-item.alert-kanban-card{display:block;padding:0;overflow:hidden;}
   .alert-info{flex:1;}
   .alert-codigo{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);margin-bottom:3px;}
   .alert-dir{font-size:13px;font-weight:500;margin-bottom:3px;}
@@ -3732,24 +3733,29 @@ function grupoAlerta(v) {
   return 5;
 }
 
-function alertItemHtml(v) {
-  const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 180);
+// Tarjeta compacta para el tablero Kanban de Alertas — mantiene la foto
+// del elemento (a diferencia del Kanban genérico de Inventario, que es
+// solo texto) pero en formato vertical angosto para aprovechar columnas.
+function alertKanbanCardHtml(v) {
+  const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 240);
   const fotoHtml = foto
-    ? '<img src="' + foto + '" loading="lazy" style="width:90px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid var(--border)">'
-    : '<div style="width:90px;height:70px;background:var(--surface2);border-radius:8px;flex-shrink:0;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>';
+    ? '<img src="' + foto + '" loading="lazy" style="width:100%;height:84px;object-fit:cover;display:block">'
+    : '<div style="width:100%;height:84px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--muted)">📷</div>';
   const textoAlerta = v.alerta || reservaProximaAVencer(v) || '';
   const cliente = esc(v.cliente) || esc(v.cliente_reserva) || '—';
   const ejecutiva = esc(v.ejecutiva) || esc(v.ejecutiva_reserva) || '—';
-  const vence = v.termino || (v.bloqueo_expira ? new Date(v.bloqueo_expira).toLocaleString('es-EC') : '—');
-  return '<div class="alert-item" data-codigo="' + v.codigo + '" onclick="openModal(\'' + v.codigo + '\')" style="cursor:pointer">' +
-    '<div class="alert-check" onclick="event.stopPropagation();toggleAlerta(\'' + v.codigo + '\')" style="width:20px;height:20px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:10px;transition:all .15s;cursor:pointer" title="Seleccionar para exportar">✓</div>' +
-    fotoHtml +
-    '<div class="alert-info" style="margin-left:14px">' +
-      '<div class="alert-codigo">' + v.codigo + ' · ' + esc(v.lugar) + '</div>' +
-      '<div class="alert-dir">' + esc(v.direccion) + '</div>' +
-      '<div class="alert-meta">Cliente: ' + cliente + ' · Ejecutiva: ' + ejecutiva + ' · Vence: ' + vence + '</div>' +
+  const isSel = selectedAlertas.has(v.codigo);
+  return '<div class="alert-item alert-kanban-card' + (isSel ? ' alert-selected' : '') + '" data-codigo="' + v.codigo + '" onclick="openModal(\'' + v.codigo + '\')">' +
+    '<div style="position:relative">' + fotoHtml +
+      '<div class="alert-check" onclick="event.stopPropagation();toggleAlerta(\'' + v.codigo + '\')" style="position:absolute;top:6px;left:6px;width:18px;height:18px;border-radius:4px;border:2px solid rgba(255,255,255,.7);background:' + (isSel ? 'var(--accent)' : 'rgba(0,0,0,.4)') + ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;color:' + (isSel ? '#000' : '#fff') + ';font-weight:900" title="Seleccionar para exportar">✓</div>' +
     '</div>' +
-    '<span class="alert-badge ' + (textoAlerta.includes('VENCIDO') ? 'badge-danger' : 'badge-warning') + '" style="margin-left:14px">' + textoAlerta + '</span>' +
+    '<div style="padding:8px 9px 9px">' +
+      '<div style="font-size:10.5px;font-weight:800;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + v.codigo + '</div>' +
+      '<div style="font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px" title="' + esc(v.direccion) + '">' + esc(v.direccion) + '</div>' +
+      '<div style="font-size:9.5px;color:var(--text);margin-top:5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + cliente + '</div>' +
+      '<div style="font-size:8.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + ejecutiva + '</div>' +
+      '<div style="margin-top:6px"><span class="alert-badge ' + (textoAlerta.includes('VENCIDO') ? 'badge-danger' : 'badge-warning') + '" style="font-size:8.5px;padding:3px 7px;white-space:nowrap">' + textoAlerta + '</span></div>' +
+    '</div>' +
   '</div>';
 }
 
@@ -3760,14 +3766,16 @@ function renderAlerts(container) {
   const porGrupo = {};
   data.forEach(v => { const g = grupoAlerta(v); (porGrupo[g] = porGrupo[g] || []).push(v); });
 
-  const gruposHtml = GRUPOS_ALERTA.map(g => {
+  const columnasHtml = GRUPOS_ALERTA.map(g => {
     const items = porGrupo[g.id];
     if (!items || !items.length) return '';
-    return '<div class="alert-group">' +
-      '<div class="alert-group-header" style="font-size:12px;font-weight:800;color:var(--text);margin:16px 0 8px;display:flex;align-items:center;gap:8px">' +
+    return '<div class="alert-kanban-col" style="flex:0 0 250px;min-width:250px;max-width:250px;display:flex;flex-direction:column">' +
+      '<div class="alert-group-header" style="font-size:11.5px;font-weight:800;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:7px">' +
         g.label + '<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + items.length + '</span>' +
       '</div>' +
-      '<div class="alerts-list">' + items.map(alertItemHtml).join('') + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:9px;overflow-y:auto;max-height:calc(100vh - 300px);padding-right:2px">' +
+        items.map(alertKanbanCardHtml).join('') +
+      '</div>' +
     '</div>';
   }).join('');
 
@@ -3775,17 +3783,15 @@ function renderAlerts(container) {
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">' +
       '<div style="font-size:11px;color:var(--muted)">Clic en una alerta para ver el detalle completo · Usa el check ✓ para seleccionar varias y exportar · Sin selección se exportan todas</div>' +
       '<div style="display:flex;gap:8px;align-items:center">' +
-        '<button onclick="selectedAlertas.clear();document.querySelectorAll(\'.alert-item\').forEach(c=>c.classList.remove(\'alert-selected\'));var b=document.getElementById(\'btnExportPPTAlertas\');if(b){b.textContent=\'⬇ Exportar PPT Alertas\';b.style.background=\'rgba(245,158,11,.12)\'}" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:5px 10px;cursor:pointer">✕ Limpiar selección</button>' +
+        '<button onclick="selectedAlertas.clear();document.querySelectorAll(\'.alert-item\').forEach(c=>c.classList.remove(\'alert-selected\'));render();var b=document.getElementById(\'btnExportPPTAlertas\');if(b){b.textContent=\'⬇ Exportar PPT Alertas\';b.style.background=\'rgba(245,158,11,.12)\'}" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:5px 10px;cursor:pointer">✕ Limpiar selección</button>' +
         '<button id="btnExportPPTAlertas" onclick="exportarPPTAlertas()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Exportar PPT Alertas</button>' +
       '</div>' +
-    '</div>' + gruposHtml;
+    '</div>' +
+    '<div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:10px">' + columnasHtml + '</div>';
 
-  // Restaurar estado visual de selección tras el re-render
+  // Restaurar contador del botón exportar (el resaltado de cada tarjeta ya
+  // se pinta directo en alertKanbanCardHtml a partir de selectedAlertas)
   if (selectedAlertas.size > 0) {
-    selectedAlertas.forEach(cod => {
-      const card = container.querySelector('.alert-item[data-codigo="' + cod + '"]');
-      if (card) card.classList.add('alert-selected');
-    });
     const btn = document.getElementById('btnExportPPTAlertas');
     if (btn) {
       btn.textContent = '⬇ Exportar PPT (' + selectedAlertas.size + ' seleccionadas)';
