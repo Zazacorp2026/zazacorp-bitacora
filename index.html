@@ -3639,6 +3639,7 @@ function renderCard(v) {
       '<div class="card-meta"><span class="meta-tag">' + v.tipo + '</span>' + (esc(v.medidas) ? '<span class="meta-tag">' + esc(v.medidas) + '</span>' : '') + '<span class="meta-tag">' + esc(v.lugar) + '</span></div>' +
       aHtml +
       (v.estado === 'CONTRATADA' && esc(v.reserva2_cliente) ? '<div style="font-size:9px;color:#818cf8;font-weight:600;margin-bottom:4px">🔄 Pre-reservada: ' + esc(v.reserva2_cliente) + '</div>' : '') +
+      (v.estado === 'RESERVADA' && esc(v.reserva2_cliente) ? '<div style="font-size:9px;color:#818cf8;font-weight:600;margin-bottom:4px">🔔 2ª reserva en cola: ' + esc(v.reserva2_cliente) + (esc(v.reserva2_ejecutiva) ? ' (' + esc(v.reserva2_ejecutiva) + ')' : '') + '</div>' : '') +
       (v.estado === 'CONTRATADA' && v.termino && !v.alerta ? (function(){
         const hoy = new Date(); hoy.setHours(0,0,0,0);
         const p = v.termino.split('-');
@@ -3650,7 +3651,7 @@ function renderCard(v) {
         const color = diff <= 30 ? '#f59e0b' : diff <= 60 ? '#fb923c' : 'var(--muted)';
         return '<div style="font-size:9px;color:' + color + ';margin-bottom:6px;font-weight:600">📅 Fin en: ' + txt + '</div>';
       })() : '') +
-      '<div class="card-footer"><div><div class="card-cliente">' + (esc(v.cliente) || (v.estado === 'DISPONIBLE' ? '' : '—')) + '</div><div class="card-ejecutiva">' + (esc(v.ejecutiva) || '') + '</div></div>' +
+      '<div class="card-footer"><div><div class="card-cliente">' + (esc(v.cliente) || esc(v.cliente_reserva) || (v.estado === 'DISPONIBLE' ? '' : '—')) + '</div><div class="card-ejecutiva">' + (esc(v.ejecutiva) || esc(v.ejecutiva_reserva) || '') + '</div></div>' +
       (v.valor ? '<div style="font-family:monospace;font-size:10px;color:var(--muted)">$' + Number(v.valor).toLocaleString() + '</div>' : '') + '</div>' +
       rBtn + '</div></div>';
 }
@@ -3707,10 +3708,69 @@ function toggleAlerta(codigo) {
   }
 }
 
+// Clasifica cada alerta en un grupo por urgencia — las reservas por vencer
+// (horas) van primero por ser lo más urgente, luego contratos por días,
+// del más al menos urgente. "Vencen en menos de X días" incluye TODOS los
+// días desde X hacia abajo hasta el límite del grupo anterior (ej. "menos
+// de 15 días" trae 15,14,13...6 — no solo el día 15 exacto).
+const GRUPOS_ALERTA = [
+  { id: 0, label: '🟠 Reservas por vencer (próximas horas)' },
+  { id: 1, label: '🔴 Ya vencidos' },
+  { id: 2, label: '🔥 Vencen hoy' },
+  { id: 3, label: '🟠 Vencen en menos de 5 días' },
+  { id: 4, label: '🟡 Vencen en menos de 15 días' },
+  { id: 5, label: '🟢 Vencen en menos de 30 días' }
+];
+function grupoAlerta(v) {
+  if (reservaProximaAVencer(v)) return 0;
+  const dias = v.termino ? diasRestantesLocal(v.termino) : NaN;
+  if (isNaN(dias)) return 5;
+  if (dias < 0) return 1;
+  if (dias === 0) return 2;
+  if (dias <= 5) return 3;
+  if (dias <= 15) return 4;
+  return 5;
+}
+
+function alertItemHtml(v) {
+  const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 180);
+  const fotoHtml = foto
+    ? '<img src="' + foto + '" loading="lazy" style="width:90px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid var(--border)">'
+    : '<div style="width:90px;height:70px;background:var(--surface2);border-radius:8px;flex-shrink:0;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>';
+  const textoAlerta = v.alerta || reservaProximaAVencer(v) || '';
+  const cliente = esc(v.cliente) || esc(v.cliente_reserva) || '—';
+  const ejecutiva = esc(v.ejecutiva) || esc(v.ejecutiva_reserva) || '—';
+  const vence = v.termino || (v.bloqueo_expira ? new Date(v.bloqueo_expira).toLocaleString('es-EC') : '—');
+  return '<div class="alert-item" data-codigo="' + v.codigo + '" onclick="openModal(\'' + v.codigo + '\')" style="cursor:pointer">' +
+    '<div class="alert-check" onclick="event.stopPropagation();toggleAlerta(\'' + v.codigo + '\')" style="width:20px;height:20px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:10px;transition:all .15s;cursor:pointer" title="Seleccionar para exportar">✓</div>' +
+    fotoHtml +
+    '<div class="alert-info" style="margin-left:14px">' +
+      '<div class="alert-codigo">' + v.codigo + ' · ' + esc(v.lugar) + '</div>' +
+      '<div class="alert-dir">' + esc(v.direccion) + '</div>' +
+      '<div class="alert-meta">Cliente: ' + cliente + ' · Ejecutiva: ' + ejecutiva + ' · Vence: ' + vence + '</div>' +
+    '</div>' +
+    '<span class="alert-badge ' + (textoAlerta.includes('VENCIDO') ? 'badge-danger' : 'badge-warning') + '" style="margin-left:14px">' + textoAlerta + '</span>' +
+  '</div>';
+}
+
 function renderAlerts(container) {
   const data = getFiltered();
   if (!data.length) { container.innerHTML = '<div class="empty"><div class="icon">✅</div><p>Sin alertas activas</p></div>'; return; }
   // NO limpiar selectedAlertas aquí — se conserva la selección entre re-renders
+  const porGrupo = {};
+  data.forEach(v => { const g = grupoAlerta(v); (porGrupo[g] = porGrupo[g] || []).push(v); });
+
+  const gruposHtml = GRUPOS_ALERTA.map(g => {
+    const items = porGrupo[g.id];
+    if (!items || !items.length) return '';
+    return '<div class="alert-group">' +
+      '<div class="alert-group-header" style="font-size:12px;font-weight:800;color:var(--text);margin:16px 0 8px;display:flex;align-items:center;gap:8px">' +
+        g.label + '<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + items.length + '</span>' +
+      '</div>' +
+      '<div class="alerts-list">' + items.map(alertItemHtml).join('') + '</div>' +
+    '</div>';
+  }).join('');
+
   container.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">' +
       '<div style="font-size:11px;color:var(--muted)">Clic en una alerta para ver el detalle completo · Usa el check ✓ para seleccionar varias y exportar · Sin selección se exportan todas</div>' +
@@ -3718,27 +3778,7 @@ function renderAlerts(container) {
         '<button onclick="selectedAlertas.clear();document.querySelectorAll(\'.alert-item\').forEach(c=>c.classList.remove(\'alert-selected\'));var b=document.getElementById(\'btnExportPPTAlertas\');if(b){b.textContent=\'⬇ Exportar PPT Alertas\';b.style.background=\'rgba(245,158,11,.12)\'}" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:5px 10px;cursor:pointer">✕ Limpiar selección</button>' +
         '<button id="btnExportPPTAlertas" onclick="exportarPPTAlertas()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Exportar PPT Alertas</button>' +
       '</div>' +
-    '</div>' +
-    '<div class="alerts-list">' + data.map(v => {
-    const foto = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 180);
-    const fotoHtml = foto
-      ? '<img src="' + foto + '" loading="lazy" style="width:90px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid var(--border)">'
-      : '<div style="width:90px;height:70px;background:var(--surface2);border-radius:8px;flex-shrink:0;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>';
-    const textoAlerta = v.alerta || reservaProximaAVencer(v) || '';
-    const cliente = esc(v.cliente) || esc(v.cliente_reserva) || '—';
-    const ejecutiva = esc(v.ejecutiva) || esc(v.ejecutiva_reserva) || '—';
-    const vence = v.termino || (v.bloqueo_expira ? new Date(v.bloqueo_expira).toLocaleString('es-EC') : '—');
-    return '<div class="alert-item" data-codigo="' + v.codigo + '" onclick="openModal(\'' + v.codigo + '\')" style="cursor:pointer">' +
-      '<div class="alert-check" onclick="event.stopPropagation();toggleAlerta(\'' + v.codigo + '\')" style="width:20px;height:20px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-right:10px;transition:all .15s;cursor:pointer" title="Seleccionar para exportar">✓</div>' +
-      fotoHtml +
-      '<div class="alert-info" style="margin-left:14px">' +
-        '<div class="alert-codigo">' + v.codigo + ' · ' + esc(v.lugar) + '</div>' +
-        '<div class="alert-dir">' + esc(v.direccion) + '</div>' +
-        '<div class="alert-meta">Cliente: ' + cliente + ' · Ejecutiva: ' + ejecutiva + ' · Vence: ' + vence + '</div>' +
-      '</div>' +
-      '<span class="alert-badge ' + (textoAlerta.includes('VENCIDO') ? 'badge-danger' : 'badge-warning') + '" style="margin-left:14px">' + textoAlerta + '</span>' +
-    '</div>';
-  }).join('') + '</div>';
+    '</div>' + gruposHtml;
 
   // Restaurar estado visual de selección tras el re-render
   if (selectedAlertas.size > 0) {
