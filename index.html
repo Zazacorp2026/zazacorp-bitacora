@@ -3715,12 +3715,12 @@ function toggleAlerta(codigo) {
 // días desde X hacia abajo hasta el límite del grupo anterior (ej. "menos
 // de 15 días" trae 15,14,13...6 — no solo el día 15 exacto).
 const GRUPOS_ALERTA = [
-  { id: 0, label: '🟠 Reservas por vencer (próximas horas)' },
-  { id: 1, label: '🔴 Ya vencidos' },
-  { id: 2, label: '🔥 Vencen hoy' },
-  { id: 3, label: '🟠 Vencen en menos de 5 días' },
-  { id: 4, label: '🟡 Vencen en menos de 15 días' },
-  { id: 5, label: '🟢 Vencen en menos de 30 días' }
+  { id: 0, label: '🟠 Reservas por vencer (próximas horas)', color: '#fb923c' },
+  { id: 1, label: '🔴 Ya vencidos', color: '#ef4444' },
+  { id: 2, label: '🔥 Vencen hoy', color: '#ef4444' },
+  { id: 3, label: '🟠 Vencen en menos de 5 días', color: '#f59e0b' },
+  { id: 4, label: '🟡 Vencen en menos de 15 días', color: '#eab308' },
+  { id: 5, label: '🟢 Vencen en menos de 30 días', color: '#22c55e' }
 ];
 function grupoAlerta(v) {
   if (reservaProximaAVencer(v)) return 0;
@@ -3766,15 +3766,29 @@ function renderAlerts(container) {
   const porGrupo = {};
   data.forEach(v => { const g = grupoAlerta(v); (porGrupo[g] = porGrupo[g] || []).push(v); });
 
-  const columnasHtml = GRUPOS_ALERTA.map(g => {
+  // Los encabezados van en su PROPIA fila (sticky), separada de la fila
+  // de tarjetas (overflow-x:auto), sincronizadas por scroll horizontal
+  // via JS. No se puede meter el sticky DENTRO del contenedor que hace
+  // scroll horizontal: `overflow-x:auto` fuerza a los navegadores a
+  // calcular también un overflow-y propio (regla del spec de CSS), y
+  // eso convierte a ese contenedor en su propio "contexto de scroll" —
+  // el sticky deja de anclarse contra la página y se mueve con el
+  // contenido en vez de quedarse fijo. Separando ambas filas se evita
+  // el problema por completo.
+  const gruposConItems = GRUPOS_ALERTA.filter(g => porGrupo[g.id] && porGrupo[g.id].length);
+
+  const headersHtml = gruposConItems.map(g => {
     const items = porGrupo[g.id];
-    if (!items || !items.length) return '';
-    return '<div class="alert-kanban-col" style="flex:0 0 270px;min-width:270px;max-width:270px">' +
-      '<div style="position:sticky;top:60px;z-index:5;background:var(--bg);padding-bottom:10px">' +
-        '<div class="alert-group-header" style="font-size:12.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 12px;box-shadow:0 2px 10px rgba(0,0,0,.25)">' +
-          g.label + '<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + items.length + '</span>' +
-        '</div>' +
+    return '<div style="flex:0 0 270px;min-width:270px;max-width:270px">' +
+      '<div class="alert-group-header" style="font-size:12.5px;font-weight:800;color:#fff;display:flex;align-items:center;gap:7px;background:' + g.color + ';border:1px solid ' + g.color + ';border-radius:10px;padding:10px 12px;box-shadow:0 3px 14px rgba(0,0,0,.4)">' +
+        g.label + '<span style="background:rgba(0,0,0,.28);color:#fff;border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + items.length + '</span>' +
       '</div>' +
+    '</div>';
+  }).join('');
+
+  const columnasHtml = gruposConItems.map(g => {
+    const items = porGrupo[g.id];
+    return '<div class="alert-kanban-col" style="flex:0 0 270px;min-width:270px;max-width:270px">' +
       '<div style="display:flex;flex-direction:column;gap:10px">' +
         items.map(alertKanbanCardHtml).join('') +
       '</div>' +
@@ -3789,7 +3803,8 @@ function renderAlerts(container) {
         '<button id="btnExportPPTAlertas" onclick="exportarPPTAlertas()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer">⬇ Exportar PPT Alertas</button>' +
       '</div>' +
     '</div>' +
-    '<div style="display:flex;align-items:flex-start;gap:14px;overflow-x:auto;padding-bottom:10px">' + columnasHtml + '</div>';
+    '<div id="alertKanbanHeaders" style="position:sticky;top:60px;z-index:5;background:var(--bg);padding-bottom:16px;display:flex;gap:14px;overflow-x:hidden">' + headersHtml + '</div>' +
+    '<div style="display:flex;align-items:flex-start;gap:14px;overflow-x:auto;padding-bottom:10px" onscroll="var h=document.getElementById(\'alertKanbanHeaders\');if(h)h.scrollLeft=this.scrollLeft">' + columnasHtml + '</div>';
 
   // Restaurar contador del botón exportar (el resaltado de cada tarjeta ya
   // se pinta directo en alertKanbanCardHtml a partir de selectedAlertas)
