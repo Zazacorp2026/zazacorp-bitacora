@@ -1774,8 +1774,11 @@ function qzPintarResultado() {
 
   const filasHtml = detalle.map(function (d) {
     const v = DATA.find(x => x.codigo === d.codigo) || { codigo: d.codigo };
-    return '<tr style="border-bottom:1px solid var(--border)">' +
-      '<td style="padding:7px 6px;display:flex;align-items:center;gap:6px">' + qzFotoThumb(v, 26) + '<span style="font-weight:700;font-size:11px;color:var(--text)">' + esc(d.codigo) + '</span></td>' +
+    const rowStyle = d.bajoMargen
+      ? 'border-bottom:1px solid var(--border);background:rgba(239,68,68,.1)'
+      : 'border-bottom:1px solid var(--border)';
+    return '<tr style="' + rowStyle + '">' +
+      '<td style="padding:7px 6px;display:flex;align-items:center;gap:6px">' + qzFotoThumb(v, 26) + '<span style="font-weight:700;font-size:11px;color:var(--text)">' + esc(d.codigo) + '</span>' + (d.bajoMargen ? '<span title="Este elemento está por debajo de su margen mínimo" style="font-size:9px;font-weight:800;color:var(--red);background:rgba(239,68,68,.18);border:1px solid var(--red);border-radius:20px;padding:1px 7px">⚠️ BAJO MARGEN</span>' : '') + '</td>' +
       '<td style="padding:7px 6px;text-align:right;font-size:11px;color:var(--text)">' + qzMoney(d.tarifaMensual) + '</td>' +
       '<td style="padding:7px 6px;text-align:center;font-size:11px;color:var(--text)">' + d.meses + '</td>' +
       '<td style="padding:7px 6px;text-align:right;font-size:11px;color:var(--text)">' + qzMoney(d.tarifaBruta) + '</td>' +
@@ -1838,7 +1841,19 @@ async function qzGuardar() {
 }
 
 async function qzGuardarYContinuar() {
-  if (await qzGuardar()) qzIrPaso(4);
+  if (!(await qzGuardar())) return;
+  // Si el margen requiere aprobación, la cotización SÍ queda guardada
+  // (para no perderla, y para que Jorge pueda verla en el pipeline y
+  // aprobarla luego), pero el wizard no avanza — se queda en el paso 3
+  // mostrando el panel de PIN, para que quede claro que falta aprobar
+  // antes de poder continuar. Antes avanzaba igual al paso 4 aunque
+  // dijera "Requiere revisión de margen", como si ya hubiera quedado
+  // todo bien.
+  if (qzCotizacionActual && qzCotizacionActual.estado_aprobacion === 'PENDIENTE') {
+    showToast('⚠️ Cotización guardada, pero necesita aprobación por PIN antes de continuar', 'info');
+    return;
+  }
+  qzIrPaso(4);
 }
 
 function qzNuevaCotizacion() {
