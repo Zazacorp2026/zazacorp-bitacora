@@ -2702,7 +2702,7 @@ function insCardPendiente(r) {
     '</div>' +
     '<div style="margin-top:10px">' + insCajaFecha('PACTADO', r.inicioContratado, r.finContratado, 'pactado') + '</div>' +
     '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
-      '<input type="date" id="insFecha_' + r.id + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark">' +
+      '<input type="date" id="insFecha_' + r.id + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
       '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
       '<button onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--green);border:1px solid var(--green);border-radius:7px;color:#0a1a0a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">✅ Certificar</button>' +
     '</div>' +
@@ -2736,7 +2736,7 @@ function insCardCertificada(r) {
     '<div style="margin-top:8px">' +
       '<button onclick="insToggleEditar(\'' + r.id + '\')" id="insBtnEditar_' + r.id + '" style="background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11px;padding:6px 10px;cursor:pointer">✏️ Corregir fecha</button>' +
       '<div id="insEditForm_' + r.id + '" style="display:none;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
-        '<input type="date" id="insFecha_' + r.id + '" value="' + esc(r.inicioReal) + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark">' +
+        '<input type="date" id="insFecha_' + r.id + '" value="' + esc(r.inicioReal) + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
         '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
         '<button onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#1a1a1a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">Guardar corrección</button>' +
       '</div>' +
