@@ -553,6 +553,7 @@
   <div class="tab active" onclick="switchTab('inventario')">📋 Inventario</div>
   <div class="tab" onclick="switchTab('disponibles')">🟢 Disponibles</div>
   <div class="tab" onclick="switchTab('reservadas')">🟡 Reservadas</div>
+  <div class="tab" id="tabInstalaciones" onclick="switchTab('instalaciones')">🏗️ Instalaciones</div>
   <div class="tab" onclick="switchTab('alertas')">⚠️ Alertas</div>
   <div class="tab" onclick="switchTab('led')">🖥 LED</div>
   <div class="tab" onclick="switchTab('mapa')">🗺 Mapa</div>
@@ -561,7 +562,6 @@
   <div class="tab" id="tabPipeline" onclick="switchTab('pipeline')">📈 Pipeline</div>
   <div class="tab" id="tabComercialGeneral" onclick="switchTab('comercialgeneral')">💼 Comercial General</div>
   <div class="tab" id="tabWallet" onclick="switchTab('wallet')">💰 Wallet</div>
-  <div class="tab" id="tabInstalaciones" onclick="switchTab('instalaciones')">🏗️ Instalaciones</div>
 </div>
 
 <div class="toolbar" id="mainToolbar">
@@ -3663,7 +3663,7 @@ async function renderComercialGeneral(container) {
 function switchTab(t) {
   state.tab = t; state.page = 1;
   document.querySelectorAll('.tab').forEach((el,i) =>
-    el.classList.toggle('active', ['inventario','disponibles','reservadas','alertas','led','mapa','dashboard','cotizador','pipeline','comercialgeneral','wallet','instalaciones'][i] === t));
+    el.classList.toggle('active', ['inventario','disponibles','reservadas','instalaciones','alertas','led','mapa','dashboard','cotizador','pipeline','comercialgeneral','wallet'][i] === t));
   const mainToolbar = document.getElementById('mainToolbar');
   if (mainToolbar) mainToolbar.style.display = (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral' || t === 'wallet' || t === 'instalaciones') ? 'none' : '';
   if (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral' || t === 'wallet' || t === 'instalaciones') { render(); return; }
