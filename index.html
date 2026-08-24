@@ -4413,6 +4413,9 @@ function renderMapa(container) {
         <option value="RESERVADA">🟡 Reservadas</option>
         <option value="CONTRATADA">🔴 Contratadas</option>
       </select>
+      <select class="filter" id="mapTipoFilter" onchange="updateMapMarkers()">
+        <option value="">Todos los tipos</option>
+      </select>
       <select class="filter" id="mapCiudadFilter" onchange="updateMapMarkers()">
         <option value="">Todas las ciudades</option>
       </select>
@@ -4420,6 +4423,12 @@ function renderMapa(container) {
         <option value="">Todos los clientes</option>
       </select>
       <input type="text" class="search-box" id="mapSearch" placeholder="🔍 Buscar código o dirección..." oninput="updateMapMarkers()" style="max-width:280px">
+    </div>
+    <div class="map-filter-bar" style="margin-top:8px">
+      <input type="text" class="search-box" id="mapPoiSearch" placeholder="📍 Buscar lugares cercanos (ej: Supermaxi, Coral)..." style="max-width:320px" onkeydown="if(event.key==='Enter')buscarLugaresCercanos()">
+      <button class="filter" onclick="buscarLugaresCercanos()" id="mapPoiBtn" style="cursor:pointer">Buscar</button>
+      <button class="filter" onclick="limpiarLugaresCercanos()" style="cursor:pointer">✕ Limpiar resultados</button>
+      <span id="mapPoiCount" style="font-size:11px;color:var(--muted);align-self:center"></span>
     </div>
     <div class="map-legend">
       <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div> Disponible</div>
@@ -4429,6 +4438,11 @@ function renderMapa(container) {
       <div class="legend-item" style="margin-left:auto;font-family:monospace;font-size:11px;color:var(--muted)" id="mapCount"></div>
     </div>
     <div id="mapContainer"></div>`;
+
+  // Populate tipo filter
+  const tipos = [...new Set(DATA.map(v => esc(v.tipo)).filter(Boolean))].sort();
+  const tf = document.getElementById('mapTipoFilter');
+  tipos.forEach(t => tf.add(new Option(t, t)));
 
   // Populate ciudad filter
   const ciudades = [...new Set(DATA.map(v => esc(v.lugar)).filter(Boolean))].sort();
@@ -4507,6 +4521,7 @@ function updateMapMarkers() {
 
   const search = (document.getElementById('mapSearch')?.value || '').toLowerCase();
   const estadoF = document.getElementById('mapEstadoFilter')?.value || '';
+  const tipoF = document.getElementById('mapTipoFilter')?.value || '';
   const ciudadF = document.getElementById('mapCiudadFilter')?.value || '';
   const clienteF = document.getElementById('mapClienteFilter')?.value || '';
 
@@ -4516,6 +4531,7 @@ function updateMapMarkers() {
     if (isNaN(lat) || isNaN(lon)) return false;
     if (lat < -5 || lat > 5) return false;
     if (lon < -82 || lon > -75) return false;
+    if (tipoF && esc(v.tipo) !== tipoF) return false;
     if (ciudadF && esc(v.lugar) !== ciudadF) return false;
     if (clienteF && esc(v.cliente) !== clienteF) return false;
     if (estadoF) {
@@ -4572,6 +4588,79 @@ function updateMapMarkers() {
   }
 }
 
+// ── Buscador de lugares cercanos (Mapa) ─────────────────────────
+// Busca negocios/lugares por nombre (ej. "Supermaxi", "Coral") usando
+// Nominatim de OpenStreetMap — es gratis y no necesita API key, igual
+// que el resto de capas del mapa (Carto/OSM/Esri). Solo se dispara al
+// hacer clic en "Buscar" (nunca automático mientras escribes), tal
+// como pide la política de uso de Nominatim para no hacer demasiadas
+// consultas. Los resultados se pintan aparte de las vallas propias, con
+// un ícono distinto, para no confundirlos con el inventario.
+let _poiMarkers = [];
+
+function makePoiIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:18px;background:#3b82f6;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 0 6px rgba(59,130,246,.7)"><span style="transform:rotate(45deg)">📍</span></div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 26],
+    popupAnchor: [0, -24]
+  });
+}
+
+function limpiarLugaresCercanos() {
+  _poiMarkers.forEach(m => m.remove());
+  _poiMarkers = [];
+  const input = document.getElementById('mapPoiSearch');
+  if (input) input.value = '';
+  const count = document.getElementById('mapPoiCount');
+  if (count) count.textContent = '';
+}
+
+async function buscarLugaresCercanos() {
+  if (!_mapInstance) return;
+  const termino = (document.getElementById('mapPoiSearch')?.value || '').trim();
+  if (!termino) { showToast('Escribe qué lugar buscar (ej: Supermaxi)', 'info'); return; }
+
+  limpiarLugaresCercanos();
+  const input = document.getElementById('mapPoiSearch');
+  if (input) input.value = termino;
+  const btn = document.getElementById('mapPoiBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=ec&limit=40&q=' + encodeURIComponent(termino);
+    const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+    const resultados = await res.json();
+
+    if (!resultados.length) {
+      showToast('No se encontraron lugares para "' + termino + '"', 'info');
+      return;
+    }
+
+    resultados.forEach(r => {
+      const lat = parseFloat(r.lat), lon = parseFloat(r.lon);
+      if (isNaN(lat) || isNaN(lon)) return;
+      const marker = L.marker([lat, lon], { icon: makePoiIcon() });
+      const nombre = (r.display_name || termino).split(',')[0];
+      marker.bindPopup('<div class="map-popup"><h4>📍 ' + esc(nombre) + '</h4><p style="font-size:11px">' + esc(r.display_name || '') + '</p></div>', { maxWidth: 240 });
+      marker.addTo(_mapInstance);
+      _poiMarkers.push(marker);
+    });
+
+    const count = document.getElementById('mapPoiCount');
+    if (count) count.textContent = _poiMarkers.length + ' resultado' + (_poiMarkers.length===1?'':'s');
+
+    if (_poiMarkers.length) {
+      const group = L.featureGroup(_poiMarkers);
+      _mapInstance.fitBounds(group.getBounds().pad(0.2));
+    }
+  } catch (e) {
+    showToast('❌ Error buscando lugares: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Buscar'; }
+  }
+}
 
 
 
