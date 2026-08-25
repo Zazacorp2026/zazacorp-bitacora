@@ -2633,75 +2633,111 @@ async function qzCongelarWalletMesUI(forzar) {
   }
 }
 
-// Cada <tr> de una marca; la celda CLIENTE solo se pinta en la primera
-// fila de su grupo (rowspanCliente > 0), fusionada verticalmente hacia
-// abajo — igual que "combinar y centrar" en Excel — para las demás
-// filas del mismo cliente esa celda se omite por completo.
-function qzFilaWalletHTML_(f, rowspanCliente) {
-  const color = QZ_WALLET_TIPO_COLOR[f.tipoCliente] || 'var(--muted)';
-  const celdaCliente = rowspanCliente
-    ? '<td rowspan="' + rowspanCliente + '" style="padding:8px 6px;font-size:12px;color:var(--text);vertical-align:middle;border-right:1px solid var(--border)">' + esc(f.cliente) + (f.esAgencia ? '<div style="font-size:9.5px;color:var(--muted)">agencia</div>' : '') + '</td>'
-    : '';
-  return '<tr style="border-bottom:1px solid var(--border)">' +
-    celdaCliente +
-    '<td style="padding:8px 6px;font-size:12px;color:var(--muted)">' + esc(f.marca || '—') + '</td>' +
-    '<td style="padding:8px 6px;text-align:center"><span style="font-size:9.5px;font-weight:800;color:' + color + ';background:' + color + '1a;border:1px solid ' + color + ';border-radius:10px;padding:2px 8px">' + f.tipoCliente + '</span></td>' +
-    '<td style="padding:8px 6px;text-align:right;font-size:12px;color:var(--text)">$' + f.ventaNeta.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
-    '<td style="padding:8px 6px;text-align:right;font-size:12px;color:var(--muted)">$' + f.netoPostAgencia.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
-    '<td style="padding:8px 6px;text-align:right;font-size:11.5px;color:var(--muted)">' + (f.comisionPct * 100).toFixed(1) + '%</td>' +
-    '<td style="padding:8px 6px;text-align:right;font-size:13px;font-weight:800;color:var(--accent)">$' + f.comisionMonto.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</td>' +
-    '</tr>';
+// Anchos de columna compartidos por el encabezado, la fila colapsada
+// de cada cliente y el detalle de sus marcas — así todo queda alineado
+// bajo su etiqueta aunque sean bloques <div> distintos, no una <table>.
+const QZW_COLS = '1.6fr .9fr .9fr .9fr .5fr .8fr';
+
+function qzEncabezadoWalletHTML_() {
+  return '<div style="display:grid;grid-template-columns:' + QZW_COLS + ';gap:8px;padding:0 10px 8px;border-bottom:2px solid var(--border)">' +
+    '<span style="font-size:9.5px;color:var(--muted);font-weight:900">CLIENTE / MARCA</span>' +
+    '<span style="font-size:9.5px;color:var(--muted);font-weight:900;text-align:center">TIPO</span>' +
+    '<span style="font-size:9.5px;color:var(--muted);font-weight:900;text-align:right">VENTA</span>' +
+    '<span style="font-size:9.5px;color:var(--muted);font-weight:900;text-align:right">NETO POST-AG.</span>' +
+    '<span style="font-size:9.5px;color:var(--muted);font-weight:900;text-align:right">%</span>' +
+    '<span style="font-size:9.5px;color:var(--muted);font-weight:900;text-align:right">COMISIÓN</span>' +
+  '</div>';
 }
 
-// Fila de cierre de un cliente — suma Venta, Neto post-agencia y
-// Comisión de todas sus marcas, más un resumen rápido de cuántas de
-// esas marcas son activas/nuevas/pasivas (para ver de un vistazo si el
-// cliente trae marcas nuevas sin tener que abrir cada fila).
-function qzSubtotalClienteHTML_(grupo) {
-  const totalVenta = grupo.reduce((s, f) => s + f.ventaNeta, 0);
-  const totalNeto = grupo.reduce((s, f) => s + f.netoPostAgencia, 0);
-  const totalComision = grupo.reduce((s, f) => s + f.comisionMonto, 0);
+// Una fila de marca dentro del detalle expandido de un cliente.
+function qzFilaMarcaHTML_(f) {
+  const color = QZ_WALLET_TIPO_COLOR[f.tipoCliente] || 'var(--muted)';
+  return '<div style="display:grid;grid-template-columns:' + QZW_COLS + ';gap:8px;align-items:center;padding:8px 10px;border-top:1px solid var(--border)">' +
+    '<span style="font-size:12px;color:var(--muted);padding-left:20px">' + esc(f.marca || '—') + '</span>' +
+    '<span style="text-align:center"><span style="font-size:9.5px;font-weight:800;color:' + color + ';background:' + color + '1a;border:1px solid ' + color + ';border-radius:10px;padding:2px 8px">' + f.tipoCliente + '</span></span>' +
+    '<span style="font-size:12px;color:var(--text);text-align:right">$' + f.ventaNeta.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</span>' +
+    '<span style="font-size:12px;color:var(--muted);text-align:right">$' + f.netoPostAgencia.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</span>' +
+    '<span style="font-size:11px;color:var(--muted);text-align:right">' + (f.comisionPct * 100).toFixed(1) + '%</span>' +
+    '<span style="font-size:12px;font-weight:800;color:var(--accent);text-align:right">$' + f.comisionMonto.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</span>' +
+  '</div>';
+}
+
+// Resumen rápido de cuántas marcas tiene un cliente y cómo se reparten
+// entre recurrente/nueva/pasiva — para verlo sin tener que expandir.
+function qzResumenTiposCliente_(grupo) {
   const conteo = {};
   grupo.forEach(f => { conteo[f.tipoCliente] = (conteo[f.tipoCliente] || 0) + 1; });
   const etiqueta = { RECURRENTE: ['recurrente', 'recurrentes'], NUEVO: ['nueva', 'nuevas'], PASIVO: ['pasiva', 'pasivas'] };
   const partes = ['RECURRENTE', 'NUEVO', 'PASIVO']
     .filter(t => conteo[t])
     .map(t => conteo[t] + ' ' + etiqueta[t][conteo[t] === 1 ? 0 : 1]);
-  const resumen = grupo.length + (grupo.length === 1 ? ' marca' : ' marcas') + (partes.length ? ' · ' + partes.join(', ') : '');
-  return '<tr style="background:rgba(16,185,129,.05);border-bottom:2px solid var(--border)">' +
-    '<td style="padding:7px 6px;font-size:10px;font-weight:800;color:var(--green);border-left:2px solid var(--green);border-right:1px solid var(--border)">SUBTOTAL CLIENTE</td>' +
-    '<td style="padding:7px 6px;font-size:10px;color:var(--muted)">' + esc(resumen) + '</td>' +
-    '<td></td>' +
-    '<td style="padding:7px 6px;text-align:right;font-size:12px;font-weight:800;color:var(--green)">$' + totalVenta.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
-    '<td style="padding:7px 6px;text-align:right;font-size:12px;font-weight:800;color:var(--green)">$' + totalNeto.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
-    '<td></td>' +
-    '<td style="padding:7px 6px;text-align:right;font-size:12.5px;font-weight:900;color:var(--green)">$' + totalComision.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</td>' +
-    '</tr>';
+  return grupo.length + (grupo.length === 1 ? ' marca' : ' marcas') + (partes.length ? ' · ' + partes.join(', ') : '');
 }
+
+// Bloque colapsable de un cliente: colapsado se ve solo su fila-resumen
+// (nombre, composición de tipos, y los 3 totales); un clic despliega
+// sus marcas una por una — evita mostrar de entrada todas las marcas de
+// todos los clientes a la vez, que era lo que saturaba la vista.
+function qzBloqueClienteHTML_(cliente, grupo, id) {
+  const totalVenta = grupo.reduce((s, f) => s + f.ventaNeta, 0);
+  const totalNeto = grupo.reduce((s, f) => s + f.netoPostAgencia, 0);
+  const totalComision = grupo.reduce((s, f) => s + f.comisionMonto, 0);
+  const esAgencia = grupo[0] && grupo[0].esAgencia;
+  const detalle = grupo.map(qzFilaMarcaHTML_).join('');
+  return '<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:8px;overflow:hidden">' +
+    '<div onclick="qzToggleClienteWallet(\'' + id + '\')" style="display:grid;grid-template-columns:' + QZW_COLS + ';gap:8px;align-items:center;cursor:pointer;background:var(--surface2);padding:10px">' +
+      '<div>' +
+        '<div style="display:flex;align-items:center;gap:7px">' +
+          '<span id="qzChev_' + id + '" style="display:inline-block;transition:transform .15s;color:var(--muted);font-size:10px">▸</span>' +
+          '<span style="font-size:12.5px;font-weight:800;color:var(--text)">' + esc(cliente) + (esAgencia ? ' <span style="font-size:9.5px;color:var(--muted);font-weight:500">(agencia)</span>' : '') + '</span>' +
+        '</div>' +
+        '<div style="font-size:10px;color:var(--muted);margin-left:17px;margin-top:2px">' + esc(qzResumenTiposCliente_(grupo)) + '</div>' +
+      '</div>' +
+      '<span></span>' +
+      '<span style="font-size:12px;color:var(--text);text-align:right">$' + totalVenta.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</span>' +
+      '<span style="font-size:12px;color:var(--muted);text-align:right">$' + totalNeto.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</span>' +
+      '<span></span>' +
+      '<span style="font-size:13px;font-weight:900;color:var(--accent);text-align:right">$' + totalComision.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</span>' +
+    '</div>' +
+    '<div id="qzDet_' + id + '" style="display:none">' + detalle + '</div>' +
+  '</div>';
+}
+
+function qzToggleClienteWallet(id) {
+  const det = document.getElementById('qzDet_' + id);
+  const chev = document.getElementById('qzChev_' + id);
+  if (!det) return;
+  const abierto = det.style.display !== 'none';
+  det.style.display = abierto ? 'none' : 'block';
+  if (chev) chev.style.transform = abierto ? 'rotate(0deg)' : 'rotate(90deg)';
+}
+
+// Contador global de instancias de tabla — evita que dos bloques de
+// cliente choquen de id si hay dos tablas abiertas a la vez (ej. dos
+// ejecutivas expandidas al mismo tiempo, cada una con su propia lista).
+let _qzWalletTablaInstancia = 0;
 
 function qzTablaWalletHTML_(filas) {
   const totalComision = filas.reduce((s, f) => s + f.comisionMonto, 0);
-  // Agrupar por cliente (manteniendo el orden de llegada) para fusionar
-  // su celda cuando tiene 2+ marcas en la lista.
+  const instancia = ++_qzWalletTablaInstancia;
+  // Agrupar por cliente (manteniendo el orden de llegada).
   const ordenClientes = [];
   const porCliente = {};
   filas.forEach(f => {
     if (!porCliente[f.cliente]) { porCliente[f.cliente] = []; ordenClientes.push(f.cliente); }
     porCliente[f.cliente].push(f);
   });
-  let filasHtml = '';
-  ordenClientes.forEach(cliente => {
-    const grupo = porCliente[cliente];
-    grupo.forEach((f, idx) => {
-      filasHtml += qzFilaWalletHTML_(f, idx === 0 ? grupo.length : 0);
-    });
-    filasHtml += qzSubtotalClienteHTML_(grupo);
-  });
-  return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:inherit">' +
-    '<thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">CLIENTE</th><th style="text-align:left;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">MARCA</th><th style="padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">TIPO</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">VENTA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">NETO POST-AGENCIA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">%</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">COMISIÓN</th></tr></thead>' +
-    '<tbody>' + filasHtml + '</tbody>' +
-    '<tfoot><tr style="border-top:2px solid var(--border)"><td colspan="6" style="padding:8px 6px;font-size:11px;font-weight:900;color:var(--text)">TOTAL COMISIÓN</td><td style="padding:8px 6px;text-align:right;font-size:14px;font-weight:900;color:var(--accent)">$' + totalComision.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</td></tr></tfoot>' +
-    '</table></div>';
+  const bloques = ordenClientes
+    .map((cliente, i) => qzBloqueClienteHTML_(cliente, porCliente[cliente], 'w' + instancia + '_' + i))
+    .join('');
+  return '<div style="overflow-x:auto"><div style="min-width:600px">' +
+    qzEncabezadoWalletHTML_() +
+    '<div style="margin-top:8px">' + bloques + '</div>' +
+    '<div style="border-top:2px solid var(--border);margin-top:6px;padding-top:8px;display:flex;justify-content:space-between;align-items:center">' +
+      '<span style="font-size:11px;font-weight:900;color:var(--text)">TOTAL COMISIÓN</span>' +
+      '<span style="font-size:14px;font-weight:900;color:var(--accent)">$' + totalComision.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</span>' +
+    '</div>' +
+  '</div></div>';
 }
 
 function qzPintarWallet() {
