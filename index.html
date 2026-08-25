@@ -2549,9 +2549,59 @@ async function qzCargarWallet() {
   qzPintarWallet();
 }
 
+// Apps Script resuelve todo el cálculo en una sola llamada, sin avisar
+// cuánto lleva — no hay forma de sacarle un % real sin partirlo en
+// varios pasos. Esta barra es ESTIMADA: avanza sola con el tiempo
+// (rápido al principio, más lenta cerca del 90%) y solo llega a 100%
+// cuando la respuesta real del servidor confirma que terminó.
+let _qzWalletProgresoInterval = null;
+function qzIniciarProgresoWallet() {
+  const board = document.getElementById('qzWalletBoard');
+  if (!board) return;
+  const etapas = ['Leyendo facturación...', 'Calculando comisiones...', 'Guardando...'];
+  let pct = 0, etapaIdx = 0;
+  board.innerHTML =
+    '<div style="padding:30px 10px;text-align:center">' +
+      '<div id="qzProgresoTexto" style="font-size:12px;color:var(--muted);margin-bottom:10px">' + etapas[0] + '</div>' +
+      '<div style="background:var(--surface2);border-radius:20px;height:8px;overflow:hidden;max-width:320px;margin:0 auto">' +
+        '<div id="qzProgresoBarra" style="background:var(--accent);height:100%;width:0%;transition:width .25s ease"></div>' +
+      '</div>' +
+      '<div id="qzProgresoPct" style="font-size:11px;color:var(--muted);margin-top:6px">0%</div>' +
+    '</div>';
+  _qzWalletProgresoInterval = setInterval(function () {
+    pct += Math.max(1, (90 - pct) * 0.12);
+    if (pct > 90) pct = 90;
+    const nuevaEtapa = pct < 35 ? 0 : (pct < 70 ? 1 : 2);
+    if (nuevaEtapa !== etapaIdx) {
+      etapaIdx = nuevaEtapa;
+      const t = document.getElementById('qzProgresoTexto');
+      if (t) t.textContent = etapas[etapaIdx];
+    }
+    const barra = document.getElementById('qzProgresoBarra');
+    const pctTxt = document.getElementById('qzProgresoPct');
+    if (barra) barra.style.width = pct + '%';
+    if (pctTxt) pctTxt.textContent = Math.round(pct) + '%';
+  }, 250);
+}
+function qzDetenerProgresoWallet(completado) {
+  if (_qzWalletProgresoInterval) { clearInterval(_qzWalletProgresoInterval); _qzWalletProgresoInterval = null; }
+  if (!completado) return;
+  const barra = document.getElementById('qzProgresoBarra');
+  const pctTxt = document.getElementById('qzProgresoPct');
+  const texto = document.getElementById('qzProgresoTexto');
+  if (barra) barra.style.width = '100%';
+  if (pctTxt) pctTxt.textContent = '100%';
+  if (texto) texto.textContent = 'Listo';
+}
+
 async function qzCongelarWalletMesUI(forzar) {
   const btn = document.getElementById('qzBtnCongelarWallet');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando...'; }
+  // Si el mes ya está congelado y todavía no confirmaste el reemplazo,
+  // esta llamada es solo un chequeo rápido que va a pedir confirmación
+  // — no vale la pena tapar la tabla actual con la barra para eso.
+  const esSoloChequeo = !!(qzWalletData && qzWalletData.congelado) && !forzar;
+  if (!esSoloChequeo) qzIniciarProgresoWallet();
   try {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzCongelarWalletMes', mes: qzWalletMes, forzar: !!forzar }) });
     const json = await res.json();
@@ -2563,13 +2613,17 @@ async function qzCongelarWalletMesUI(forzar) {
       return;
     }
     if (!json.ok) throw new Error(json.error || 'Error al congelar');
+    qzDetenerProgresoWallet(true);
+    await new Promise(function (r) { setTimeout(r, 350); });
     showToast('✅ Wallet de ' + qzWalletMes + ' congelado: ' + json.filasGuardadas + ' filas', 'success');
     if (json.sinMapear && json.sinMapear.length) {
       showToast('⚠️ Ejecutivas sin mapear (quedaron fuera): ' + json.sinMapear.join(', '), 'info');
     }
     await qzCargarWallet();
   } catch (e) {
+    qzDetenerProgresoWallet(false);
     showToast('❌ Error: ' + e.message, 'error');
+    if (!esSoloChequeo) await qzCargarWallet();
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '❄️ Congelar este mes'; }
   }
