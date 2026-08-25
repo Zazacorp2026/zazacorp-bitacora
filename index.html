@@ -2560,6 +2560,7 @@ function qzIniciarProgresoWallet() {
   if (!board) return;
   const etapas = ['Leyendo facturación...', 'Calculando comisiones...', 'Guardando...'];
   let pct = 0, etapaIdx = 0;
+  const inicio = Date.now();
   board.innerHTML =
     '<div style="padding:30px 10px;text-align:center">' +
       '<div id="qzProgresoTexto" style="font-size:12px;color:var(--muted);margin-bottom:10px">' + etapas[0] + '</div>' +
@@ -2579,8 +2580,11 @@ function qzIniciarProgresoWallet() {
     }
     const barra = document.getElementById('qzProgresoBarra');
     const pctTxt = document.getElementById('qzProgresoPct');
+    const segundos = Math.round((Date.now() - inicio) / 1000);
     if (barra) barra.style.width = pct + '%';
-    if (pctTxt) pctTxt.textContent = Math.round(pct) + '%';
+    // El segundero deja claro que sigue viva aunque se quede pegada en
+    // 90% esperando la respuesta real — sin esto parece congelada.
+    if (pctTxt) pctTxt.textContent = Math.round(pct) + '% · ' + segundos + 's';
   }, 250);
 }
 function qzDetenerProgresoWallet(completado) {
