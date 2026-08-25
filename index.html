@@ -2575,10 +2575,18 @@ async function qzCongelarWalletMesUI(forzar) {
   }
 }
 
-function qzFilaWalletHTML_(f) {
+// Cada <tr> de una marca; la celda CLIENTE solo se pinta en la primera
+// fila de su grupo (rowspanCliente > 0), fusionada verticalmente hacia
+// abajo — igual que "combinar y centrar" en Excel — para las demás
+// filas del mismo cliente esa celda se omite por completo.
+function qzFilaWalletHTML_(f, rowspanCliente) {
   const color = QZ_WALLET_TIPO_COLOR[f.tipoCliente] || 'var(--muted)';
+  const celdaCliente = rowspanCliente
+    ? '<td rowspan="' + rowspanCliente + '" style="padding:8px 6px;font-size:12px;color:var(--text);vertical-align:middle;border-right:1px solid var(--border)">' + esc(f.cliente) + (f.esAgencia ? '<div style="font-size:9.5px;color:var(--muted)">agencia</div>' : '') + '</td>'
+    : '';
   return '<tr style="border-bottom:1px solid var(--border)">' +
-    '<td style="padding:8px 6px;font-size:12px;color:var(--text)">' + esc(f.cliente) + (f.esAgencia ? '<div style="font-size:9.5px;color:var(--muted)">vía ' + esc(f.agenciaNombre) + '</div>' : '') + '</td>' +
+    celdaCliente +
+    '<td style="padding:8px 6px;font-size:12px;color:var(--muted)">' + esc(f.marca || '—') + '</td>' +
     '<td style="padding:8px 6px;text-align:center"><span style="font-size:9.5px;font-weight:800;color:' + color + ';background:' + color + '1a;border:1px solid ' + color + ';border-radius:10px;padding:2px 8px">' + f.tipoCliente + '</span></td>' +
     '<td style="padding:8px 6px;text-align:right;font-size:12px;color:var(--text)">$' + f.ventaNeta.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
     '<td style="padding:8px 6px;text-align:right;font-size:12px;color:var(--muted)">$' + f.netoPostAgencia.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
@@ -2589,10 +2597,24 @@ function qzFilaWalletHTML_(f) {
 
 function qzTablaWalletHTML_(filas) {
   const totalComision = filas.reduce((s, f) => s + f.comisionMonto, 0);
+  // Agrupar por cliente (manteniendo el orden de llegada) para fusionar
+  // su celda cuando tiene 2+ marcas en la lista.
+  const ordenClientes = [];
+  const porCliente = {};
+  filas.forEach(f => {
+    if (!porCliente[f.cliente]) { porCliente[f.cliente] = []; ordenClientes.push(f.cliente); }
+    porCliente[f.cliente].push(f);
+  });
+  let filasHtml = '';
+  ordenClientes.forEach(cliente => {
+    porCliente[cliente].forEach((f, idx) => {
+      filasHtml += qzFilaWalletHTML_(f, idx === 0 ? porCliente[cliente].length : 0);
+    });
+  });
   return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:inherit">' +
-    '<thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">CLIENTE</th><th style="padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">TIPO</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">VENTA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">NETO POST-AGENCIA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">%</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">COMISIÓN</th></tr></thead>' +
-    '<tbody>' + filas.map(qzFilaWalletHTML_).join('') + '</tbody>' +
-    '<tfoot><tr style="border-top:2px solid var(--border)"><td colspan="5" style="padding:8px 6px;font-size:11px;font-weight:900;color:var(--text)">TOTAL COMISIÓN</td><td style="padding:8px 6px;text-align:right;font-size:14px;font-weight:900;color:var(--accent)">$' + totalComision.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</td></tr></tfoot>' +
+    '<thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">CLIENTE</th><th style="text-align:left;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">MARCA</th><th style="padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">TIPO</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">VENTA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">NETO POST-AGENCIA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">%</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">COMISIÓN</th></tr></thead>' +
+    '<tbody>' + filasHtml + '</tbody>' +
+    '<tfoot><tr style="border-top:2px solid var(--border)"><td colspan="6" style="padding:8px 6px;font-size:11px;font-weight:900;color:var(--text)">TOTAL COMISIÓN</td><td style="padding:8px 6px;text-align:right;font-size:14px;font-weight:900;color:var(--accent)">$' + totalComision.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</td></tr></tfoot>' +
     '</table></div>';
 }
 
