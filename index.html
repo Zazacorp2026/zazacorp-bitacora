@@ -1354,7 +1354,12 @@ function getFiltered() {
         return false;
       });
     } else {
-      d = d.filter(v => esLEDtipo(v) ? espaciosLEDDisponibles(v) > 0 : (v.estado === 'DISPONIBLE' && !isBlocked(v.codigo)));
+      // Reservadas se muestran junto a las disponibles (a propósito, para
+      // poder verlas y exportarlas juntas en un solo PPT) — se identifican
+      // igual con su propio estado/badge en la tarjeta, no se pierden de
+      // vista, solo comparten esta pestaña en vez de vivir solo en
+      // "Reservadas".
+      d = d.filter(v => esLEDtipo(v) ? espaciosLEDDisponibles(v) > 0 : (v.estado === 'DISPONIBLE' || v.estado === 'RESERVADA'));
     }
   }
   else if (state.tab === 'reservadas') d = d.filter(v => !esLEDtipo(v) && (v.estado === 'RESERVADA' || (v.estado === 'DISPONIBLE' && isBlocked(v.codigo))));
@@ -4413,12 +4418,14 @@ function renderMapa(container) {
         <option value="RESERVADA">🟡 Reservadas</option>
         <option value="CONTRATADA">🔴 Contratadas</option>
       </select>
-      <select class="filter" id="mapTipoFilter" onchange="updateMapMarkers()">
-        <option value="">Todos los tipos</option>
-      </select>
-      <select class="filter" id="mapCiudadFilter" onchange="updateMapMarkers()">
-        <option value="">Todas las ciudades</option>
-      </select>
+      <div class="multi-filter" id="mapMfTipo">
+        <button class="mf-btn" onclick="mapToggleMF('mapMfTipo')">Todos los tipos <span class="mf-arrow">▾</span></button>
+        <div class="mf-drop"></div>
+      </div>
+      <div class="multi-filter" id="mapMfCiudad">
+        <button class="mf-btn" onclick="mapToggleMF('mapMfCiudad')">Todas las ciudades <span class="mf-arrow">▾</span></button>
+        <div class="mf-drop"></div>
+      </div>
       <select class="filter" id="mapClienteFilter" onchange="updateMapMarkers()">
         <option value="">Todos los clientes</option>
       </select>
@@ -4439,15 +4446,12 @@ function renderMapa(container) {
     </div>
     <div id="mapContainer"></div>`;
 
-  // Populate tipo filter
+  // Populate tipo/ciudad filters (selección múltiple)
   const tipos = [...new Set(DATA.map(v => esc(v.tipo)).filter(Boolean))].sort();
-  const tf = document.getElementById('mapTipoFilter');
-  tipos.forEach(t => tf.add(new Option(t, t)));
+  mapBuildMF('mapMfTipo', tipos, 'tipo');
 
-  // Populate ciudad filter
   const ciudades = [...new Set(DATA.map(v => esc(v.lugar)).filter(Boolean))].sort();
-  const cf = document.getElementById('mapCiudadFilter');
-  ciudades.forEach(c => cf.add(new Option(c, c)));
+  mapBuildMF('mapMfCiudad', ciudades, 'ciudad');
 
   const clientes = [...new Set(DATA.map(v => esc(v.cliente)).filter(Boolean))].sort();
   const clF = document.getElementById('mapClienteFilter');
@@ -4513,6 +4517,63 @@ function makeMarkerIcon(color) {
   });
 }
 
+// Selección múltiple de tipo/ciudad en el Mapa — mismo componente visual
+// (checkboxes desplegables) que ya usa el resto de Nexus (mf-*), pero
+// con su propio estado y llamando a updateMapMarkers() en vez de
+// applyFilters() (que redibuja la grilla principal, no el mapa).
+let _mapMultiTipo = new Set();
+let _mapMultiCiudad = new Set();
+const MAP_MF_PLACEHOLDERS = { tipo: 'Todos los tipos', ciudad: 'Todas las ciudades' };
+function mapMultiState(key) { return key === 'tipo' ? _mapMultiTipo : _mapMultiCiudad; }
+
+function mapBuildMF(mfId, opciones, key) {
+  const wrap = document.getElementById(mfId);
+  if (!wrap) return;
+  const drop = wrap.querySelector('.mf-drop');
+  const st = mapMultiState(key);
+  drop.innerHTML =
+    '<div class="mf-clear" onclick="mapClearMF(\'' + mfId + '\',\'' + key + '\')">✕ Limpiar selección</div>' +
+    '<div class="mf-sep"></div>' +
+    opciones.map(o =>
+      '<label class="mf-item' + (st.has(o) ? ' checked' : '') + '">' +
+        '<input type="checkbox" value="' + o + '"' + (st.has(o) ? ' checked' : '') +
+        ' onchange="mapToggleMFOption(this,\'' + mfId + '\',\'' + key + '\')">' +
+        o +
+      '</label>'
+    ).join('');
+  mapUpdateMFBtn(mfId, key);
+}
+function mapToggleMF(mfId) {
+  const wrap = document.getElementById(mfId);
+  const isOpen = wrap.classList.contains('open');
+  document.querySelectorAll('.multi-filter.open').forEach(el => el.classList.remove('open'));
+  if (!isOpen) wrap.classList.add('open');
+}
+function mapToggleMFOption(cb, mfId, key) {
+  const st = mapMultiState(key);
+  if (cb.checked) st.add(cb.value); else st.delete(cb.value);
+  cb.closest('.mf-item').classList.toggle('checked', cb.checked);
+  mapUpdateMFBtn(mfId, key);
+  updateMapMarkers();
+}
+function mapClearMF(mfId, key) {
+  mapMultiState(key).clear();
+  const wrap = document.getElementById(mfId);
+  wrap.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; cb.closest('.mf-item').classList.remove('checked'); });
+  mapUpdateMFBtn(mfId, key);
+  updateMapMarkers();
+}
+function mapUpdateMFBtn(mfId, key) {
+  const wrap = document.getElementById(mfId);
+  if (!wrap) return;
+  const btn = wrap.querySelector('.mf-btn');
+  const st = mapMultiState(key);
+  const placeholder = MAP_MF_PLACEHOLDERS[key];
+  if (st.size === 0) btn.innerHTML = placeholder + ' <span class="mf-arrow">▾</span>';
+  else if (st.size === 1) btn.innerHTML = [...st][0] + ' <span class="mf-arrow">▾</span>';
+  else btn.innerHTML = placeholder.split(' ')[0] + ' <span class="mf-badge">' + st.size + '</span> <span class="mf-arrow">▾</span>';
+}
+
 let _markers = [];
 function updateMapMarkers() {
   if (!_mapInstance) return;
@@ -4521,8 +4582,6 @@ function updateMapMarkers() {
 
   const search = (document.getElementById('mapSearch')?.value || '').toLowerCase();
   const estadoF = document.getElementById('mapEstadoFilter')?.value || '';
-  const tipoF = document.getElementById('mapTipoFilter')?.value || '';
-  const ciudadF = document.getElementById('mapCiudadFilter')?.value || '';
   const clienteF = document.getElementById('mapClienteFilter')?.value || '';
 
   let filtered = DATA.filter(v => {
@@ -4531,8 +4590,8 @@ function updateMapMarkers() {
     if (isNaN(lat) || isNaN(lon)) return false;
     if (lat < -5 || lat > 5) return false;
     if (lon < -82 || lon > -75) return false;
-    if (tipoF && esc(v.tipo) !== tipoF) return false;
-    if (ciudadF && esc(v.lugar) !== ciudadF) return false;
+    if (_mapMultiTipo.size && !_mapMultiTipo.has(esc(v.tipo))) return false;
+    if (_mapMultiCiudad.size && !_mapMultiCiudad.has(esc(v.lugar))) return false;
     if (clienteF && esc(v.cliente) !== clienteF) return false;
     if (estadoF) {
       const efectivo = isBlocked(v.codigo) ? 'RESERVADA' : v.estado;
