@@ -2510,7 +2510,7 @@ async function renderPipeline(container) {
 let qzWalletMes = new Date().toISOString().slice(0, 7);
 let qzWalletData = null;
 let qzWalletPorEjecutivaCache = {};
-const QZ_WALLET_TIPO_COLOR = { ACTIVO: 'var(--green)', PASIVO: 'var(--accent)', NUEVO: 'var(--blue)' };
+const QZ_WALLET_TIPO_COLOR = { RECURRENTE: 'var(--green)', PASIVO: 'var(--accent)', NUEVO: 'var(--blue)' };
 
 // Arma la tabla de una ejecutiva la primera vez que se expande (no de
 // entrada) y alterna mostrar/ocultar + gira el indicador ▸/▾.
@@ -2663,8 +2663,8 @@ function qzSubtotalClienteHTML_(grupo) {
   const totalComision = grupo.reduce((s, f) => s + f.comisionMonto, 0);
   const conteo = {};
   grupo.forEach(f => { conteo[f.tipoCliente] = (conteo[f.tipoCliente] || 0) + 1; });
-  const etiqueta = { ACTIVO: ['activa', 'activas'], NUEVO: ['nueva', 'nuevas'], PASIVO: ['pasiva', 'pasivas'] };
-  const partes = ['ACTIVO', 'NUEVO', 'PASIVO']
+  const etiqueta = { RECURRENTE: ['recurrente', 'recurrentes'], NUEVO: ['nueva', 'nuevas'], PASIVO: ['pasiva', 'pasivas'] };
+  const partes = ['RECURRENTE', 'NUEVO', 'PASIVO']
     .filter(t => conteo[t])
     .map(t => conteo[t] + ' ' + etiqueta[t][conteo[t] === 1 ? 0 : 1]);
   const resumen = grupo.length + (grupo.length === 1 ? ' marca' : ' marcas') + (partes.length ? ' · ' + partes.join(', ') : '');
