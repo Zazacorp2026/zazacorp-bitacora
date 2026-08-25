@@ -814,15 +814,15 @@ function aplicarPermisoWallet() {
   if (!tieneAcceso && state.tab === 'wallet') switchTab('inventario');
 }
 
-// Instalaciones — certificación de fecha real, visible solo para Jorge y
-// Yessenia (backend también lo exige vía INS_USUARIOS_AUTORIZADOS, esto
-// solo oculta la pestaña en pantalla).
-const USUARIOS_INSTALACIONES_AUTORIZADOS = ['JORGE', 'YESENIA'];
+// Instalaciones — visible para todas las que tengan sesión iniciada:
+// Jorge y Yessenia certifican la fecha real; cualquier otra ejecutiva
+// solo ve sus propios contratos (pendientes/certificados), sin poder
+// certificar. El backend (insListar) ya filtra los datos según quién
+// pregunta, y solo Jorge/Yessenia pueden llamar a insCertificar — esto
+// únicamente decide si la pestaña se muestra (siempre sí, con sesión).
 function aplicarPermisoInstalaciones() {
-  const tieneAcceso = USUARIOS_INSTALACIONES_AUTORIZADOS.includes((_usuarioActual || '').toUpperCase());
   const tab = document.getElementById('tabInstalaciones');
-  if (tab) tab.style.display = tieneAcceso ? '' : 'none';
-  if (!tieneAcceso && state.tab === 'instalaciones') switchTab('inventario');
+  if (tab) tab.style.display = _usuarioActual ? '' : 'none';
 }
 
 function checkLogin() {
@@ -2653,16 +2653,22 @@ function qzPintarWallet() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// ── INSTALACIONES (prefijo ins) · Jorge y Yessenia ─────────────
+// ── INSTALACIONES (prefijo ins) ────────────────────────────────
 // Certificación de la fecha REAL de instalación — la ejecutiva pacta un
 // inicio/fin al contratar, pero en la práctica se atrasa (arte,
-// producción, instalación). Este módulo deja ver qué sigue pendiente de
-// certificar y cuál ya se certificó, con la diferencia entre lo
-// pactado y lo real — el histórico completo queda siempre en el Sheet
-// "Instalaciones" (nunca se sobreescribe, cada contrato es su propia
-// fila), esta pantalla solo lo muestra y deja certificar.
+// producción, instalación). Jorge y Yessenia certifican; cualquier otra
+// ejecutiva solo ve sus propios contratos (pendientes/certificados),
+// en modo lectura, para saber qué está instalado y qué no. El
+// histórico completo queda siempre en el Sheet "Instalaciones" (nunca
+// se sobreescribe, cada contrato es su propia fila) — la lista de
+// CERTIFICADAS se filtra por mes en pantalla (por defecto el mes
+// actual) para que no se vuelva interminable con el tiempo; PENDIENTES
+// siempre se ven completas, porque por naturaleza son pocas (solo lo
+// que sigue activo esperando certificación).
 // ══════════════════════════════════════════════════════════════
 let insDataCache = [];
+let insPuedeCertificar = false;
+let insMesFiltro = new Date().toISOString().slice(0, 7);
 
 function insDiasEntre(a, b) {
   const p1 = String(a || '').split('-'), p2 = String(b || '').split('-');
@@ -2679,6 +2685,7 @@ async function insCargarDatos() {
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error al cargar');
     insDataCache = json.filas || [];
+    insPuedeCertificar = !!json.puedeCertificar;
     insRenderLista();
   } catch (e) {
     if (board) board.innerHTML = '<div class="empty"><p>❌ ' + esc(e.message) + '</p></div>';
@@ -2706,6 +2713,13 @@ function insFotoHtml(codigo) {
 
 function insCardPendiente(r) {
   const diasEsperando = insDiasEntre(r.inicioContratado, new Date().toISOString().slice(0,10));
+  const controles = insPuedeCertificar
+    ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
+        '<input type="date" id="insFecha_' + r.id + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
+        '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
+        '<button onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--green);border:1px solid var(--green);border-radius:7px;color:#0a1a0a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">✅ Certificar</button>' +
+      '</div>'
+    : '<div style="margin-top:10px;font-size:10.5px;color:var(--muted);text-align:center">⏳ Esperando certificación de instalación</div>';
   return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:9px">' +
     '<div style="display:flex;gap:10px;align-items:flex-start">' +
       insFotoHtml(r.codigo) +
@@ -2719,11 +2733,7 @@ function insCardPendiente(r) {
       '</div>' +
     '</div>' +
     '<div style="margin-top:10px">' + insCajaFecha('PACTADO', r.inicioContratado, r.finContratado, 'pactado') + '</div>' +
-    '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
-      '<input type="date" id="insFecha_' + r.id + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
-      '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
-      '<button onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--green);border:1px solid var(--green);border-radius:7px;color:#0a1a0a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">✅ Certificar</button>' +
-    '</div>' +
+    controles +
   '</div>';
 }
 
@@ -2751,14 +2761,16 @@ function insCardCertificada(r) {
       insCajaFecha('PACTADO', r.inicioContratado, r.finContratado, 'pactado') +
       insCajaFecha('REAL', r.inicioReal, r.finReal, 'real') +
     '</div>' +
-    '<div style="margin-top:8px">' +
-      '<button onclick="insToggleEditar(\'' + r.id + '\')" id="insBtnEditar_' + r.id + '" style="background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11px;padding:6px 10px;cursor:pointer">✏️ Corregir fecha</button>' +
-      '<div id="insEditForm_' + r.id + '" style="display:none;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
-        '<input type="date" id="insFecha_' + r.id + '" value="' + esc(r.inicioReal) + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
-        '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
-        '<button onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#1a1a1a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">Guardar corrección</button>' +
-      '</div>' +
-    '</div>' +
+    (insPuedeCertificar ?
+      '<div style="margin-top:8px">' +
+        '<button onclick="insToggleEditar(\'' + r.id + '\')" id="insBtnEditar_' + r.id + '" style="background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11px;padding:6px 10px;cursor:pointer">✏️ Corregir fecha</button>' +
+        '<div id="insEditForm_' + r.id + '" style="display:none;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
+          '<input type="date" id="insFecha_' + r.id + '" value="' + esc(r.inicioReal) + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
+          '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
+          '<button onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#1a1a1a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">Guardar corrección</button>' +
+        '</div>' +
+      '</div>'
+    : '') +
   '</div>';
 }
 
@@ -2771,18 +2783,30 @@ function insToggleEditar(id) {
   if (btn) btn.textContent = abierto ? '✏️ Corregir fecha' : '✕ Cancelar';
 }
 
+function insCambiarMes(valor) {
+  if (!valor) return;
+  insMesFiltro = valor;
+  insRenderLista();
+}
+
 function insRenderLista() {
   const board = document.getElementById('insBoard');
   if (!board) return;
   const pendientes = insDataCache.filter(r => r.estado === 'PENDIENTE');
-  const certificadas = insDataCache.filter(r => r.estado === 'CERTIFICADO')
+  const certificadasMes = insDataCache.filter(r => r.estado === 'CERTIFICADO' && String(r.fechaCertificacion || '').slice(0, 7) === insMesFiltro)
     .sort((a,b) => new Date(b.fechaCertificacion) - new Date(a.fechaCertificacion));
 
   board.innerHTML =
     '<div style="font-size:12.5px;font-weight:800;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:7px">⏳ Pendientes de certificar<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + pendientes.length + '</span></div>' +
     (pendientes.length ? pendientes.map(insCardPendiente).join('') : '<div class="empty" style="padding:20px"><p>Nada pendiente por certificar 🎉</p></div>') +
-    '<div style="font-size:12.5px;font-weight:800;color:var(--text);margin:20px 0 8px;display:flex;align-items:center;gap:7px">✅ Certificadas<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + certificadas.length + '</span></div>' +
-    (certificadas.length ? certificadas.map(insCardCertificada).join('') : '<div class="empty" style="padding:20px"><p>Todavía no hay ninguna certificada</p></div>');
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 8px;flex-wrap:wrap">' +
+      '<div style="font-size:12.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px">✅ Certificadas<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + certificadasMes.length + '</span></div>' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<label style="font-size:10px;color:var(--muted);font-weight:700">MES</label>' +
+        '<input type="month" value="' + insMesFiltro + '" onchange="insCambiarMes(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit">' +
+      '</div>' +
+    '</div>' +
+    (certificadasMes.length ? certificadasMes.map(insCardCertificada).join('') : '<div class="empty" style="padding:20px"><p>Ninguna certificación este mes</p></div>');
 }
 
 async function insCertificarUI(id) {
@@ -2806,9 +2830,13 @@ async function insCertificarUI(id) {
 }
 
 function renderInstalaciones(container) {
+  const esAdminIns = ['JORGE', 'YESENIA'].includes((_usuarioActual || '').toUpperCase());
+  const descripcion = esAdminIns
+    ? 'Certifica la fecha real en que se instaló cada contrato — el sistema ajusta solo el fin, respetando la misma duración pactada.'
+    : 'Tus contratos: qué sigue pendiente de instalar y qué ya quedó certificado, con la fecha real de instalación.';
   container.innerHTML =
     '<div style="padding:4px 0">' +
-      '<div style="font-size:11px;color:var(--muted);margin-bottom:14px">Certifica la fecha real en que se instaló cada contrato — el sistema ajusta solo el fin, respetando la misma duración pactada.</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:14px">' + descripcion + '</div>' +
       '<div id="insBoard"><div class="empty"><p>Cargando...</p></div></div>' +
     '</div>';
   insCargarDatos();
