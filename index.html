@@ -1002,6 +1002,19 @@ function autoSetEjecutiva(selectId) {
   }
 }
 
+// Bloquea el select de "Ejecutiva" de un formulario de reserva para
+// cualquiera que no sea JORGE. El backend ya fuerza el nombre de la
+// sesión real para todos menos el admin (ver resolverEjecutivaReserva_
+// en Code.gs), así que dejar el select editable para el resto solo
+// confundía: parecía que podían reservar a nombre de otra persona
+// cuando en realidad esa elección no tenía ningún efecto.
+function lockEjecutivaSiNoAdmin(selectId) {
+  const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.disabled = !esAdmin;
+}
+
 // ══════════════════════════════════════════════════════════════
 
 let DATA = [];
@@ -4261,6 +4274,7 @@ function openModal(codigo) {
   // Pre-llenar ejecutiva con el usuario logueado
   setTimeout(function() {
     autoSetEjecutiva('rf-e');
+    lockEjecutivaSiNoAdmin('rf-e');
   }, 50);
 }
 
@@ -4751,7 +4765,7 @@ function openModalMultiReservar() {
     '<button class="btn-contratar-confirm" style="background:var(--accent);color:#000;margin-top:12px" onclick="confirmarMultiReserva()">🔒 Confirmar Reserva Múltiple</button>';
 
   document.getElementById('modalOverlay').classList.add('open');
-  setTimeout(function(){ autoSetEjecutiva('mr-ejecutiva'); }, 50);
+  setTimeout(function(){ autoSetEjecutiva('mr-ejecutiva'); lockEjecutivaSiNoAdmin('mr-ejecutiva'); }, 50);
 }
 
 async function confirmarMultiReserva() {
@@ -4826,6 +4840,7 @@ function openModalSegundaReserva(codigo) {
       '<button class="btn-contratar-confirm" style="margin-top:14px" onclick="confirmarSegundaReserva(\'' + codigo + '\')">🔔 Registrar segunda reserva</button>';
 
     document.getElementById('modalOverlay').classList.add('open');
+    setTimeout(function(){ autoSetEjecutiva('s2-ejecutiva'); lockEjecutivaSiNoAdmin('s2-ejecutiva'); }, 50);
   }, 200);
 }
 
@@ -4869,7 +4884,7 @@ function openModalPreReserva(codigo) {
     '<div class="form-group"><label>Observaciones (opcional)</label><input class="modal-input" id="pr-obs" placeholder="Notas adicionales"></div>' +
     '<button class="btn-contratar-confirm" style="background:rgba(99,102,241,.9);margin-top:8px" onclick="confirmarPreReserva(\'' + codigo + '\')">🔄 Confirmar pre-reserva</button>';
   document.getElementById('modalOverlay').classList.add('open');
-  setTimeout(function(){ autoSetEjecutiva('pr-ejecutiva'); }, 50);
+  setTimeout(function(){ autoSetEjecutiva('pr-ejecutiva'); lockEjecutivaSiNoAdmin('pr-ejecutiva'); }, 50);
 }
 
 async function confirmarPreReserva(codigo) {
