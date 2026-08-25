@@ -2595,6 +2595,32 @@ function qzFilaWalletHTML_(f, rowspanCliente) {
     '</tr>';
 }
 
+// Fila de cierre de un cliente — suma Venta, Neto post-agencia y
+// Comisión de todas sus marcas, más un resumen rápido de cuántas de
+// esas marcas son activas/nuevas/pasivas (para ver de un vistazo si el
+// cliente trae marcas nuevas sin tener que abrir cada fila).
+function qzSubtotalClienteHTML_(grupo) {
+  const totalVenta = grupo.reduce((s, f) => s + f.ventaNeta, 0);
+  const totalNeto = grupo.reduce((s, f) => s + f.netoPostAgencia, 0);
+  const totalComision = grupo.reduce((s, f) => s + f.comisionMonto, 0);
+  const conteo = {};
+  grupo.forEach(f => { conteo[f.tipoCliente] = (conteo[f.tipoCliente] || 0) + 1; });
+  const etiqueta = { ACTIVO: ['activa', 'activas'], NUEVO: ['nueva', 'nuevas'], PASIVO: ['pasiva', 'pasivas'] };
+  const partes = ['ACTIVO', 'NUEVO', 'PASIVO']
+    .filter(t => conteo[t])
+    .map(t => conteo[t] + ' ' + etiqueta[t][conteo[t] === 1 ? 0 : 1]);
+  const resumen = grupo.length + (grupo.length === 1 ? ' marca' : ' marcas') + (partes.length ? ' · ' + partes.join(', ') : '');
+  return '<tr style="background:rgba(16,185,129,.05);border-bottom:2px solid var(--border)">' +
+    '<td style="padding:7px 6px;font-size:10px;font-weight:800;color:var(--green);border-left:2px solid var(--green);border-right:1px solid var(--border)">SUBTOTAL CLIENTE</td>' +
+    '<td style="padding:7px 6px;font-size:10px;color:var(--muted)">' + esc(resumen) + '</td>' +
+    '<td></td>' +
+    '<td style="padding:7px 6px;text-align:right;font-size:12px;font-weight:800;color:var(--green)">$' + totalVenta.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
+    '<td style="padding:7px 6px;text-align:right;font-size:12px;font-weight:800;color:var(--green)">$' + totalNeto.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
+    '<td></td>' +
+    '<td style="padding:7px 6px;text-align:right;font-size:12.5px;font-weight:900;color:var(--green)">$' + totalComision.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</td>' +
+    '</tr>';
+}
+
 function qzTablaWalletHTML_(filas) {
   const totalComision = filas.reduce((s, f) => s + f.comisionMonto, 0);
   // Agrupar por cliente (manteniendo el orden de llegada) para fusionar
@@ -2607,9 +2633,11 @@ function qzTablaWalletHTML_(filas) {
   });
   let filasHtml = '';
   ordenClientes.forEach(cliente => {
-    porCliente[cliente].forEach((f, idx) => {
-      filasHtml += qzFilaWalletHTML_(f, idx === 0 ? porCliente[cliente].length : 0);
+    const grupo = porCliente[cliente];
+    grupo.forEach((f, idx) => {
+      filasHtml += qzFilaWalletHTML_(f, idx === 0 ? grupo.length : 0);
     });
+    filasHtml += qzSubtotalClienteHTML_(grupo);
   });
   return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:inherit">' +
     '<thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">CLIENTE</th><th style="text-align:left;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">MARCA</th><th style="padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">TIPO</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">VENTA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">NETO POST-AGENCIA</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">%</th><th style="text-align:right;padding:6px;font-size:9.5px;color:var(--muted);font-weight:900">COMISIÓN</th></tr></thead>' +
