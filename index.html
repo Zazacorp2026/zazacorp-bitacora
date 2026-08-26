@@ -2887,7 +2887,7 @@ function insBloquePruebaColor(r) {
     return '<div style="margin-top:8px;background:rgba(167,139,250,.08);border:1px solid #a78bfa;border-radius:8px;padding:7px 10px">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
         '<div style="display:flex;gap:8px;align-items:center">' +
-          (r.fotoPruebaColor ? '<img src="' + esc(cldOptimizar(r.fotoPruebaColor, 160)) + '" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0">' : '') +
+          (r.fotoPruebaColor ? '<img src="' + esc(insThumbDrive_(r.fotoPruebaColor, 160)) + '" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0">' : '') +
           '<div><div style="font-size:8.5px;color:#a78bfa;font-weight:800;letter-spacing:.3px">🎨 PRUEBA DE COLOR APROBADA</div>' +
           '<div style="font-size:12px;font-weight:700;color:var(--text)">' + esc(r.fechaPruebaColor) + (r.aprobadoPruebaColorPor ? ' · ' + esc(r.aprobadoPruebaColorPor) : '') + '</div></div>' +
         '</div>' +
@@ -4579,6 +4579,18 @@ function esc(s) {
 function cldOptimizar(url, anchoPx) {
   if (!url || typeof url !== 'string' || !url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
   return url.replace('/upload/', '/upload/w_' + (anchoPx || 500) + ',c_limit,q_auto,f_auto/');
+}
+
+// El formato "drive.google.com/uc?export=view&id=..." (el que devuelve
+// rfSubirArchivoDrive) no siempre carga bien dentro de un <img> — Drive
+// a veces responde con una página intermedia en vez de la imagen
+// directa. El endpoint de miniaturas es mucho más confiable para esto
+// (mismo archivo, mismo permiso "cualquiera con el link").
+function insThumbDrive_(url, anchoPx) {
+  if (!url || typeof url !== 'string') return url;
+  const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (!m) return url;
+  return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w' + (anchoPx || 200);
 }
 
 function renderCard(v) {
