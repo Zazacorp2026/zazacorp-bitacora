@@ -3076,9 +3076,9 @@ function insRenderLista() {
     .sort((a,b) => new Date(b.fechaCertificacion) - new Date(a.fechaCertificacion));
 
   board.innerHTML =
+    insBarraFiltrosHTML_() +
     '<div style="font-size:12.5px;font-weight:800;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:7px">⏳ Pendientes de certificar<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + pendientes.length + '</span></div>' +
     (pendientes.length ? pendientes.map(insCardPendiente).join('') : '<div class="empty" style="padding:20px"><p>Nada pendiente por certificar 🎉</p></div>') +
-    insBarraFiltrosHTML_() +
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 8px;flex-wrap:wrap">' +
       '<div style="font-size:12.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px">✅ Certificadas<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + certificadasMes.length + '</span></div>' +
       '<div style="display:flex;align-items:center;gap:8px">' +
