@@ -2894,6 +2894,25 @@ function insBloquePruebaColor(r) {
   '</div>';
 }
 
+// Cajón libre para anotar cualquier eventualidad (retraso de arte,
+// problema de acceso al sitio, lo que sea) — sin contraseña, porque no
+// mueve fechas ni afecta facturación, solo es una nota de contexto.
+// Editable solo para Jorge/Yessenia; el resto lo ve en modo lectura y
+// solo si ya hay algo escrito (si está vacío no muestra nada).
+function insBloqueComentario(r) {
+  if (!insPuedeCertificar) {
+    if (!r.comentarios) return '';
+    return '<div style="margin-top:8px;font-size:11px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 10px">' +
+      '<div style="font-size:8.5px;color:var(--muted);font-weight:800;letter-spacing:.3px;margin-bottom:3px">COMENTARIOS</div>' +
+      esc(r.comentarios).replace(/\n/g, '<br>') +
+    '</div>';
+  }
+  return '<div style="margin-top:8px">' +
+    '<textarea id="insComent_' + r.id + '" placeholder="Notas, eventualidades, lo que sea relevante..." style="width:100%;min-height:46px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:11.5px;font-family:inherit;resize:vertical;box-sizing:border-box">' + esc(r.comentarios || '') + '</textarea>' +
+    '<button onclick="insGuardarComentarioUI(\'' + r.id + '\')" style="margin-top:5px;background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:10.5px;padding:5px 10px;cursor:pointer">💾 Guardar comentario</button>' +
+  '</div>';
+}
+
 function insCardPendiente(r) {
   const diasEsperando = insDiasEntre(r.inicioContratado, new Date().toISOString().slice(0,10));
   const controles = insPuedeCertificar
@@ -2918,6 +2937,7 @@ function insCardPendiente(r) {
     '</div>' +
     '<div style="margin-top:10px">' + insCajaFecha('PACTADO', r.inicioContratado, r.finContratado, 'pactado') + '</div>' +
     insBloquePruebaColor(r) +
+    insBloqueComentario(r) +
     controles +
   '</div>';
 }
@@ -2948,6 +2968,7 @@ function insCardCertificada(r) {
       insCajaFecha('REAL', r.inicioReal, r.finReal, 'real') +
     '</div>' +
     insBloquePruebaColor(r) +
+    insBloqueComentario(r) +
     (insPuedeCertificar ?
       '<div style="margin-top:8px">' +
         '<button onclick="insToggleEditar(\'' + r.id + '\')" id="insBtnEditar_' + r.id + '" style="background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11px;padding:6px 10px;cursor:pointer">✏️ Corregir fecha</button>' +
@@ -3032,6 +3053,20 @@ async function insAprobarPruebaColorUI(id) {
   } catch (e) {
     showToast('❌ ' + e.message, 'error');
     if (passInp) passInp.value = '';
+  }
+}
+
+async function insGuardarComentarioUI(id) {
+  const inp = document.getElementById('insComent_' + id);
+  const comentario = inp ? inp.value : '';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'insGuardarComentario', id: id, comentario: comentario }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error al guardar');
+    showToast('💾 Comentario guardado', 'success');
+    await insCargarDatos();
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
   }
 }
 
