@@ -2815,7 +2815,7 @@ let insPuedeCertificar = false;
 let insMesFiltro = new Date().toISOString().slice(0, 7);
 // Filtro de búsqueda — aplica a la vez sobre Pendientes y Certificadas,
 // para no tener que abrir cada tarjeta buscando un código o cliente.
-let insFiltro = { elemento: '', tipo: '', cliente: '', ciudad: '' };
+let insFiltro = { estado: '', elemento: '', tipo: '', cliente: '', ciudad: '' };
 
 function insDiasEntre(a, b) {
   const p1 = String(a || '').split('-'), p2 = String(b || '').split('-');
@@ -3017,6 +3017,7 @@ function insOpcionesFiltro(campo) {
 }
 
 function insCumpleFiltro(r) {
+  if (insFiltro.estado && r.estado !== insFiltro.estado) return false;
   if (insFiltro.elemento) {
     const q = insFiltro.elemento.trim().toUpperCase();
     if (q && String(r.codigo || '').toUpperCase().indexOf(q) === -1) return false;
@@ -3043,26 +3044,40 @@ function insCambiarFiltro(campo, valor) {
 }
 
 function insLimpiarFiltros() {
-  insFiltro = { elemento: '', tipo: '', cliente: '', ciudad: '' };
+  insFiltro = { estado: '', elemento: '', tipo: '', cliente: '', ciudad: '' };
   insRenderLista();
 }
 
 function insSelectFiltroHTML_(campo, etiqueta) {
   const opciones = insOpcionesFiltro(campo);
-  return '<select onchange="insCambiarFiltro(\'' + campo + '\',this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:11.5px;font-family:inherit;min-width:110px">' +
+  return '<select onchange="insCambiarFiltro(\'' + campo + '\',this.value)" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 10px;font-size:12.5px;font-family:inherit;min-width:120px">' +
     '<option value="">' + etiqueta + ' (todas)</option>' +
     opciones.map(function (o) { return '<option ' + (insFiltro[campo] === o ? 'selected' : '') + '>' + esc(o) + '</option>'; }).join('') +
   '</select>';
 }
 
+function insSelectEstadoHTML_() {
+  const opciones = [['', 'Todas'], ['PENDIENTE', 'Por certificar'], ['CERTIFICADO', 'Certificadas']];
+  return '<select onchange="insCambiarFiltro(\'estado\',this.value)" style="background:var(--surface);border:1px solid var(--accent);border-radius:8px;color:var(--text);padding:9px 10px;font-size:12.5px;font-weight:700;font-family:inherit;min-width:140px">' +
+    opciones.map(function (o) { return '<option value="' + o[0] + '" ' + (insFiltro.estado === o[0] ? 'selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+  '</select>';
+}
+
+// Barra grande y con borde de color a propósito — es el punto de
+// entrada principal para encontrar algo entre decenas de contratos,
+// tiene que notarse de inmediato al abrir la pestaña.
 function insBarraFiltrosHTML_() {
-  const hayFiltro = insFiltro.elemento || insFiltro.tipo || insFiltro.cliente || insFiltro.ciudad;
-  return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:16px 0;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">' +
-    '<input type="text" id="insFiltroElemento" placeholder="🔎 Buscar por código..." value="' + esc(insFiltro.elemento) + '" oninput="insCambiarFiltro(\'elemento\',this.value)" style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:11.5px;font-family:inherit">' +
-    insSelectFiltroHTML_('tipo', 'Tipo') +
-    insSelectFiltroHTML_('cliente', 'Cliente') +
-    insSelectFiltroHTML_('ciudad', 'Ciudad') +
-    (hayFiltro ? '<button onclick="insLimpiarFiltros()" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:11px;padding:6px 10px;cursor:pointer">✕ Limpiar filtros</button>' : '') +
+  const hayFiltro = insFiltro.estado || insFiltro.elemento || insFiltro.tipo || insFiltro.cliente || insFiltro.ciudad;
+  return '<div style="margin-bottom:16px;padding:14px;background:var(--surface2);border:2px solid var(--accent);border-radius:12px">' +
+    '<div style="font-size:10px;color:var(--accent);font-weight:900;letter-spacing:.4px;margin-bottom:8px">🔎 BUSCAR Y FILTRAR</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+      '<input type="text" id="insFiltroElemento" placeholder="Buscar por código..." value="' + esc(insFiltro.elemento) + '" oninput="insCambiarFiltro(\'elemento\',this.value)" style="flex:2;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 10px;font-size:12.5px;font-family:inherit">' +
+      insSelectEstadoHTML_() +
+      insSelectFiltroHTML_('tipo', 'Tipo') +
+      insSelectFiltroHTML_('cliente', 'Cliente') +
+      insSelectFiltroHTML_('ciudad', 'Ciudad') +
+      (hayFiltro ? '<button onclick="insLimpiarFiltros()" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:11.5px;padding:9px 12px;cursor:pointer">✕ Limpiar</button>' : '') +
+    '</div>' +
   '</div>';
 }
 
@@ -3075,18 +3090,28 @@ function insRenderLista() {
     })
     .sort((a,b) => new Date(b.fechaCertificacion) - new Date(a.fechaCertificacion));
 
+  // Si eligieron un estado puntual en el filtro, la otra sección ni
+  // siquiera se dibuja — mostrarla vacía con "nada pendiente 🎉" sería
+  // engañoso cuando en realidad está oculta a propósito por el filtro.
+  const mostrarPendientes = insFiltro.estado !== 'CERTIFICADO';
+  const mostrarCertificadas = insFiltro.estado !== 'PENDIENTE';
+
   board.innerHTML =
     insBarraFiltrosHTML_() +
-    '<div style="font-size:12.5px;font-weight:800;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:7px">⏳ Pendientes de certificar<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + pendientes.length + '</span></div>' +
-    (pendientes.length ? pendientes.map(insCardPendiente).join('') : '<div class="empty" style="padding:20px"><p>Nada pendiente por certificar 🎉</p></div>') +
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 8px;flex-wrap:wrap">' +
-      '<div style="font-size:12.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px">✅ Certificadas<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + certificadasMes.length + '</span></div>' +
-      '<div style="display:flex;align-items:center;gap:8px">' +
-        '<label style="font-size:10px;color:var(--muted);font-weight:700">MES</label>' +
-        '<input type="month" value="' + insMesFiltro + '" onchange="insCambiarMes(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit">' +
+    (mostrarPendientes ?
+      '<div style="font-size:12.5px;font-weight:800;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:7px">⏳ Pendientes de certificar<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + pendientes.length + '</span></div>' +
+      (pendientes.length ? pendientes.map(insCardPendiente).join('') : '<div class="empty" style="padding:20px"><p>Nada pendiente por certificar 🎉</p></div>')
+    : '') +
+    (mostrarCertificadas ?
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 8px;flex-wrap:wrap">' +
+        '<div style="font-size:12.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px">✅ Certificadas<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + certificadasMes.length + '</span></div>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<label style="font-size:10px;color:var(--muted);font-weight:700">MES</label>' +
+          '<input type="month" value="' + insMesFiltro + '" onchange="insCambiarMes(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit">' +
+        '</div>' +
       '</div>' +
-    '</div>' +
-    (certificadasMes.length ? certificadasMes.map(insCardCertificada).join('') : '<div class="empty" style="padding:20px"><p>Ninguna certificación este mes</p></div>');
+      (certificadasMes.length ? certificadasMes.map(insCardCertificada).join('') : '<div class="empty" style="padding:20px"><p>Ninguna certificación este mes</p></div>')
+    : '');
 }
 
 // Deshabilita un botón y le pone un contador de segundos mientras dura
@@ -3164,13 +3189,8 @@ async function insAprobarPruebaColorUI(id) {
 }
 
 function renderInstalaciones(container) {
-  const esAdminIns = ['JORGE', 'YESENIA'].includes((_usuarioActual || '').toUpperCase());
-  const descripcion = esAdminIns
-    ? 'Certifica la fecha real en que se instaló cada contrato — el sistema ajusta solo el fin, respetando la misma duración pactada.'
-    : 'Tus contratos: qué sigue pendiente de instalar y qué ya quedó certificado, con la fecha real de instalación.';
   container.innerHTML =
     '<div style="padding:4px 0">' +
-      '<div style="font-size:11px;color:var(--muted);margin-bottom:14px">' + descripcion + '</div>' +
       '<div id="insBoard"><div class="empty"><p>Cargando...</p></div></div>' +
     '</div>';
   insCargarDatos();
