@@ -2813,6 +2813,9 @@ function qzPintarWallet() {
 let insDataCache = [];
 let insPuedeCertificar = false;
 let insMesFiltro = new Date().toISOString().slice(0, 7);
+// Filtro de búsqueda — aplica a la vez sobre Pendientes y Certificadas,
+// para no tener que abrir cada tarjeta buscando un código o cliente.
+let insFiltro = { elemento: '', tipo: '', cliente: '', ciudad: '' };
 
 function insDiasEntre(a, b) {
   const p1 = String(a || '').split('-'), p2 = String(b || '').split('-');
@@ -2890,15 +2893,16 @@ function insBloquePruebaColor(r) {
   return '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
     '<input type="date" id="insColorFecha_' + r.id + '" style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:11.5px;font-family:inherit">' +
     '<input type="password" id="insColorPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:11.5px;font-family:inherit">' +
-    '<button onclick="insAprobarPruebaColorUI(\'' + r.id + '\')" style="background:#a78bfa;border:1px solid #a78bfa;border-radius:7px;color:#1a1030;font-weight:800;font-size:11px;padding:7px 12px;cursor:pointer;white-space:nowrap">🎨 Aprobar prueba de color</button>' +
+    '<button id="insBtnColor_' + r.id + '" onclick="insAprobarPruebaColorUI(\'' + r.id + '\')" style="background:#a78bfa;border:1px solid #a78bfa;border-radius:7px;color:#1a1030;font-weight:800;font-size:11px;padding:7px 12px;cursor:pointer;white-space:nowrap">🎨 Aprobar prueba de color</button>' +
   '</div>';
 }
 
 // Cajón libre para anotar cualquier eventualidad (retraso de arte,
-// problema de acceso al sitio, lo que sea) — sin contraseña, porque no
-// mueve fechas ni afecta facturación, solo es una nota de contexto.
-// Editable solo para Jorge/Yessenia; el resto lo ve en modo lectura y
-// solo si ya hay algo escrito (si está vacío no muestra nada).
+// problema de acceso al sitio, lo que sea). Sin botón propio de
+// guardar — se envía junto con "Certificar"/"Guardar corrección", así
+// que solo Jorge/Yessenia lo editan y siempre queda junto a esa acción
+// en vez de ser un guardado suelto más. El resto lo ve en modo lectura,
+// y solo si ya hay algo escrito (si está vacío no muestra nada).
 function insBloqueComentario(r) {
   if (!insPuedeCertificar) {
     if (!r.comentarios) return '';
@@ -2908,8 +2912,7 @@ function insBloqueComentario(r) {
     '</div>';
   }
   return '<div style="margin-top:8px">' +
-    '<textarea id="insComent_' + r.id + '" placeholder="Notas, eventualidades, lo que sea relevante..." style="width:100%;min-height:46px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:11.5px;font-family:inherit;resize:vertical;box-sizing:border-box">' + esc(r.comentarios || '') + '</textarea>' +
-    '<button onclick="insGuardarComentarioUI(\'' + r.id + '\')" style="margin-top:5px;background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:10.5px;padding:5px 10px;cursor:pointer">💾 Guardar comentario</button>' +
+    '<textarea id="insComent_' + r.id + '" placeholder="Notas, eventualidades, lo que sea relevante... (se guarda junto con Certificar)" style="width:100%;min-height:46px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:11.5px;font-family:inherit;resize:vertical;box-sizing:border-box">' + esc(r.comentarios || '') + '</textarea>' +
   '</div>';
 }
 
@@ -2919,8 +2922,8 @@ function insCardPendiente(r) {
     ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
         '<input type="date" id="insFecha_' + r.id + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
         '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
-        '<button onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--green);border:1px solid var(--green);border-radius:7px;color:#0a1a0a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">✅ Certificar</button>' +
-      '</div>'
+        '<button id="insBtnCertificar_' + r.id + '" onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--green);border:1px solid var(--green);border-radius:7px;color:#0a1a0a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">✅ Certificar</button>' +
+      '</div>' + insBloqueComentario(r)
     : '<div style="margin-top:10px;font-size:10.5px;color:var(--muted);text-align:center">⏳ Esperando certificación de instalación</div>';
   return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:9px">' +
     '<div style="display:flex;gap:10px;align-items:flex-start">' +
@@ -2937,7 +2940,6 @@ function insCardPendiente(r) {
     '</div>' +
     '<div style="margin-top:10px">' + insCajaFecha('PACTADO', r.inicioContratado, r.finContratado, 'pactado') + '</div>' +
     insBloquePruebaColor(r) +
-    insBloqueComentario(r) +
     controles +
   '</div>';
 }
@@ -2968,17 +2970,17 @@ function insCardCertificada(r) {
       insCajaFecha('REAL', r.inicioReal, r.finReal, 'real') +
     '</div>' +
     insBloquePruebaColor(r) +
-    insBloqueComentario(r) +
     (insPuedeCertificar ?
       '<div style="margin-top:8px">' +
         '<button onclick="insToggleEditar(\'' + r.id + '\')" id="insBtnEditar_' + r.id + '" style="background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11px;padding:6px 10px;cursor:pointer">✏️ Corregir fecha</button>' +
         '<div id="insEditForm_' + r.id + '" style="display:none;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
           '<input type="date" id="insFecha_' + r.id + '" value="' + esc(r.inicioReal) + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
           '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
-          '<button onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#1a1a1a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">Guardar corrección</button>' +
+          '<button id="insBtnCertificar_' + r.id + '" onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#1a1a1a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">Guardar corrección</button>' +
         '</div>' +
+        insBloqueComentario(r) +
       '</div>'
-    : '') +
+    : insBloqueComentario(r)) +
   '</div>';
 }
 
@@ -2997,16 +2999,86 @@ function insCambiarMes(valor) {
   insRenderLista();
 }
 
+// Opciones únicas de tipo/cliente/ciudad, sacadas de lo que ya está
+// cargado — no hace falta pedirle nada nuevo al backend. El tipo del
+// elemento (Valla, LED, etc.) no vive en Instalaciones, se busca en
+// DATA (el inventario ya cargado) cruzando por código.
+function insOpcionesFiltro(campo) {
+  const set = new Set();
+  insDataCache.forEach(function (r) {
+    if (campo === 'tipo') {
+      const v = DATA.find(function (x) { return x.codigo === r.codigo; });
+      if (v && v.tipo) set.add(v.tipo);
+    } else if (r[campo]) {
+      set.add(r[campo]);
+    }
+  });
+  return Array.from(set).sort();
+}
+
+function insCumpleFiltro(r) {
+  if (insFiltro.elemento) {
+    const q = insFiltro.elemento.trim().toUpperCase();
+    if (q && String(r.codigo || '').toUpperCase().indexOf(q) === -1) return false;
+  }
+  if (insFiltro.cliente && r.cliente !== insFiltro.cliente) return false;
+  if (insFiltro.ciudad && r.ciudad !== insFiltro.ciudad) return false;
+  if (insFiltro.tipo) {
+    const v = DATA.find(function (x) { return x.codigo === r.codigo; });
+    if (!v || v.tipo !== insFiltro.tipo) return false;
+  }
+  return true;
+}
+
+function insCambiarFiltro(campo, valor) {
+  insFiltro[campo] = valor;
+  insRenderLista();
+  // El campo de texto se reconstruye con todo el tablero en cada
+  // tecla (insRenderLista rehace el innerHTML completo) — sin esto,
+  // perdería el foco a mitad de escribir.
+  if (campo === 'elemento') {
+    const inp = document.getElementById('insFiltroElemento');
+    if (inp) { inp.focus(); const pos = inp.value.length; inp.setSelectionRange(pos, pos); }
+  }
+}
+
+function insLimpiarFiltros() {
+  insFiltro = { elemento: '', tipo: '', cliente: '', ciudad: '' };
+  insRenderLista();
+}
+
+function insSelectFiltroHTML_(campo, etiqueta) {
+  const opciones = insOpcionesFiltro(campo);
+  return '<select onchange="insCambiarFiltro(\'' + campo + '\',this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:11.5px;font-family:inherit;min-width:110px">' +
+    '<option value="">' + etiqueta + ' (todas)</option>' +
+    opciones.map(function (o) { return '<option ' + (insFiltro[campo] === o ? 'selected' : '') + '>' + esc(o) + '</option>'; }).join('') +
+  '</select>';
+}
+
+function insBarraFiltrosHTML_() {
+  const hayFiltro = insFiltro.elemento || insFiltro.tipo || insFiltro.cliente || insFiltro.ciudad;
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:16px 0;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">' +
+    '<input type="text" id="insFiltroElemento" placeholder="🔎 Buscar por código..." value="' + esc(insFiltro.elemento) + '" oninput="insCambiarFiltro(\'elemento\',this.value)" style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:11.5px;font-family:inherit">' +
+    insSelectFiltroHTML_('tipo', 'Tipo') +
+    insSelectFiltroHTML_('cliente', 'Cliente') +
+    insSelectFiltroHTML_('ciudad', 'Ciudad') +
+    (hayFiltro ? '<button onclick="insLimpiarFiltros()" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:11px;padding:6px 10px;cursor:pointer">✕ Limpiar filtros</button>' : '') +
+  '</div>';
+}
+
 function insRenderLista() {
   const board = document.getElementById('insBoard');
   if (!board) return;
-  const pendientes = insDataCache.filter(r => r.estado === 'PENDIENTE');
-  const certificadasMes = insDataCache.filter(r => r.estado === 'CERTIFICADO' && String(r.fechaCertificacion || '').slice(0, 7) === insMesFiltro)
+  const pendientes = insDataCache.filter(function (r) { return r.estado === 'PENDIENTE' && insCumpleFiltro(r); });
+  const certificadasMes = insDataCache.filter(function (r) {
+      return r.estado === 'CERTIFICADO' && String(r.fechaCertificacion || '').slice(0, 7) === insMesFiltro && insCumpleFiltro(r);
+    })
     .sort((a,b) => new Date(b.fechaCertificacion) - new Date(a.fechaCertificacion));
 
   board.innerHTML =
     '<div style="font-size:12.5px;font-weight:800;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:7px">⏳ Pendientes de certificar<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + pendientes.length + '</span></div>' +
     (pendientes.length ? pendientes.map(insCardPendiente).join('') : '<div class="empty" style="padding:20px"><p>Nada pendiente por certificar 🎉</p></div>') +
+    insBarraFiltrosHTML_() +
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 8px;flex-wrap:wrap">' +
       '<div style="font-size:12.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px">✅ Certificadas<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + certificadasMes.length + '</span></div>' +
       '<div style="display:flex;align-items:center;gap:8px">' +
@@ -3017,15 +3089,41 @@ function insRenderLista() {
     (certificadasMes.length ? certificadasMes.map(insCardCertificada).join('') : '<div class="empty" style="padding:20px"><p>Ninguna certificación este mes</p></div>');
 }
 
+// Deshabilita un botón y le pone un contador de segundos mientras dura
+// la petición — evita que un doble clic (por la demora normal de
+// certificar: Sheet + Bitácora + Firebase + correo, todo en la misma
+// llamada) dispare la acción dos veces. Devuelve el intervalo para
+// poder detenerlo cuando la petición termine.
+function insBotonProcesando(btn, verbo) {
+  if (!btn) return null;
+  btn.disabled = true;
+  let seg = 0;
+  btn.textContent = '⏳ ' + verbo + '... 0s';
+  return setInterval(function () {
+    seg++;
+    btn.textContent = '⏳ ' + verbo + '... ' + seg + 's';
+  }, 1000);
+}
+function insDetenerBotonProcesando(btn, intervalo, textoOriginal) {
+  if (intervalo) clearInterval(intervalo);
+  if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
+}
+
 async function insCertificarUI(id) {
   const inp = document.getElementById('insFecha_' + id);
   const passInp = document.getElementById('insPass_' + id);
+  const comentInp = document.getElementById('insComent_' + id);
+  const btn = document.getElementById('insBtnCertificar_' + id);
   const inicioReal = inp && inp.value;
   const password = passInp && passInp.value;
   if (!inicioReal) { showToast('Elige la fecha real de instalación', 'info'); return; }
   if (!password) { showToast('Escribe tu contraseña para confirmar', 'info'); return; }
+  const textoOriginal = btn ? btn.textContent : '';
+  const intervalo = insBotonProcesando(btn, 'Certificando');
   try {
-    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'insCertificar', id: id, inicioReal: inicioReal, password: password }) });
+    const body = { action: 'insCertificar', id: id, inicioReal: inicioReal, password: password };
+    if (comentInp) body.comentario = comentInp.value;
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error al certificar');
     showToast('✅ Instalación certificada' + (json.bitacoraActualizada ? ' — fecha actualizada en el sistema' : ''), 'success');
@@ -3034,16 +3132,22 @@ async function insCertificarUI(id) {
   } catch (e) {
     showToast('❌ ' + e.message, 'error');
     if (passInp) passInp.value = '';
+    insDetenerBotonProcesando(btn, null, textoOriginal);
+  } finally {
+    clearInterval(intervalo);
   }
 }
 
 async function insAprobarPruebaColorUI(id) {
   const inp = document.getElementById('insColorFecha_' + id);
   const passInp = document.getElementById('insColorPass_' + id);
+  const btn = document.getElementById('insBtnColor_' + id);
   const fecha = inp && inp.value;
   const password = passInp && passInp.value;
   if (!fecha) { showToast('Elige la fecha de aprobación de color', 'info'); return; }
   if (!password) { showToast('Escribe tu contraseña para confirmar', 'info'); return; }
+  const textoOriginal = btn ? btn.textContent : '';
+  const intervalo = insBotonProcesando(btn, 'Aprobando');
   try {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'insAprobarPruebaColor', id: id, fecha: fecha, password: password }) });
     const json = await res.json();
@@ -3053,20 +3157,9 @@ async function insAprobarPruebaColorUI(id) {
   } catch (e) {
     showToast('❌ ' + e.message, 'error');
     if (passInp) passInp.value = '';
-  }
-}
-
-async function insGuardarComentarioUI(id) {
-  const inp = document.getElementById('insComent_' + id);
-  const comentario = inp ? inp.value : '';
-  try {
-    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'insGuardarComentario', id: id, comentario: comentario }) });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'Error al guardar');
-    showToast('💾 Comentario guardado', 'success');
-    await insCargarDatos();
-  } catch (e) {
-    showToast('❌ ' + e.message, 'error');
+    insDetenerBotonProcesando(btn, null, textoOriginal);
+  } finally {
+    clearInterval(intervalo);
   }
 }
 
