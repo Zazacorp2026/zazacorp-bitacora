@@ -2901,7 +2901,6 @@ function insBloquePruebaColor(r) {
   return '<div style="margin-top:8px">' +
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
       '<input type="date" id="insColorFecha_' + r.id + '" style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:11.5px;font-family:inherit">' +
-      '<input type="password" id="insColorPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:11.5px;font-family:inherit">' +
       '<button id="insBtnColor_' + r.id + '" onclick="insAprobarPruebaColorUI(\'' + r.id + '\')" style="background:#a78bfa;border:1px solid #a78bfa;border-radius:7px;color:#1a1030;font-weight:800;font-size:11px;padding:7px 12px;cursor:pointer;white-space:nowrap">🎨 Aprobar prueba de color</button>' +
     '</div>' +
     '<div id="insColorFotoZona_' + r.id + '" tabindex="0" onpaste="insColorFotoPegada(event,\'' + r.id + '\')" onclick="document.getElementById(\'insColorFotoInput_' + r.id + '\').click()" style="margin-top:6px;border:1px dashed var(--border);border-radius:8px;padding:9px;text-align:center;font-size:10.5px;color:var(--muted);cursor:pointer">' +
@@ -3043,7 +3042,6 @@ function insCardPendiente(r) {
   const controles = insPuedeCertificar
     ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
         '<input type="date" id="insFecha_' + r.id + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
-        '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
         '<button id="insBtnCertificar_' + r.id + '" onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--green);border:1px solid var(--green);border-radius:7px;color:#0a1a0a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">✅ Certificar</button>' +
       '</div>' + insBloqueComentario(r)
     : '<div style="margin-top:10px;font-size:10.5px;color:var(--muted);text-align:center">⏳ Esperando certificación de instalación</div>';
@@ -3102,7 +3100,6 @@ function insCardCertificada(r) {
         '<button onclick="insToggleEditar(\'' + r.id + '\')" id="insBtnEditar_' + r.id + '" style="background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11px;padding:6px 10px;cursor:pointer">✏️ Corregir fecha</button>' +
         '<div id="insEditForm_' + r.id + '" style="display:none;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
           '<input type="date" id="insFecha_' + r.id + '" value="' + esc(r.inicioReal) + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
-          '<input type="password" id="insPass_' + r.id + '" placeholder="Tu contraseña" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
           '<button id="insBtnCertificar_' + r.id + '" onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#1a1a1a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">Guardar corrección</button>' +
         '</div>' +
         insBloqueComentario(r) +
@@ -3291,17 +3288,15 @@ function insDetenerBotonProcesando(btn, intervalo, textoOriginal) {
 
 async function insCertificarUI(id) {
   const inp = document.getElementById('insFecha_' + id);
-  const passInp = document.getElementById('insPass_' + id);
   const comentInp = document.getElementById('insComent_' + id);
   const btn = document.getElementById('insBtnCertificar_' + id);
   const inicioReal = inp && inp.value;
-  const password = passInp && passInp.value;
   if (!inicioReal) { showToast('Elige la fecha real de instalación', 'info'); return; }
-  if (!password) { showToast('Escribe tu contraseña para confirmar', 'info'); return; }
+  if (!confirm('¿Estás seguro de certificar instalación?')) return;
   const textoOriginal = btn ? btn.textContent : '';
   const intervalo = insBotonProcesando(btn, 'Certificando');
   try {
-    const body = { action: 'insCertificar', id: id, inicioReal: inicioReal, password: password };
+    const body = { action: 'insCertificar', id: id, inicioReal: inicioReal };
     if (comentInp) body.comentario = comentInp.value;
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
     const json = await res.json();
@@ -3311,7 +3306,6 @@ async function insCertificarUI(id) {
     try { await loadData(true); } catch (e) {} // refresca fechas visibles en el resto de Nexus
   } catch (e) {
     showToast('❌ ' + e.message, 'error');
-    if (passInp) passInp.value = '';
     insDetenerBotonProcesando(btn, null, textoOriginal);
   } finally {
     clearInterval(intervalo);
@@ -3320,16 +3314,14 @@ async function insCertificarUI(id) {
 
 async function insAprobarPruebaColorUI(id) {
   const inp = document.getElementById('insColorFecha_' + id);
-  const passInp = document.getElementById('insColorPass_' + id);
   const btn = document.getElementById('insBtnColor_' + id);
   const fecha = inp && inp.value;
-  const password = passInp && passInp.value;
   if (!fecha) { showToast('Elige la fecha de aprobación de color', 'info'); return; }
-  if (!password) { showToast('Escribe tu contraseña para confirmar', 'info'); return; }
+  if (!confirm('¿Estás seguro de aprobar la prueba de color?')) return;
   const textoOriginal = btn ? btn.textContent : '';
   const intervalo = insBotonProcesando(btn, 'Aprobando');
   try {
-    const body = { action: 'insAprobarPruebaColor', id: id, fecha: fecha, password: password };
+    const body = { action: 'insAprobarPruebaColor', id: id, fecha: fecha };
     if (insColorFotoCache[id]) body.fotoBase64 = insColorFotoCache[id];
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
     const json = await res.json();
@@ -3339,7 +3331,6 @@ async function insAprobarPruebaColorUI(id) {
     await insCargarDatos();
   } catch (e) {
     showToast('❌ ' + e.message, 'error');
-    if (passInp) passInp.value = '';
     insDetenerBotonProcesando(btn, null, textoOriginal);
   } finally {
     clearInterval(intervalo);
@@ -3397,7 +3388,7 @@ function insPanelFotoPPT_(slide, pres, x, y, w, h, fotoUrl, etiqueta, ORANGE, WH
 // blanco marcado en vez de bloquear la descarga por eso). Mismo
 // lenguaje visual que el PPT de Zaza Report: tarjetas redondeadas
 // naranjas, código grande, badge de estado, footer con los datos.
-function insAgregarSlidePPT_(pres, r) {
+function insAgregarSlidePPT_(pres, r, fotosBase64) {
   const v = DATA.find(function (x) { return x.codigo === r.codigo; }) || {};
   const NAVY = '1A2B4A', ORANGE = 'F47B20', WHITE = 'FFFFFF', LABEL = '8A9BB5';
 
@@ -3408,8 +3399,13 @@ function insAgregarSlidePPT_(pres, r) {
   const rx = cardX + panelW + gap;
 
   const fotoElemento = cldOptimizar(v.foto, 1200);
+  // El navegador no puede leer los bytes de una foto de Drive por
+  // CORS (a diferencia de Cloudinary, que sí lo permite) — por eso la
+  // de prueba de color se resuelve primero a base64 vía el servidor
+  // (insDescargarFotosDrive), igual que ya hace Report para sus fotos.
+  const fotoColorResuelta = (fotosBase64 && r.fotoPruebaColor && fotosBase64[r.fotoPruebaColor]) || r.fotoPruebaColor || null;
   insPanelFotoPPT_(slide, pres, cardX, cardY, panelW, panelH, fotoElemento, 'ELEMENTO', ORANGE, WHITE);
-  insPanelFotoPPT_(slide, pres, rx, cardY, panelW, panelH, r.fotoPruebaColor || null, 'PRUEBA DE COLOR', ORANGE, WHITE);
+  insPanelFotoPPT_(slide, pres, rx, cardY, panelW, panelH, fotoColorResuelta, 'PRUEBA DE COLOR', ORANGE, WHITE);
 
   const codeY = cardY + panelH + 0.22;
   slide.addText(r.codigo, { x: cardX, y: codeY, w: panelW, h: 0.6, fontSize: 30, bold: true, color: NAVY, fontFace: 'Arial Black' });
@@ -3443,6 +3439,24 @@ function insAgregarSlidePPT_(pres, r) {
   slide.addImage({ data: LOGO_ZAZACORP_LIMPIO, x: 11.6, y: 6.9, w: 1.5, h: 0.48 });
 }
 
+// Baja de Drive a base64 las fotos de prueba de color que hagan falta
+// — el navegador no puede leer esos bytes directo por CORS (a
+// diferencia de Cloudinary), así que se resuelven vía el servidor
+// antes de armar el PPT. Devuelve { url: dataUrl }.
+async function insObtenerFotosBase64_(urls) {
+  const unicas = Array.from(new Set(urls.filter(Boolean)));
+  if (!unicas.length) return {};
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'insDescargarFotosDrive', urls: unicas }) });
+    const json = await res.json();
+    const mapa = {};
+    if (json.ok && json.dataUrls) unicas.forEach(function (url, i) { if (json.dataUrls[i]) mapa[url] = json.dataUrls[i]; });
+    return mapa;
+  } catch (e) {
+    return {};
+  }
+}
+
 // PPT de UNA sola instalación — disponible en cualquier momento para
 // las que están "por certificar", tenga o no todavía la foto de
 // prueba de color.
@@ -3456,6 +3470,7 @@ async function insExportarPPT(id) {
 
   try {
     await insCargarPptxGenJS_();
+    const fotosBase64 = await insObtenerFotosBase64_([r.fotoPruebaColor]);
     const pres = new PptxGenJS();
     pres.layout = 'LAYOUT_WIDE';
     pres.title = 'Zazacorp · ' + r.codigo;
@@ -3463,7 +3478,7 @@ async function insExportarPPT(id) {
     const cover = pres.addSlide();
     cover.addImage({ data: COVER_IMG, x: 0, y: 0, w: 13.3, h: 7.5 });
 
-    insAgregarSlidePPT_(pres, r);
+    insAgregarSlidePPT_(pres, r, fotosBase64);
 
     const fecha = new Date().toISOString().split('T')[0];
     await pres.writeFile({ fileName: 'Zazacorp_Instalacion_' + r.codigo + '_' + fecha + '.pptx' });
@@ -3488,6 +3503,9 @@ async function insExportarPPTMultiple() {
 
   try {
     await insCargarPptxGenJS_();
+    const registros = ids.map(function (id) { return insDataCache.find(function (x) { return x.id === id; }); }).filter(Boolean);
+    const fotosBase64 = await insObtenerFotosBase64_(registros.map(function (r) { return r.fotoPruebaColor; }));
+
     const pres = new PptxGenJS();
     pres.layout = 'LAYOUT_WIDE';
     pres.title = 'Zazacorp · Instalaciones (' + ids.length + ')';
@@ -3495,10 +3513,7 @@ async function insExportarPPTMultiple() {
     const cover = pres.addSlide();
     cover.addImage({ data: COVER_IMG, x: 0, y: 0, w: 13.3, h: 7.5 });
 
-    ids.forEach(function (id) {
-      const r = insDataCache.find(function (x) { return x.id === id; });
-      if (r) insAgregarSlidePPT_(pres, r);
-    });
+    registros.forEach(function (r) { insAgregarSlidePPT_(pres, r, fotosBase64); });
 
     const fecha = new Date().toISOString().split('T')[0];
     await pres.writeFile({ fileName: 'Zazacorp_Instalaciones_' + ids.length + '_' + fecha + '.pptx' });
