@@ -2324,6 +2324,14 @@ const QZ_ETAPAS_FRONT = ['COTIZADO', 'ENVIADO', 'NEGOCIACION', 'APROBADO', 'PERD
 // SIEMPRE ofrecía "mover a Perdido" en vez de a Contratado.
 const QZ_ETAPAS_FLUJO = ['COTIZADO', 'ENVIADO', 'NEGOCIACION', 'APROBADO', 'CONTRATADO', 'CERTIFICADO', 'FACTURADO', 'COBRADO'];
 const QZ_ETAPA_LABEL = { COTIZADO: 'Cotizado', ENVIADO: 'Enviado', NEGOCIACION: 'Negociación', APROBADO: 'Aprobado', PERDIDO: 'Perdido', CONTRATADO: 'Contratado', CERTIFICADO: 'Certificado', FACTURADO: 'Facturado', COBRADO: 'Cobrado' };
+// Color de acento por etapa — mismo color en el punto del encabezado
+// de columna y en el borde izquierdo de cada tarjeta, para ubicar de
+// un vistazo en qué parte del embudo está cada cotización.
+const QZ_ETAPA_COLOR = {
+  COTIZADO: 'var(--muted)', ENVIADO: 'var(--blue)', NEGOCIACION: 'var(--accent)',
+  APROBADO: '#8b5cf6', PERDIDO: 'var(--red)',
+  CONTRATADO: 'var(--green)', CERTIFICADO: 'var(--green)', FACTURADO: 'var(--green)', COBRADO: 'var(--green)'
+};
 
 function qzEsAdmin() { return (_usuarioActual || '').toUpperCase() === 'JORGE'; }
 
@@ -2361,19 +2369,20 @@ function qzRenderTarjetaCotizacion(c) {
   // flujo normal — no aplica si ya está Cobrada o ya está Perdida.
   const puedeMarcarPerdida = etapaActual !== 'COBRADO' && etapaActual !== 'PERDIDO';
 
-  let html = '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">' +
-    '<div style="font-weight:700;font-size:12px">' + (esc(c.cliente) || 'Sin cliente') + '</div>' +
-    '<div style="font-size:11px;color:var(--muted)">' + (esc(c.agencia) || 'Venta directa') + ' · ' + c.elementos.length + ' elem.</div>' +
-    '<div style="font-size:13px;font-weight:800;color:var(--accent);margin-top:4px">$' + c.precioFinal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div>';
+  const colorEtapa = QZ_ETAPA_COLOR[etapaActual] || 'var(--border)';
+  let html = '<div style="background:var(--surface2);border-radius:10px;padding:11px;margin-bottom:9px;border-left:3px solid ' + colorEtapa + '">' +
+    '<div style="font-weight:700;font-size:12.5px">' + (esc(c.cliente) || 'Sin cliente') + '</div>' +
+    '<div style="font-size:10.5px;color:var(--muted);margin-top:2px">' + (esc(c.agencia) || 'Venta directa') + ' · ' + c.elementos.length + ' elem.</div>' +
+    '<div style="font-size:14px;font-weight:800;color:var(--accent);margin-top:6px">$' + c.precioFinal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div>';
   if (c.estadoAprobacion === 'PENDIENTE') {
     html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Descuento pendiente de aprobación</div>';
   }
   if (siguiente) {
     if (puedeMover) {
-      html += '<div style="display:flex;gap:6px;margin-top:8px">' +
-        '<button onclick="qzToggleMoverForm(\'' + c.cotId + '\')" style="flex:1;background:rgba(59,130,246,.12);border:1px solid var(--blue);border-radius:6px;color:var(--blue);font-size:11px;font-weight:700;padding:6px;cursor:pointer">→ ' + QZ_ETAPA_LABEL[siguiente] + '</button>';
+      html += '<div style="display:flex;gap:6px;margin-top:9px">' +
+        '<button onclick="qzToggleMoverForm(\'' + c.cotId + '\')" style="flex:1;background:rgba(59,130,246,.12);border:1px solid var(--blue);border-radius:7px;color:var(--blue);font-size:10.5px;font-weight:700;padding:7px;cursor:pointer">Mover a ' + QZ_ETAPA_LABEL[siguiente] + '</button>';
       if (puedeMarcarPerdida) {
-        html += '<button onclick="qzConfirmarMoverEtapa(\'' + c.cotId + '\',\'PERDIDO\')" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-radius:6px;color:var(--red);font-size:11px;font-weight:700;padding:6px 10px;cursor:pointer" title="Marcar como perdida">✕ Perdida</button>';
+        html += '<button onclick="qzConfirmarMoverEtapa(\'' + c.cotId + '\',\'PERDIDO\')" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-radius:7px;color:var(--red);font-size:10.5px;font-weight:700;padding:7px 10px;cursor:pointer" title="Marcar como perdida">Perdida</button>';
       }
       html += '</div>';
     } else {
@@ -2404,6 +2413,13 @@ function qzToggleMoverForm(cotId) {
 }
 
 async function qzConfirmarMoverEtapa(cotId, etapaDestino) {
+  // Doble verificación antes de mover — un clic de más (ej. "Perdida"
+  // por error) no debería alcanzar para cambiar la etapa sin preguntar.
+  const mensaje = etapaDestino === 'PERDIDO'
+    ? '¿Estás seguro de marcar esta cotización como perdida?'
+    : '¿Estás seguro de mover esta cotización a ' + QZ_ETAPA_LABEL[etapaDestino] + '?';
+  if (!confirm(mensaje)) return;
+
   // Bloquear el botón de inmediato — si la respuesta demora, un doble
   // clic antes NO debe crear dos movimientos de etapa duplicados.
   const btn = document.getElementById('qzBtnMover_' + cotId);
@@ -2453,29 +2469,62 @@ function qzPintarPipeline() {
     if (fecha && String(fecha).slice(0, 7) === qzPipelineMes) porEtapa[etapa].push(c);
   });
 
-  let html = '<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px">';
+  let html = '<div style="display:flex;gap:14px;padding-bottom:6px">';
   QZ_ETAPAS_FRONT.forEach(etapa => {
     const items = porEtapa[etapa];
     const total = items.reduce((s, c) => s + (c.precioFinal || 0), 0);
-    html += '<div style="flex:1 1 220px;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">' +
-      '<div style="font-weight:800;font-size:12px;color:var(--text);margin-bottom:2px">' + QZ_ETAPA_LABEL[etapa] + ' (' + items.length + ')</div>' +
-      '<div style="font-size:14px;font-weight:800;color:var(--accent);margin-bottom:10px">$' + total.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div>';
+    const color = QZ_ETAPA_COLOR[etapa] || 'var(--border)';
+    let cuerpo;
     if (!items.length) {
-      html += '<div style="font-size:11px;color:var(--muted)">Sin cotizaciones este mes</div>';
+      cuerpo = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:14px 0">Sin cotizaciones este mes</div>';
     } else if (esAdmin) {
       const grupos = {};
       items.forEach(c => { const k = c.ejecutiva || c.creadoPor || 'Sin asignar'; (grupos[k] = grupos[k] || []).push(c); });
-      Object.keys(grupos).sort().forEach(k => {
-        html += '<div style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;margin:8px 0 4px">' + esc(k) + '</div>';
-        html += grupos[k].map(qzRenderTarjetaCotizacion).join('');
-      });
+      cuerpo = Object.keys(grupos).sort().map(k =>
+        '<div style="font-size:9.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin:8px 0 5px">' + esc(k) + '</div>' +
+        grupos[k].map(qzRenderTarjetaCotizacion).join('')
+      ).join('');
     } else {
-      html += items.map(qzRenderTarjetaCotizacion).join('');
+      cuerpo = items.map(qzRenderTarjetaCotizacion).join('');
     }
-    html += '</div>';
+    // Encabezado con acento de color propio + cuerpo con altura
+    // contenida y scroll interno — una etapa con muchas cotizaciones ya
+    // no alarga infinito la página, se queda dentro de su columna.
+    html += '<div style="flex:1 1 220px;min-width:220px;background:var(--surface);border-radius:14px;overflow:hidden">' +
+      '<div style="background:' + color + '1a;padding:11px 14px;border-bottom:2px solid ' + color + '">' +
+        '<div style="display:flex;align-items:center;gap:7px">' +
+          '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';flex-shrink:0"></span>' +
+          '<span style="font-weight:800;font-size:11px;color:' + color + ';text-transform:uppercase;letter-spacing:.3px">' + QZ_ETAPA_LABEL[etapa] + ' · ' + items.length + '</span>' +
+        '</div>' +
+        '<div style="font-size:15px;font-weight:800;color:var(--text);margin-top:4px">$' + total.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div>' +
+      '</div>' +
+      '<div style="padding:12px;max-height:60vh;overflow-y:auto">' + cuerpo + '</div>' +
+    '</div>';
   });
   html += '</div>';
   board.innerHTML = html;
+
+  // Barra de scroll horizontal arriba (#qzPipelineScrollTop, armada en
+  // renderPipeline) sincronizada con el scroll real del tablero — antes
+  // la única barra era la del navegador, al pie de todo el contenido,
+  // y con columnas altas quedaba fuera de la vista sin bajar toda la
+  // página primero.
+  const scrollTop = document.getElementById('qzPipelineScrollTop');
+  const scrollTopInner = document.getElementById('qzPipelineScrollTopInner');
+  if (scrollTop && scrollTopInner) {
+    scrollTopInner.style.width = board.scrollWidth + 'px';
+    let sincronizando = false;
+    scrollTop.onscroll = function () {
+      if (sincronizando) return; sincronizando = true;
+      board.scrollLeft = scrollTop.scrollLeft;
+      sincronizando = false;
+    };
+    board.onscroll = function () {
+      if (sincronizando) return; sincronizando = true;
+      scrollTop.scrollLeft = board.scrollLeft;
+      sincronizando = false;
+    };
+  }
 }
 
 async function renderPipeline(container) {
@@ -2485,7 +2534,10 @@ async function renderPipeline(container) {
         '<label style="font-size:11px;color:var(--muted);font-weight:700">MES</label>' +
         '<input id="qzPipelineMesInput" type="month" value="' + qzPipelineMes + '" onchange="qzCambiarMesPipeline()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark">' +
       '</div>' +
-      '<div id="qzPipelineBoard"><div class="empty"><p>Cargando pipeline...</p></div></div>' +
+      '<div id="qzPipelineScrollTop" style="overflow-x:auto;overflow-y:hidden;height:14px;margin-bottom:8px">' +
+        '<div id="qzPipelineScrollTopInner" style="height:1px"></div>' +
+      '</div>' +
+      '<div id="qzPipelineBoard" style="overflow-x:auto;padding-bottom:6px"><div class="empty"><p>Cargando pipeline...</p></div></div>' +
     '</div>';
   const res = await qzCargarPipeline();
   if (!qzPipelineData) {
