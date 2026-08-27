@@ -3012,6 +3012,21 @@ function insBloqueComentario(r) {
   '</div>';
 }
 
+// Solo para tarjetas YA certificadas: el comentario se ve pero no se
+// puede tocar hasta que se abra "Corregir fecha" — evita ediciones por
+// accidente de algo que ya quedó guardado con la certificación.
+function insComentarioLecturaHTML_(r) {
+  const texto = r.comentarios ? esc(r.comentarios).replace(/\n/g, '<br>') : '<span style="color:var(--muted);font-style:italic">Sin comentarios</span>';
+  return '<div id="insComentLectura_' + r.id + '" style="margin-top:8px;font-size:11px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 10px">' +
+    '<div style="font-size:8.5px;color:var(--muted);font-weight:800;letter-spacing:.3px;margin-bottom:3px">COMENTARIOS</div>' +
+    texto +
+  '</div>';
+}
+
+function insComentarioEdicionHTML_(r) {
+  return '<textarea id="insComent_' + r.id + '" placeholder="Notas, eventualidades, lo que sea relevante... (se guarda junto con Guardar corrección)" style="width:100%;min-height:46px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:11.5px;font-family:inherit;resize:vertical;box-sizing:border-box">' + esc(r.comentarios || '') + '</textarea>';
+}
+
 // Un campo del formulario de edición manual — todos comparten
 // data-campo, así insGuardarManualUI arma el body leyendo el DOM en
 // vez de tener que nombrar cada input aparte.
@@ -3122,11 +3137,18 @@ function insCardPendiente(r) {
 }
 
 function insCardCertificada(r) {
-  const diasAtraso = insDiasEntre(r.inicioContratado, r.inicioReal);
-  const colorAtraso = diasAtraso > 0 ? 'var(--red)' : diasAtraso < 0 ? 'var(--green)' : 'var(--muted)';
+  // El atraso mide el tramo de INSTALACIÓN en sí — si ya hay prueba de
+  // color aprobada, se compara contra esa fecha (arte/producción ya
+  // quedó fuera del conteo, eso es responsabilidad de otro tramo). Sin
+  // prueba de color todavía, cae de vuelta a la fecha pactada original.
+  const tienePruebaColor = !!r.fechaPruebaColor;
+  const baseAtraso = tienePruebaColor ? r.fechaPruebaColor : r.inicioContratado;
+  const refAtraso = tienePruebaColor ? 'la prueba de color' : 'lo pactado';
+  const diasAtraso = insDiasEntre(baseAtraso, r.inicioReal);
+  const colorAtraso = diasAtraso > 0 ? '#ef4444' : '#10b981';
   const txtAtraso = diasAtraso > 0 ? ('+' + diasAtraso + ' día' + (diasAtraso===1?'':'s') + ' de atraso')
-    : diasAtraso < 0 ? (Math.abs(diasAtraso) + ' día' + (Math.abs(diasAtraso)===1?'':'s') + ' antes de lo pactado')
-    : 'exacto a lo pactado';
+    : diasAtraso < 0 ? (Math.abs(diasAtraso) + ' día' + (Math.abs(diasAtraso)===1?'':'s') + ' antes de ' + refAtraso)
+    : 'A tiempo';
   return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:9px">' +
     '<div style="display:flex;gap:10px;align-items:flex-start">' +
       insFotoHtml(r.codigo) +
@@ -3137,7 +3159,7 @@ function insCardCertificada(r) {
           insHistoricoHTML(r) +
         '</div>' +
         '<div style="text-align:right">' +
-          '<span style="font-size:9.5px;font-weight:800;color:' + colorAtraso + ';background:rgba(0,0,0,.15);border-radius:20px;padding:3px 9px;white-space:nowrap">' + txtAtraso + '</span>' +
+          '<span style="font-size:9.5px;font-weight:800;color:' + colorAtraso + ';background:' + colorAtraso + '1a;border:1px solid ' + colorAtraso + ';border-radius:20px;padding:3px 9px;white-space:nowrap">' + txtAtraso + '</span>' +
           '<div style="font-size:9.5px;color:var(--muted);margin-top:5px">Certificó: ' + esc(r.certificadoPor) + '</div>' +
         '</div>' +
       '</div>' +
@@ -3150,11 +3172,14 @@ function insCardCertificada(r) {
     (insPuedeCertificar ?
       '<div style="margin-top:8px">' +
         '<button onclick="insToggleEditar(\'' + r.id + '\')" id="insBtnEditar_' + r.id + '" style="background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:11px;padding:6px 10px;cursor:pointer">✏️ Corregir fecha</button>' +
-        '<div id="insEditForm_' + r.id + '" style="display:none;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
-          '<input type="date" id="insFecha_' + r.id + '" value="' + esc(r.inicioReal) + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
-          '<button id="insBtnCertificar_' + r.id + '" onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#1a1a1a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">Guardar corrección</button>' +
+        insComentarioLecturaHTML_(r) +
+        '<div id="insEditForm_' + r.id + '" style="display:none;flex-direction:column;gap:8px;margin-top:8px">' +
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            '<input type="date" id="insFecha_' + r.id + '" value="' + esc(r.inicioReal) + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
+            '<button id="insBtnCertificar_' + r.id + '" onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#1a1a1a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">Guardar corrección</button>' +
+          '</div>' +
+          insComentarioEdicionHTML_(r) +
         '</div>' +
-        insBloqueComentario(r) +
       '</div>'
     : insBloqueComentario(r)) +
     insBloqueEditarAdmin(r) +
@@ -3164,9 +3189,11 @@ function insCardCertificada(r) {
 function insToggleEditar(id) {
   const form = document.getElementById('insEditForm_' + id);
   const btn = document.getElementById('insBtnEditar_' + id);
+  const lectura = document.getElementById('insComentLectura_' + id);
   if (!form) return;
   const abierto = form.style.display !== 'none';
   form.style.display = abierto ? 'none' : 'flex';
+  if (lectura) lectura.style.display = abierto ? 'block' : 'none';
   if (btn) btn.textContent = abierto ? '✏️ Corregir fecha' : '✕ Cancelar';
 }
 
