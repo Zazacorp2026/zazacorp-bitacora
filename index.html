@@ -621,6 +621,28 @@
   <button id="floatBtnContratar" class="floating-contratar" style="background:#3b82f6;color:#fff" onclick="openModalMultiContratar()">⚡ Contratar seleccionadas (<span id="selectedCountC">0</span>)</button>
 </div>
 
+<!-- Asistente IA — botón flotante tipo chatbot, disponible en
+     cualquier pestaña (no es una pestaña más, es un widget encima de
+     todo). Antes de iniciar sesión queda tapado por #loginOverlay
+     (z-index más alto), así que no aparece hasta loguearse. -->
+<button id="iaFabBtn" onclick="iaToggleChat()" title="Asistente de estrategia" style="position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:var(--accent);border:none;color:#1a1a1a;font-size:24px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center">🤖</button>
+
+<div id="iaPanel" style="display:none;flex-direction:column;position:fixed;bottom:92px;right:24px;width:360px;max-width:calc(100vw - 32px);height:520px;max-height:70vh;background:var(--surface2);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.55);z-index:1000;overflow:hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+    <div>
+      <div style="font-size:12.5px;font-weight:800;color:var(--text)">🤖 Asistente de estrategia</div>
+      <div style="font-size:9.5px;color:var(--muted)">Ubicaciones y estrategias con IA</div>
+    </div>
+    <button onclick="iaToggleChat()" style="background:transparent;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">✕</button>
+  </div>
+  <input type="text" id="iaCliente" placeholder="Cliente (opcional) — incluye lo que ya tiene contratado" style="margin:10px 12px 0;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 9px;font-size:11.5px;font-family:inherit;flex-shrink:0">
+  <div id="iaChatLog" style="flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px"></div>
+  <div style="display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0">
+    <textarea id="iaInput" placeholder="Escribe tu pregunta..." style="flex:1;min-height:38px;max-height:100px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 9px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();iaEnviarMensaje();}"></textarea>
+    <button id="iaBtnEnviar" onclick="iaEnviarMensaje()" style="background:var(--accent);border:1px solid var(--accent);border-radius:8px;color:#1a1a1a;font-weight:800;font-size:15px;padding:0 14px;cursor:pointer;white-space:nowrap">➤</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
   <div class="modal">
     <div class="modal-header">
@@ -8377,6 +8399,108 @@ async function confirmarMaterialLED(idContrato, playerId, pantalla, cliente, btn
   } catch(e) {
     showToast('❌ ' + e.message, 'error');
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = '🎬 Registrar Material'; }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── MÓDULO ASISTENTE IA (prefijo ia) ────────────────────────────
+// Chat con Gemini para pedir estrategias/ubicaciones recomendadas.
+// El contexto (inventario disponible + histórico del cliente si se
+// indica uno) se arma aquí, del lado del cliente, a partir de DATA
+// (que ya está cargado en pantalla) — nunca de QZ_DEALS. El backend
+// (iaConsultar) solo reenvía ese texto a Gemini con la API key.
+// ══════════════════════════════════════════════════════════════
+let iaMensajes = [];
+let iaChatAbierto = false;
+
+// El panel es markup estático (ya está en el HTML, junto a
+// #floatingBar) — no se reconstruye por pestaña, así que el
+// historial de la conversación sobrevive aunque cambies de pestaña
+// mientras el chat sigue abierto (o cerrado) de fondo.
+function iaToggleChat() {
+  const panel = document.getElementById('iaPanel');
+  if (!panel) return;
+  iaChatAbierto = !iaChatAbierto;
+  panel.style.display = iaChatAbierto ? 'flex' : 'none';
+  if (iaChatAbierto) {
+    if (!iaMensajes.length) {
+      iaMensajes.push({ rol: 'ia', texto: '¡Hola! Pregúntame por estrategias o qué ubicaciones recomendaría para un cliente — respondo según el inventario disponible ahora mismo.' });
+      iaPintarMensaje_(iaMensajes[0]);
+    }
+    iaScrollAbajo_();
+    const inp = document.getElementById('iaInput');
+    if (inp) inp.focus();
+  }
+}
+
+function iaPintarMensaje_(m) {
+  const log = document.getElementById('iaChatLog');
+  if (!log) return;
+  const esUser = m.rol === 'user';
+  const bubble = document.createElement('div');
+  bubble.style.cssText = 'max-width:82%;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;align-self:' + (esUser ? 'flex-end' : 'flex-start') +
+    ';background:' + (esUser ? 'var(--accent)' : 'var(--surface2)') +
+    ';color:' + (esUser ? '#1a1a1a' : 'var(--text)') +
+    ';border:1px solid ' + (esUser ? 'var(--accent)' : 'var(--border)') +
+    (esUser ? ';font-weight:600' : '');
+  bubble.textContent = m.texto;
+  log.appendChild(bubble);
+}
+
+function iaScrollAbajo_() {
+  const log = document.getElementById('iaChatLog');
+  if (log) log.scrollTop = log.scrollHeight;
+}
+
+// Solo texto DISPONIBLE + (si se indica cliente) lo que ya tiene
+// contratado — nunca comisión/tope de descuento de agencia, eso ni
+// siquiera existe en DATA del lado del navegador.
+function iaConstruirContexto_() {
+  const disponibles = DATA.filter(function (v) { return v.estado === 'DISPONIBLE'; });
+  const tope = 400;
+  const lineas = disponibles.slice(0, tope).map(function (v) {
+    return v.codigo + ' | ' + (v.lugar || '') + ' - ' + (v.direccion || '') + ' | ' + (v.tipo || '') + ' ' + (v.medidas || '') + ' | $' + (v.valor || 0) + '/mes';
+  }).join('\n');
+  let contexto = 'UBICACIONES DISPONIBLES (' + disponibles.length + ' en total' + (disponibles.length > tope ? ', mostrando las primeras ' + tope : '') + '):\n' + lineas;
+
+  const clienteInp = document.getElementById('iaCliente');
+  const clienteTxt = clienteInp ? clienteInp.value.trim() : '';
+  if (clienteTxt) {
+    const contratadas = DATA.filter(function (v) {
+      return v.estado === 'CONTRATADA' && String(v.cliente || '').toUpperCase().indexOf(clienteTxt.toUpperCase()) !== -1;
+    });
+    contexto += contratadas.length
+      ? '\n\nUBICACIONES QUE YA TIENE CONTRATADAS EL CLIENTE "' + clienteTxt + '" (' + contratadas.length + '):\n' +
+        contratadas.map(function (v) { return v.codigo + ' | ' + (v.lugar || '') + ' - ' + (v.direccion || '') + ' | ' + (v.tipo || ''); }).join('\n')
+      : '\n\nEl cliente "' + clienteTxt + '" no tiene ubicaciones contratadas actualmente en el sistema.';
+  }
+  return contexto;
+}
+
+async function iaEnviarMensaje() {
+  const inp = document.getElementById('iaInput');
+  const pregunta = inp ? inp.value.trim() : '';
+  if (!pregunta) return;
+  const btn = document.getElementById('iaBtnEnviar');
+
+  iaMensajes.push({ rol: 'user', texto: pregunta });
+  iaPintarMensaje_(iaMensajes[iaMensajes.length - 1]);
+  inp.value = '';
+  iaScrollAbajo_();
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+
+  try {
+    const contexto = iaConstruirContexto_();
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'iaConsultar', pregunta: pregunta, contexto: contexto }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error al consultar el asistente');
+    iaMensajes.push({ rol: 'ia', texto: json.respuesta });
+  } catch (e) {
+    iaMensajes.push({ rol: 'ia', texto: '⚠️ ' + e.message });
+  } finally {
+    iaPintarMensaje_(iaMensajes[iaMensajes.length - 1]);
+    if (btn) { btn.disabled = false; btn.textContent = '➤'; }
+    iaScrollAbajo_();
   }
 }
 </script>
