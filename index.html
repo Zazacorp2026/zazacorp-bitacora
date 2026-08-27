@@ -8466,27 +8466,72 @@ function iaScrollAbajo_() {
   if (log) log.scrollTop = log.scrollHeight;
 }
 
-// Solo texto DISPONIBLE + (si se indica cliente) lo que ya tiene
-// contratado — nunca comisión/tope de descuento de agencia, eso ni
-// siquiera existe en DATA del lado del navegador.
-function iaConstruirContexto_() {
-  const disponibles = DATA.filter(function (v) { return v.estado === 'DISPONIBLE'; });
-  const tope = 400;
-  const lineas = disponibles.slice(0, tope).map(function (v) {
-    return v.codigo + ' | ' + (v.lugar || '') + ' - ' + (v.direccion || '') + ' | ' + (v.tipo || '') + ' ' + (v.medidas || '') + ' | $' + (v.valor || 0) + '/mes';
-  }).join('\n');
-  let contexto = 'UBICACIONES DISPONIBLES (' + disponibles.length + ' en total' + (disponibles.length > tope ? ', mostrando las primeras ' + tope : '') + '):\n' + lineas;
+// Cobertura completa del inventario (disponibles, reservadas,
+// pre-reservas, contratadas + sus alertas de vencimiento) más
+// Instalaciones — nunca comisión/tope de descuento de agencia, eso ni
+// siquiera existe en DATA del lado del navegador. LED y Mapa no
+// necesitan una fuente aparte: sus elementos ya vienen incluidos
+// dentro de DATA según su estado real (disponible/reservado/
+// contratado), y las coordenadas del Mapa no aportan nada útil para
+// que un modelo de lenguaje razone sobre ellas.
+const IA_TOPE_POR_CATEGORIA = 600;
+
+function iaFmtValla_(v) {
+  return v.codigo + ' | ' + (v.lugar || '') + ' - ' + (v.direccion || '') + ' | ' + (v.tipo || '') + ' ' + (v.medidas || '') + ' | $' + (v.valor || 0) + '/mes';
+}
+
+async function iaConstruirContexto_() {
+  const tope = IA_TOPE_POR_CATEGORIA;
+  const disponibles  = DATA.filter(function (v) { return v.estado === 'DISPONIBLE'; });
+  const reservadas   = DATA.filter(function (v) { return v.estado === 'RESERVADA'; });
+  const contratadas  = DATA.filter(function (v) { return v.estado === 'CONTRATADA'; });
+  const preReservas  = contratadas.filter(function (v) { return v.reserva2_cliente; });
+  const alertas      = contratadas.filter(function (v) { return v.alerta; });
+
+  let contexto = 'UBICACIONES DISPONIBLES (' + disponibles.length + (disponibles.length > tope ? ', mostrando las primeras ' + tope : '') + '):\n' +
+    disponibles.slice(0, tope).map(iaFmtValla_).join('\n');
+
+  contexto += '\n\nUBICACIONES RESERVADAS (' + reservadas.length + ', bloqueadas temporalmente para un cliente — no ofrecer como libres):\n' +
+    (reservadas.length ? reservadas.slice(0, tope).map(function (v) {
+      return iaFmtValla_(v) + ' | reservada para ' + (v.cliente_reserva || '—') + ' (' + (v.ejecutiva_reserva || '—') + ')';
+    }).join('\n') : 'Ninguna por ahora.');
+
+  contexto += '\n\nUBICACIONES CON PRE-RESERVA (' + preReservas.length + ', contratadas hoy pero ya apartadas para otro cliente en cuanto termine el contrato actual):\n' +
+    (preReservas.length ? preReservas.slice(0, tope).map(function (v) {
+      return iaFmtValla_(v) + ' | cliente actual: ' + (v.cliente || '—') + ', vence ' + (v.termino || '—') + ', pre-reservada para ' + (v.reserva2_cliente || '—');
+    }).join('\n') : 'Ninguna por ahora.');
+
+  contexto += '\n\nUBICACIONES CONTRATADAS (' + contratadas.length + (contratadas.length > tope ? ', mostrando las primeras ' + tope : '') + '):\n' +
+    contratadas.slice(0, tope).map(function (v) {
+      return iaFmtValla_(v) + ' | cliente: ' + (v.cliente || '—') + ', hasta ' + (v.termino || '—');
+    }).join('\n');
+
+  contexto += '\n\nCONTRATOS POR VENCER PRONTO (alertas, ' + alertas.length + '):\n' +
+    (alertas.length ? alertas.map(function (v) { return v.codigo + ' | ' + (v.cliente || '—') + ' | ' + v.alerta; }).join('\n') : 'Ninguno por ahora.');
+
+  // Instalaciones vive en otra hoja/endpoint — se carga bajo demanda si
+  // el usuario nunca abrió esa pestaña en esta sesión.
+  if (!insDataCache.length) { try { await insCargarDatos(); } catch (e) {} }
+  if (insDataCache.length) {
+    contexto += '\n\nINSTALACIONES (' + insDataCache.length + (insDataCache.length > tope ? ', mostrando las primeras ' + tope : '') + '):\n' +
+      insDataCache.slice(0, tope).map(function (r) {
+        return r.codigo + ' | ' + (r.cliente || '—') + ' | ' + (r.ciudad || '') + ' | estado: ' + r.estado + (r.inicioReal ? ' | instalado: ' + r.inicioReal : '');
+      }).join('\n');
+  }
 
   const clienteInp = document.getElementById('iaCliente');
   const clienteTxt = clienteInp ? clienteInp.value.trim() : '';
   if (clienteTxt) {
-    const contratadas = DATA.filter(function (v) {
-      return v.estado === 'CONTRATADA' && String(v.cliente || '').toUpperCase().indexOf(clienteTxt.toUpperCase()) !== -1;
+    const U = clienteTxt.toUpperCase();
+    const delCliente = DATA.filter(function (v) {
+      return String(v.cliente || '').toUpperCase().indexOf(U) !== -1 ||
+        String(v.cliente_reserva || '').toUpperCase().indexOf(U) !== -1 ||
+        String(v.reserva2_cliente || '').toUpperCase().indexOf(U) !== -1;
     });
-    contexto += contratadas.length
-      ? '\n\nUBICACIONES QUE YA TIENE CONTRATADAS EL CLIENTE "' + clienteTxt + '" (' + contratadas.length + '):\n' +
-        contratadas.map(function (v) { return v.codigo + ' | ' + (v.lugar || '') + ' - ' + (v.direccion || '') + ' | ' + (v.tipo || ''); }).join('\n')
-      : '\n\nEl cliente "' + clienteTxt + '" no tiene ubicaciones contratadas actualmente en el sistema.';
+    contexto += delCliente.length
+      ? '\n\nUBICACIONES LIGADAS AL CLIENTE "' + clienteTxt + '" (' + delCliente.length + ', incluye contratadas/reservadas/pre-reservadas a su nombre):\n' +
+        delCliente.map(function (v) { return iaFmtValla_(v) + ' | estado: ' + v.estado; }).join('\n')
+      : '\n\nEl cliente "' + clienteTxt + '" no tiene ninguna ubicación ligada actualmente en el sistema.';
   }
   return contexto;
 }
@@ -8504,7 +8549,7 @@ async function iaEnviarMensaje() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
 
   try {
-    const contexto = iaConstruirContexto_();
+    const contexto = await iaConstruirContexto_();
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'iaConsultar', pregunta: pregunta, contexto: contexto }) });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error al consultar el asistente');
