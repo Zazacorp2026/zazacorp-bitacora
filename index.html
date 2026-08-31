@@ -801,7 +801,7 @@ function aplicarPermisoDashboard() {
 // Jorge conserva acceso total; Ricardo puede usar el módulo con las reglas
 // del backend: ve sus cotizaciones y su pipeline, salvo permisos admin.
 const USUARIOS_COTIZADOR_AUTORIZADOS = ['JORGE', 'RICARDO'];
-const USUARIOS_COMERCIAL_GENERAL_AUTORIZADOS = ['JORGE', 'RICARDO'];
+const USUARIOS_COMERCIAL_GENERAL_AUTORIZADOS = ['JORGE', 'RICARDO', 'VERONICA TERAN'];
 
 function aplicarPermisoCotizador() {
   const usuario = (_usuarioActual || '').toUpperCase();
@@ -3682,6 +3682,25 @@ const CG_LINE_PALETTE = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', 
 function cgFmtMoney(n) { return '$' + Math.round(n || 0).toLocaleString('es-EC'); }
 function cgLineColor(i) { return CG_LINE_PALETTE[i % CG_LINE_PALETTE.length]; }
 
+// Ciudad por ejecutiva — Comercial General no tiene columna de ciudad
+// propia (esa venta la genera la ejecutiva, no un elemento con
+// dirección fija), así que la ciudad de cada fila se deriva de quién
+// la vendió. Mapa confirmado con Jorge: Lorena, Zulia y Saskya Yépez
+// venden desde Quito; el resto (Saskya, Shayra, Verónica Triviño,
+// Ricardo, Verónica Terán, Pamela Lara, Jorge) desde Guayaquil.
+// Verónica Triviño es free-lance pero cuenta igual como Guayaquil.
+const CG_CIUDAD_POR_EJECUTIVA = {
+  'LORENA': 'Quito', 'ZULIA': 'Quito', 'SASKYA YEPEZ': 'Quito',
+  'SASKYA': 'Guayaquil', 'SHAYRA': 'Guayaquil', 'VERONICA TRIVINO': 'Guayaquil',
+  'RICARDO': 'Guayaquil', 'VERONICA TERAN': 'Guayaquil', 'PAMELA LARA': 'Guayaquil', 'JORGE': 'Guayaquil'
+};
+function cgNormalizarNombre_(v) {
+  return String(v || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+function cgCiudadDeEjecutiva(ejecutiva) {
+  return CG_CIUDAD_POR_EJECUTIVA[cgNormalizarNombre_(ejecutiva)] || 'Sin ciudad';
+}
+
 const CG_LABEL_BOX_PLUGIN = {
   id: 'cgLabelBoxes',
   afterDraw(chart, args, opts) {
@@ -4045,6 +4064,44 @@ function cgPintarMixProducto(data) {
   body.innerHTML = rows.map(r => '<div class="cg-pulse-row"><span class="cg-micro-label">' + esc(r.nombre) + '</span><span class="cg-pulse-value">' + Math.round(total ? r.neto / total * 100 : 0) + '%</span></div>').join('') || '<div class="cg-card-muted">Sin mix para mostrar.</div>';
 }
 
+function cgPintarPorCiudad() {
+  const ctx = document.getElementById('cgChartCiudad');
+  const body = document.getElementById('cgTablaCiudadBody');
+  if (!ctx && !body) return;
+  const data = cgGetFilteredData();
+  const totals = {};
+  data.forEach(d => {
+    const ciudad = cgCiudadDeEjecutiva(d['Ejecutiva']);
+    if (!totals[ciudad]) totals[ciudad] = { neto: 0, facturas: new Set() };
+    totals[ciudad].neto += Number(d['Neto (Stotal)']) || 0;
+    if (d['Comprobante']) totals[ciudad].facturas.add(d['Comprobante']);
+  });
+  const orden = ['Quito', 'Guayaquil', 'Sin ciudad'].filter(c => totals[c]);
+  Object.keys(totals).forEach(c => { if (!orden.includes(c)) orden.push(c); });
+  const colores = { 'Quito': '#8b5cf6', 'Guayaquil': '#3b82f6', 'Sin ciudad': '#6b7280' };
+
+  if (ctx && typeof Chart !== 'undefined') {
+    if (cgCharts.ciudad) cgCharts.ciudad.destroy();
+    cgCharts.ciudad = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: orden, datasets: [{ label: 'Neto', data: orden.map(c => totals[c].neto), backgroundColor: orden.map(c => colores[c] || '#6b7280') }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => cgFmtMoney(c.parsed.y) } } },
+        scales: { y: { ticks: { callback: v => cgFmtMoney(v) } } }
+      }
+    });
+  }
+  if (body) {
+    const totalGeneral = orden.reduce((s, c) => s + totals[c].neto, 0) || 1;
+    body.innerHTML = orden.map(c => {
+      const t = totals[c];
+      const pct = (t.neto / totalGeneral * 100).toFixed(1);
+      return '<tr><td>' + esc(c) + '</td><td style="text-align:right">' + t.facturas.size.toLocaleString('es-EC') + '</td><td style="text-align:right">' + cgFmtMoney(t.neto) + '</td><td style="text-align:right">' + pct + '%</td></tr>';
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Sin datos</td></tr>';
+  }
+}
+
 function cgPintarKpis() {
   const data = cgGetFilteredData();
   let neto = 0, bruto = 0, iva = 0;
@@ -4365,6 +4422,7 @@ function cgSincronizarFiltrosUI() {
 
 function cgRepintarTodo() {
   cgPintarKpis();
+  cgPintarPorCiudad();
   cgPintarGerencial();
   cgPintarRanking();
   cgPintarTendencia();
@@ -4481,6 +4539,10 @@ async function renderComercialGeneral(container) {
     '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Ranking de ejecutivas · Neto <small>(clic en una barra para comparar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartEjecutivas"></canvas></div></div>' +
       '<div class="cg-chart-card"><h4>Tendencia mensual del Neto</h4><div class="cg-chart-wrap"><canvas id="cgChartTendencia"></canvas></div></div>' +
+    '</div>' +
+    '<div class="cg-charts-grid">' +
+      '<div class="cg-chart-card"><h4>Ventas por ciudad · Neto <small>(según la ejecutiva que vendió)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartCiudad"></canvas></div></div>' +
+      '<div class="cg-chart-card"><h4>Detalle por ciudad</h4><div class="cg-table-wrap"><table class="cg-table compact"><thead><tr><th>Ciudad</th><th style="text-align:right">Facturas</th><th style="text-align:right">Neto</th><th style="text-align:right">% del total</th></tr></thead><tbody id="cgTablaCiudadBody"></tbody></table></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Comparativo mensual por año · Neto <small>(respeta filtros, ignora solo Año)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartComparativoAnios"></canvas></div></div>' +
