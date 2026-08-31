@@ -3697,8 +3697,19 @@ const CG_CIUDAD_POR_EJECUTIVA = {
 function cgNormalizarNombre_(v) {
   return String(v || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
+// Coincidencia por "contiene", no exacta — en Facturación_Master el
+// nombre de la ejecutiva viene completo (ej. "Ricardo Martinez",
+// "Lorena Melo"), no solo el primer nombre como en el mapa. Se
+// ordenan las claves de más larga a más corta para que "SASKYA YEPEZ"
+// se revise antes que "SASKYA" y no se confundan entre sí.
+const CG_CLAVES_CIUDAD_ORDENADAS = Object.keys(CG_CIUDAD_POR_EJECUTIVA).sort((a, b) => b.length - a.length);
 function cgCiudadDeEjecutiva(ejecutiva) {
-  return CG_CIUDAD_POR_EJECUTIVA[cgNormalizarNombre_(ejecutiva)] || 'Sin ciudad';
+  const norm = cgNormalizarNombre_(ejecutiva);
+  if (!norm) return 'Sin ciudad';
+  for (const clave of CG_CLAVES_CIUDAD_ORDENADAS) {
+    if (norm.indexOf(clave) !== -1) return CG_CIUDAD_POR_EJECUTIVA[clave];
+  }
+  return 'Sin ciudad';
 }
 
 const CG_LABEL_BOX_PLUGIN = {
