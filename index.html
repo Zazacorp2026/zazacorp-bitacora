@@ -4083,9 +4083,11 @@ function cgPintarPorCiudad() {
   const totals = {};
   data.forEach(d => {
     const ciudad = cgCiudadDeEjecutiva(d['Ejecutiva']);
-    if (!totals[ciudad]) totals[ciudad] = { neto: 0, facturas: new Set() };
+    if (!totals[ciudad]) totals[ciudad] = { neto: 0, bruto: 0, facturas: new Set(), ejecutivas: new Set() };
     totals[ciudad].neto += Number(d['Neto (Stotal)']) || 0;
+    totals[ciudad].bruto += Number(d['Bruto (PBase)']) || 0;
     if (d['Comprobante']) totals[ciudad].facturas.add(d['Comprobante']);
+    if (ciudad === 'Sin ciudad') totals[ciudad].ejecutivas.add(d['Ejecutiva'] || '(sin ejecutiva)');
   });
   const orden = ['Quito', 'Guayaquil', 'Sin ciudad'].filter(c => totals[c]);
   Object.keys(totals).forEach(c => { if (!orden.includes(c)) orden.push(c); });
@@ -4108,8 +4110,14 @@ function cgPintarPorCiudad() {
     body.innerHTML = orden.map(c => {
       const t = totals[c];
       const pct = (t.neto / totalGeneral * 100).toFixed(1);
-      return '<tr><td>' + esc(c) + '</td><td style="text-align:right">' + t.facturas.size.toLocaleString('es-EC') + '</td><td style="text-align:right">' + cgFmtMoney(t.neto) + '</td><td style="text-align:right">' + pct + '%</td></tr>';
-    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Sin datos</td></tr>';
+      // "Sin ciudad" muestra debajo qué ejecutiva(s) cayeron ahí — así
+      // se ve de inmediato a quién le falta agregar al mapa de ciudad,
+      // en vez de quedar como un número suelto sin explicación.
+      const detalleSinCiudad = (c === 'Sin ciudad' && t.ejecutivas.size)
+        ? '<div style="font-size:10.5px;color:var(--muted);margin-top:2px">' + Array.from(t.ejecutivas).map(esc).join(', ') + '</div>'
+        : '';
+      return '<tr><td>' + esc(c) + detalleSinCiudad + '</td><td style="text-align:right">' + t.facturas.size.toLocaleString('es-EC') + '</td><td style="text-align:right">' + cgFmtMoney(t.bruto) + '</td><td style="text-align:right">' + cgFmtMoney(t.neto) + '</td><td style="text-align:right">' + pct + '%</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Sin datos</td></tr>';
   }
 }
 
@@ -4684,7 +4692,7 @@ async function renderComercialGeneral(container) {
     '</div>' +
     '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Ventas por ciudad · Neto <small>(según la ejecutiva que vendió)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartCiudad"></canvas></div></div>' +
-      '<div class="cg-chart-card"><h4>Detalle por ciudad</h4><div class="cg-table-wrap"><table class="cg-table compact"><thead><tr><th>Ciudad</th><th style="text-align:right">Facturas</th><th style="text-align:right">Neto</th><th style="text-align:right">% del total</th></tr></thead><tbody id="cgTablaCiudadBody"></tbody></table></div></div>' +
+      '<div class="cg-chart-card"><h4>Detalle por ciudad</h4><div class="cg-table-wrap"><table class="cg-table compact"><thead><tr><th>Ciudad</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th><th style="text-align:right">% del total</th></tr></thead><tbody id="cgTablaCiudadBody"></tbody></table></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Comparativo mensual por año · Neto <small>(respeta filtros, ignora solo Año)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartComparativoAnios"></canvas></div></div>' +
