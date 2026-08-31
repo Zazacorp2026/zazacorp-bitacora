@@ -3802,12 +3802,24 @@ const CG_LABEL_BOX_PLUGIN = {
   }
 };
 
+// La misma persona aparece escrita con may/minúsculas distintas entre
+// filas (ej. "Lorena Melo" vs "Lorena melo") — sin esto, cada
+// variante cuenta como una ejecutiva aparte en TODO lado (el selector
+// de filtro, el ranking, ticket promedio, ventas por ciudad, etc.).
+// Se normaliza UNA sola vez al cargar, así el resto del módulo nunca
+// necesita saber que el problema existió.
+function cgTitleCase_(v) {
+  return String(v || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    .replace(/(^|\s)([a-zà-ÿ])/g, function (m, sep, ch) { return sep + ch.toUpperCase(); });
+}
+
 async function cgCargarDatos(forzar) {
   const url = API_URL + '?action=cgGetFacturacion' + (forzar ? '&forzar=1' : '');
   const res = await fetch(url, { cache: 'no-store' });
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'Error al cargar facturación');
   cgDataCache = json.filas || [];
+  cgDataCache.forEach(d => { if (d['Ejecutiva']) d['Ejecutiva'] = cgTitleCase_(d['Ejecutiva']); });
   cgAllEjecutivas = [...new Set(cgDataCache.map(d => d['Ejecutiva']).filter(Boolean))].sort();
   cgAllClientes = [...new Set(cgDataCache.map(d => d['Cliente']).filter(Boolean))].sort();
   cgAllMarcas = [...new Set(cgDataCache.map(d => d['Marca']).filter(Boolean))].sort();
@@ -4264,17 +4276,34 @@ function cgPintarResumenAnios(data) {
   ).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Sin datos</td></tr>';
 }
 
+// Separado en dos gráficos a pedido: "Alquiler" (el negocio de espacio
+// publicitario en sí) vs. todo lo demás (Producción Especial, Servicio
+// de Instalación, etc.) — mezclados en un solo gráfico era difícil de
+// leer, porque Alquiler Valla Fija siempre domina la escala.
+function cgEsTipoAlquiler_(tipo) {
+  return String(tipo || '').trim().toUpperCase().indexOf('ALQUILER') === 0;
+}
+
 function cgPintarTipoElemento() {
-  const ctx = document.getElementById('cgChartTipo');
+  cgPintarTipoElementoGrupo_('cgChartTipoAlquiler', 'tipoAlquiler', cgEsTipoAlquiler_);
+  cgPintarTipoElementoGrupo_('cgChartTipoProduccion', 'tipoProduccion', function (tipo) { return !cgEsTipoAlquiler_(tipo); });
+}
+
+function cgPintarTipoElementoGrupo_(canvasId, chartKey, filtroFn) {
+  const ctx = document.getElementById(canvasId);
   if (!ctx || typeof Chart === 'undefined') return;
   const data = cgGetFilteredData();
   const totals = {};
-  data.forEach(d => { const k = d['Tipo de Elemento'] || 'Otros'; totals[k] = (totals[k] || 0) + (Number(d['Neto (Stotal)']) || 0); });
+  data.forEach(d => {
+    const k = d['Tipo de Elemento'] || 'Otros';
+    if (!filtroFn(k)) return;
+    totals[k] = (totals[k] || 0) + (Number(d['Neto (Stotal)']) || 0);
+  });
   const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 12);
   const labels = sorted.map(e => e[0]);
   const values = sorted.map(e => e[1]);
-  if (cgCharts.tipo) cgCharts.tipo.destroy();
-  cgCharts.tipo = new Chart(ctx, {
+  if (cgCharts[chartKey]) cgCharts[chartKey].destroy();
+  cgCharts[chartKey] = new Chart(ctx, {
     type: 'bar',
     data: { labels: labels, datasets: [{ label: 'Neto', data: values, backgroundColor: labels.map(l => cgState.tipo === l ? '#f59e0b' : '#10b981') }] },
     plugins: [CG_LABEL_BOX_PLUGIN],
@@ -4611,7 +4640,8 @@ async function cgExportarPPT() {
     cgAgregarSlideChart_(pres, 'Tendencia mensual del Neto', 'tendencia', NAVY, WHITE);
     cgAgregarSlideChart_(pres, 'Ventas por ciudad · Neto', 'ciudad', NAVY, WHITE);
     cgAgregarSlideChart_(pres, 'Comparativo mensual por año · Neto', 'comparativoAnios', NAVY, WHITE);
-    cgAgregarSlideChart_(pres, 'Por tipo de elemento · Neto', 'tipo', NAVY, WHITE);
+    cgAgregarSlideChart_(pres, 'Por tipo de elemento · Alquiler', 'tipoAlquiler', NAVY, WHITE);
+    cgAgregarSlideChart_(pres, 'Por tipo de elemento · Producción y otros', 'tipoProduccion', NAVY, WHITE);
     cgAgregarSlideChart_(pres, 'Mix de productos · % del neto', 'mix', NAVY, WHITE);
 
     cgAgregarSlideTabla_(pres, 'Detalle por ciudad', cgTablaDesdeDOM_('cgTablaCiudadBody'), NAVY, WHITE);
@@ -4711,7 +4741,8 @@ async function renderComercialGeneral(container) {
       '<div class="cg-chart-card"><h4>Resumen por año</h4><div style="max-height:280px;overflow-y:auto"><table class="cg-table"><thead><tr><th>Año</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">IVA</th><th style="text-align:right">Neto</th></tr></thead><tbody id="cgTablaAniosBody"></tbody></table></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
-      '<div class="cg-chart-card cg-full"><h4>Por tipo de elemento · Neto <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartTipo"></canvas></div></div>' +
+      '<div class="cg-chart-card"><h4>Alquiler · Neto <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartTipoAlquiler"></canvas></div></div>' +
+      '<div class="cg-chart-card"><h4>Producción y otros · Neto <small>(clic para filtrar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartTipoProduccion"></canvas></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Top marcas por neto</h4><div id="cgTopMarcasBody"></div></div>' +
