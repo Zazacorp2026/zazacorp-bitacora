@@ -4068,11 +4068,22 @@ function cgPintarClientesCompartidos(data) {
   }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">No hay clientes compartidos en este filtro</td></tr>';
 }
 function cgPintarMixProducto(data) {
-  const body = document.getElementById('cgMixBody');
-  if (!body) return;
+  const ctx = document.getElementById('cgChartMix');
+  if (!ctx || typeof Chart === 'undefined') return;
   const total = cgTotales(data).neto;
   const rows = cgAgrupar(data, 'Tipo de Elemento').sort((a, b) => b.neto - a.neto).slice(0, 5);
-  body.innerHTML = rows.map(r => '<div class="cg-pulse-row"><span class="cg-micro-label">' + esc(r.nombre) + '</span><span class="cg-pulse-value">' + Math.round(total ? r.neto / total * 100 : 0) + '%</span></div>').join('') || '<div class="cg-card-muted">Sin mix para mostrar.</div>';
+  const labels = rows.map(r => r.nombre);
+  const porcentajes = rows.map(r => total ? Math.round(r.neto / total * 100) : 0);
+  if (cgCharts.mix) cgCharts.mix.destroy();
+  cgCharts.mix = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: labels, datasets: [{ label: '% del neto', data: porcentajes, backgroundColor: '#f59e0b' }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.parsed.x + '%' } } },
+      scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } } }
+    }
+  });
 }
 
 function cgPintarPorCiudad() {
@@ -4601,6 +4612,7 @@ async function cgExportarPPT() {
     cgAgregarSlideChart_(pres, 'Ventas por ciudad · Neto', 'ciudad', NAVY, WHITE);
     cgAgregarSlideChart_(pres, 'Comparativo mensual por año · Neto', 'comparativoAnios', NAVY, WHITE);
     cgAgregarSlideChart_(pres, 'Por tipo de elemento · Neto', 'tipo', NAVY, WHITE);
+    cgAgregarSlideChart_(pres, 'Mix de productos · % del neto', 'mix', NAVY, WHITE);
 
     cgAgregarSlideTabla_(pres, 'Detalle por ciudad', cgTablaDesdeDOM_('cgTablaCiudadBody'), NAVY, WHITE);
     cgAgregarSlideTabla_(pres, 'Resumen por año', cgTablaDesdeDOM_('cgTablaAniosBody'), NAVY, WHITE);
@@ -4703,7 +4715,7 @@ async function renderComercialGeneral(container) {
     '</div>' +
     '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Top marcas por neto</h4><div id="cgTopMarcasBody"></div></div>' +
-      '<div class="cg-chart-card"><h4>Mix de productos</h4><div id="cgMixBody" class="cg-pulse-list"></div></div>' +
+      '<div class="cg-chart-card"><h4>Mix de productos</h4><div class="cg-chart-wrap"><canvas id="cgChartMix"></canvas></div></div>' +
     '</div>' +
     '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Ticket promedio por ejecutiva</h4><div class="cg-table-wrap"><table class="cg-table compact cg-sticky-head"><thead><tr><th>Ejecutiva</th><th style="text-align:right">Facturas</th><th style="text-align:right">Neto</th><th style="text-align:right">Ticket</th></tr></thead><tbody id="cgTicketEjBody"></tbody></table></div></div>' +
