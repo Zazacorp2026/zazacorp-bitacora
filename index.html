@@ -4481,6 +4481,136 @@ function cgExportarCsv() {
   URL.revokeObjectURL(url);
 }
 
+// Descripción legible de los filtros activos — se imprime en la
+// portada del PPT para que quede claro con qué corte se generó el
+// reporte, sin tener que adivinarlo mirando los números.
+function cgResumenFiltros_() {
+  const partes = [];
+  if (cgState.year) partes.push('Año: ' + cgState.year);
+  if (cgState.monthFrom || cgState.monthTo) {
+    const desde = cgState.monthFrom ? CG_MONTH_NAMES[Number(cgState.monthFrom)] : 'inicio';
+    const hasta = cgState.monthTo ? CG_MONTH_NAMES[Number(cgState.monthTo)] : 'fin';
+    partes.push('Meses: ' + desde + ' a ' + hasta);
+  }
+  if (cgState.tipo) partes.push('Tipo: ' + cgState.tipo);
+  if (cgState.ejecutivas.length) partes.push('Ejecutivas: ' + cgState.ejecutivas.join(', '));
+  if (cgState.clientes.length) partes.push('Clientes: ' + cgState.clientes.join(', '));
+  if (cgState.marcas.length) partes.push('Marcas: ' + cgState.marcas.join(', '));
+  return partes.length ? partes.join('   ·   ') : 'Sin filtros — todos los datos';
+}
+
+// Lee una tabla YA pintada en pantalla (misma fuente de verdad que ve
+// el usuario) en vez de recalcular cada métrica de nuevo — así el PPT
+// nunca puede quedar desincronizado de lo que se ve en Comercial
+// General en ese momento.
+function cgTablaDesdeDOM_(tbodyId) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return { headers: [], rows: [] };
+  const table = tbody.closest('table');
+  const headers = table ? Array.from(table.querySelectorAll('thead th')).map(function (th) { return th.textContent.trim(); }) : [];
+  const rows = Array.from(tbody.querySelectorAll('tr'))
+    .map(function (tr) { return Array.from(tr.querySelectorAll('td')).map(function (td) { return td.textContent.trim(); }); })
+    .filter(function (r) { return r.length; });
+  return { headers: headers, rows: rows };
+}
+
+function cgAgregarSlideTabla_(pres, titulo, tablaData, NAVY, WHITE) {
+  const slide = pres.addSlide();
+  slide.background = { color: WHITE };
+  slide.addText(titulo, { x: 0.4, y: 0.3, w: 12.5, h: 0.5, fontSize: 20, bold: true, color: NAVY, fontFace: 'Arial' });
+  if (!tablaData.rows.length) {
+    slide.addText('Sin datos para los filtros actuales.', { x: 0.4, y: 1.2, w: 12, h: 0.5, fontSize: 12, color: '6B7280', fontFace: 'Arial' });
+    return;
+  }
+  const tope = 20;
+  const filas = [tablaData.headers.map(function (h) { return { text: h, options: { bold: true, color: WHITE, fill: { color: NAVY }, fontSize: 10 } }; })];
+  tablaData.rows.slice(0, tope).forEach(function (r) {
+    filas.push(r.map(function (c) { return { text: c, options: { fontSize: 10, color: NAVY } }; }));
+  });
+  slide.addTable(filas, { x: 0.4, y: 1.0, w: 12.5, autoPage: false, border: { type: 'solid', color: 'E5E7EB', pt: 0.5 }, fontFace: 'Arial' });
+  if (tablaData.rows.length > tope) {
+    slide.addText('Mostrando las primeras ' + tope + ' filas de ' + tablaData.rows.length + ' — usa "Exportar CSV" para el detalle completo.', { x: 0.4, y: 6.95, w: 12.5, h: 0.35, fontSize: 9, italic: true, color: '6B7280', fontFace: 'Arial' });
+  }
+}
+
+function cgAgregarSlideChart_(pres, titulo, chartKey, NAVY, WHITE) {
+  const chart = cgCharts[chartKey];
+  if (!chart) return;
+  const img = chart.toBase64Image().replace(/^data:/, '');
+  const slide = pres.addSlide();
+  slide.background = { color: WHITE };
+  slide.addText(titulo, { x: 0.4, y: 0.3, w: 12.5, h: 0.5, fontSize: 20, bold: true, color: NAVY, fontFace: 'Arial' });
+  slide.addImage({ data: img, x: 1.2, y: 1.1, w: 10.9, h: 5.8, sizing: { type: 'contain', w: 10.9, h: 5.8 } });
+}
+
+// Reporte completo de Comercial General con el corte de filtros que
+// esté activo en pantalla en ese momento — portada, KPIs, cada
+// gráfico ya pintado (tal cual se ve, tomado directo del canvas), y
+// las tablas de resumen. El detalle fila por fila queda fuera a
+// propósito (puede ser larguísimo) — para eso ya existe "Exportar
+// CSV".
+async function cgExportarPPT() {
+  const btn = document.getElementById('cgBtnExportarPPT');
+  const textoOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando...'; }
+  try {
+    await insCargarPptxGenJS_();
+    const NAVY = '1A2B4A', WHITE = 'FFFFFF';
+
+    const pres = new PptxGenJS();
+    pres.layout = 'LAYOUT_WIDE';
+    pres.title = 'Zazacorp · Comercial General';
+
+    const cover = pres.addSlide();
+    cover.addImage({ data: COVER_IMG, x: 0, y: 0, w: 13.3, h: 7.5 });
+    cover.addText('COMERCIAL GENERAL', { x: 0.6, y: 5.9, w: 12, h: 0.6, fontSize: 26, bold: true, color: WHITE, fontFace: 'Arial Black' });
+    cover.addText(cgResumenFiltros_(), { x: 0.6, y: 6.5, w: 12, h: 0.5, fontSize: 12, color: WHITE, fontFace: 'Arial' });
+    cover.addText('Generado: ' + new Date().toLocaleString('es-EC'), { x: 0.6, y: 6.85, w: 12, h: 0.4, fontSize: 10, color: WHITE, fontFace: 'Arial' });
+
+    const kpis = pres.addSlide();
+    kpis.background = { color: WHITE };
+    kpis.addText('Resumen del período', { x: 0.4, y: 0.3, w: 12.5, h: 0.5, fontSize: 20, bold: true, color: NAVY, fontFace: 'Arial' });
+    const kpiValores = [
+      ['Neto Total', document.getElementById('cgKpiNeto')?.textContent || '—'],
+      ['Bruto Total', document.getElementById('cgKpiBruto')?.textContent || '—'],
+      ['IVA', document.getElementById('cgKpiIva')?.textContent || '—'],
+      ['# Facturas', document.getElementById('cgKpiFacturas')?.textContent || '—']
+    ];
+    kpiValores.forEach(function (kv, i) {
+      const x = 0.4 + i * 3.15;
+      kpis.addShape(pres.shapes.RECTANGLE, { x: x, y: 1.3, w: 2.95, h: 1.6, fill: { color: 'F3F4F6' }, line: { color: 'E5E7EB', width: 1 } });
+      kpis.addText(kv[0].toUpperCase(), { x: x, y: 1.45, w: 2.95, h: 0.35, fontSize: 10, bold: true, color: '6B7280', align: 'center', fontFace: 'Arial', charSpacing: 1 });
+      kpis.addText(kv[1], { x: x, y: 1.85, w: 2.95, h: 0.7, fontSize: 24, bold: true, color: NAVY, align: 'center', fontFace: 'Arial Black' });
+    });
+    const resumenTexto = document.getElementById('cgResumenEjecutivoTexto')?.textContent || '';
+    if (resumenTexto.trim()) {
+      kpis.addText('Resumen ejecutivo automático', { x: 0.4, y: 3.4, w: 12.5, h: 0.4, fontSize: 12, bold: true, color: NAVY, fontFace: 'Arial' });
+      kpis.addText(resumenTexto, { x: 0.4, y: 3.85, w: 12.5, h: 2.5, fontSize: 12, color: '374151', fontFace: 'Arial', valign: 'top' });
+    }
+
+    cgAgregarSlideChart_(pres, 'Ranking de ejecutivas · Neto', 'ejecutivas', NAVY, WHITE);
+    cgAgregarSlideChart_(pres, 'Tendencia mensual del Neto', 'tendencia', NAVY, WHITE);
+    cgAgregarSlideChart_(pres, 'Ventas por ciudad · Neto', 'ciudad', NAVY, WHITE);
+    cgAgregarSlideChart_(pres, 'Comparativo mensual por año · Neto', 'comparativoAnios', NAVY, WHITE);
+    cgAgregarSlideChart_(pres, 'Por tipo de elemento · Neto', 'tipo', NAVY, WHITE);
+
+    cgAgregarSlideTabla_(pres, 'Detalle por ciudad', cgTablaDesdeDOM_('cgTablaCiudadBody'), NAVY, WHITE);
+    cgAgregarSlideTabla_(pres, 'Resumen por año', cgTablaDesdeDOM_('cgTablaAniosBody'), NAVY, WHITE);
+    cgAgregarSlideTabla_(pres, 'Ticket promedio por ejecutiva', cgTablaDesdeDOM_('cgTicketEjBody'), NAVY, WHITE);
+    cgAgregarSlideTabla_(pres, 'Crecimiento por ejecutiva', cgTablaDesdeDOM_('cgCrecimientoEjBody'), NAVY, WHITE);
+    cgAgregarSlideTabla_(pres, 'Clientes compartidos entre ejecutivas', cgTablaDesdeDOM_('cgClientesCompartidosBody'), NAVY, WHITE);
+
+    const fecha = new Date().toISOString().split('T')[0];
+    await pres.writeFile({ fileName: 'Zazacorp_ComercialGeneral_' + fecha + '.pptx' });
+    showToast('✓ PPT descargado', 'success');
+  } catch (err) {
+    showToast('❌ Error: ' + err.message, 'error');
+    console.error(err);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
+  }
+}
+
 async function renderComercialGeneral(container) {
   container.innerHTML = '<div id="cgBoard"><div class="empty"><div class="spinner"></div><p>Cargando facturación...</p></div></div>';
   if (typeof Chart === 'undefined') {
@@ -4531,6 +4661,7 @@ async function renderComercialGeneral(container) {
         '<button id="cgBtnActualizar" onclick="cgActualizarDatos()" style="background:rgba(59,130,246,.08);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">🔄 Actualizar datos</button>' +
         '<button onclick="cgLimpiarFiltros()" style="background:transparent;border:1px dashed var(--border);color:var(--muted);border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer">Limpiar filtros</button>' +
         '<button onclick="cgExportarCsv()" style="background:rgba(74,222,128,.08);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">⬇ Exportar CSV</button>' +
+        '<button id="cgBtnExportarPPT" onclick="cgExportarPPT()" style="background:rgba(245,158,11,.08);border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">📥 Exportar PPT</button>' +
       '</div>' +
     '</div>' +
     '<div class="cg-chips-row" id="cgChipsRow"></div>' +
