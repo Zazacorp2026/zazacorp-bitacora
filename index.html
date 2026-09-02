@@ -1074,20 +1074,20 @@ let state = {
 async function init() {
   poblarSelectoresMes();
   await Promise.all([loadData(), cargarBloqueos()]);
-  // getVNNOXData (adentro de cargarLedContratosGlobal) es, con diferencia,
-  // la llamada más pesada de todo el login: consulta VNNOX externo, ~5-6s
-  // en frío — y antes se esperaba en el mismo Promise.all que el
-  // inventario, así que CADA login (así el usuario nunca abriera LED)
-  // quedaba atado a esa espera. Con 3-4 personas entrando junto en la
-  // mañana, eso eran 3-4 consultas a VNNOX peleándose a la vez. Los
-  // "espacios LED disponibles" que usa esto ya tienen un valor por
-  // defecto seguro mientras carga (espaciosLEDDisponibles), así que no
-  // hace falta bloquear nada — se carga aparte y solo repinta si hace
-  // falta, igual que el patrón ya usado para no interrumpir Cotizador/
-  // Pipeline/Comercial General/Wallet si el usuario ya está ahí.
-  cargarLedContratosGlobal().then(() => {
-    if (state.tab !== 'cotizador' && state.tab !== 'pipeline' && state.tab !== 'comercialgeneral' && state.tab !== 'wallet') render();
-  });
+  // getVNNOXData (adentro de cargarLedContratosGlobal) es la llamada más
+  // pesada de todo el login: consulta VNNOX externo, ~5-6s en frío, y si
+  // VNNOX está lento o caído (fuera de nuestro control) puede tardar
+  // muchísimo más. Antes se disparaba en TODO login, así el usuario nunca
+  // abriera LED — con varias personas entrando juntas, eso eran varias
+  // consultas a VNNOX peleándose a la vez, y si VNNOX no respondía, esas
+  // llamadas se quedaban colgadas ocupando cupos de ejecución del script
+  // compartido, arrastrando también a Report (bloqueando incluso el
+  // login, que no tiene nada que ver con LED). Ahora ya NO se dispara
+  // sola al iniciar sesión — solo se carga cuando alguien realmente abre
+  // la pestaña LED (renderLED ya hace su propia carga independiente).
+  // "Espacios LED disponibles" en otras pestañas (Disponibles, etc.) usa
+  // mientras tanto su valor por defecto seguro (espaciosLEDDisponibles)
+  // hasta que la pestaña LED se visite al menos una vez en la sesión.
 }
 async function forzarRecarga() {
   localStorage.removeItem('zz_cache_v2');
