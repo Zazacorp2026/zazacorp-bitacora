@@ -7652,7 +7652,7 @@ async function exportarPPTInventario() {
 // ── Exportar Excel Inventario ────────────────────────────────
 async function exportarExcelInventario() {
   const btn = document.getElementById('btnInvExcel');
-  btn.textContent = '⏳ Obteniendo datos...'; btn.disabled = true;
+  btn.textContent = '⏳ Generando Excel...'; btn.disabled = true;
 
   try {
     // Cargar SheetJS si no está disponible
@@ -7671,21 +7671,20 @@ async function exportarExcelInventario() {
       });
     }
 
-    // Mismo criterio que "Exportar PPT": si hay selección, exportar solo
-    // esas; si no, respetar los filtros activos (ciudad/tipo/ejecutiva/
-    // cliente) en vez de traer siempre el inventario completo — antes
-    // este botón ignoraba los filtros y el PPT sí los respetaba.
-    const codigosAIncluir = selectedInv.size > 0
-      ? [...selectedInv]
-      : getFiltered().map(v => v.codigo);
-
-    btn.textContent = '⏳ Generando Excel...';
-    const res  = await fetch(API_URL + '?action=exportarInventario', { cache: 'no-store' });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'Error al obtener datos');
-
-    const codigosSet = new Set(codigosAIncluir);
-    let rows = json.rows.filter(r => codigosSet.has(r.codigo));
+    // Mismo criterio que "Exportar PPT": si hay selección, exportar ESAS
+    // exactas (de todo el inventario — DATA — no solo de lo filtrado en
+    // pantalla); si no, lo que está filtrado. Se arma directo con los
+    // datos que YA están cargados en el navegador (DATA/getFiltered) —
+    // antes este botón le volvía a pedir al servidor el inventario
+    // COMPLETO por segunda vez (acción "exportarInventario"), una copia
+    // redundante de datos que ya se tenían, y esa segunda respuesta era
+    // la que fallaba con "Unexpected token '<'" (mismo problema de
+    // entrega de respuestas grandes de Apps Script bajo carga que ya se
+    // vio en Comercial General). Sin ese segundo viaje al servidor, el
+    // Excel además sale instantáneo.
+    const rows = selectedInv.size > 0
+      ? DATA.filter(v => selectedInv.has(v.codigo))
+      : getFiltered();
     if (!rows.length) { showToast('No hay datos con los filtros actuales', 'info'); return; }
 
     // Construir hoja de Excel
@@ -7693,9 +7692,10 @@ async function exportarExcelInventario() {
     const wsData  = [headers];
 
     rows.forEach(r => {
+      const maps = (r.lat && r.lon) ? 'https://www.google.com/maps?q=' + r.lat + ',' + r.lon : '';
       wsData.push([
         r.lugar, r.codigo, r.direccion, r.tipo, r.medidas,
-        r.lat, r.lon, r.maps, r.foto
+        r.lat, r.lon, maps, r.foto
       ]);
     });
 
