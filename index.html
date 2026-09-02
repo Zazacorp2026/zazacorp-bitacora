@@ -3697,31 +3697,61 @@ function renderWallet(container) {
 // depende del estado del mes).
 const QZ_WALLET_TIPO_ORDEN = ['RECURRENTE', 'PASIVO', 'NUEVO'];
 const QZ_WALLET_TIPO_COLOR_PANEL = { RECURRENTE: '#10b981', PASIVO: '#a78bfa', NUEVO: '#3b82f6' };
+// '' = comisiones globales (de siempre). Un nombre = viendo/editando el
+// override de esa ejecutiva puntual. Se guarda en módulo (no en el DOM)
+// para sobrevivir a los repintados de qzPintarComisionesPanel().
+let qzComEjecutivaSel = '';
 
 function qzPintarComisionesPanel() {
   const cont = document.getElementById('qzWalletComisionesPanel');
   if (!cont) return;
   if (!qzEsAdmin() || !qzWalletData || !qzWalletData.comisiones) { cont.innerHTML = ''; return; }
   const com = qzWalletData.comisiones;
+  const overridesTodas = qzWalletData.comisionesPorEjecutiva || {};
+  // Lista de ejecutivas con actividad este mes (de las filas ya
+  // calculadas) — evita mantener una segunda lista de nombres hardcodeada
+  // en el frontend, y solo muestra a quien de verdad tiene wallet este mes.
+  const ejecutivas = [...new Set((qzWalletData.filas || []).map(f => f.ejecutiva).filter(Boolean))].sort();
+  if (qzComEjecutivaSel && !ejecutivas.includes(qzComEjecutivaSel)) qzComEjecutivaSel = '';
+  const overrideSel = qzComEjecutivaSel ? (overridesTodas[qzComEjecutivaSel] || {}) : null;
+
   const cajas = QZ_WALLET_TIPO_ORDEN.map(function (tipo) {
     const color = QZ_WALLET_TIPO_COLOR_PANEL[tipo];
-    const pctTxt = (Math.round(com[tipo] * 1000) / 10) + '%';
+    const personalizado = !!(overrideSel && overrideSel[tipo] != null);
+    const valor = personalizado ? overrideSel[tipo] : com[tipo];
+    const pctTxt = (Math.round(valor * 1000) / 10) + '%';
+    const tagPersonalizado = personalizado
+      ? '<span style="font-size:8.5px;color:' + color + ';font-weight:700;margin-left:6px">· personalizado</span>'
+      : '';
+    const btnQuitar = personalizado
+      ? '<button class="qzw-btn-quitar" onclick="qzQuitarComisionEjecutivaUI(this)" title="Quitar personalización (volver al global)" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);width:26px;height:26px;cursor:pointer;margin-left:4px">↺</button>'
+      : '';
     return '<div class="qzw-caja-com" data-tipo="' + tipo + '" data-color="' + color + '" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px">' +
-      '<div style="font-size:9.5px;color:' + color + ';font-weight:800;letter-spacing:.3px;margin-bottom:6px">' + tipo + '</div>' +
+      '<div style="font-size:9.5px;color:' + color + ';font-weight:800;letter-spacing:.3px;margin-bottom:6px">' + tipo + tagPersonalizado + '</div>' +
       '<div class="qzw-caja-fila" style="display:flex;align-items:center;justify-content:space-between">' +
         '<span class="qzw-valor-pct" style="font-size:19px;font-weight:800">' + pctTxt + '</span>' +
+        '<span class="qzw-btns-wrap" style="display:flex;align-items:center">' +
         '<button class="qzw-btn-editar" onclick="qzEditarComisionUI(this)" title="Editar porcentaje" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);width:26px;height:26px;cursor:pointer">✏️</button>' +
+        btnQuitar +
+        '</span>' +
       '</div>' +
     '</div>';
   }).join('');
+  const opcionesSelect = '<option value="">🌐 Global (todas)</option>' +
+    ejecutivas.map(ej => '<option value="' + ej.replace(/"/g,'&quot;') + '"' + (ej === qzComEjecutivaSel ? ' selected' : '') + '>' + ej + '</option>').join('');
   cont.innerHTML =
     '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
         '<div style="font-size:10.5px;color:var(--accent);font-weight:800;letter-spacing:.4px">COMISIONES POR TIPO · SOLO ADMIN</div>' +
         '<button id="qzBtnRecalcularArriba" onclick="qzCongelarWalletMesUI(false)" style="background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#1a1a1a;font-weight:800;font-size:11.5px;padding:7px 13px;cursor:pointer">🔄 Recalcular</button>' +
       '</div>' +
+      '<select id="qzComEjecutivaSel" onchange="qzComEjecutivaSel=this.value;qzPintarComisionesPanel()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;margin-bottom:10px">' + opcionesSelect + '</select>' +
       '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">' + cajas + '</div>' +
-      '<div style="font-size:10px;color:var(--muted);margin-top:9px">Clic en el lápiz para editar un porcentaje — se pide tu PIN de admin para confirmar el cambio.</div>' +
+      '<div style="font-size:10px;color:var(--muted);margin-top:9px">' +
+        (qzComEjecutivaSel
+          ? 'Editando el % de <b>' + qzComEjecutivaSel + '</b> — solo afecta su propia comisión. Sin personalizar, usa el global.'
+          : 'Editando el % global — aplica a toda ejecutiva sin un porcentaje personalizado.') +
+        ' Se pide tu PIN de admin para confirmar cualquier cambio.</div>' +
     '</div>';
 }
 
@@ -3731,10 +3761,11 @@ function qzEditarComisionUI(btnEl) {
   const tipo = caja.dataset.tipo;
   const color = caja.dataset.color;
   const valorSpan = caja.querySelector('.qzw-valor-pct');
+  const btnsWrap = caja.querySelector('.qzw-btns-wrap');
   const actual = parseFloat(valorSpan.textContent);
   const fila = caja.querySelector('.qzw-caja-fila');
   valorSpan.style.display = 'none';
-  btnEl.style.display = 'none';
+  btnsWrap.style.display = 'none';
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;align-items:center;gap:6px;width:100%';
   wrap.innerHTML =
@@ -3748,14 +3779,14 @@ function qzEditarComisionUI(btnEl) {
   wrap.querySelector('.qzw-btn-cancel').onclick = function () {
     wrap.remove();
     valorSpan.style.display = '';
-    btnEl.style.display = '';
+    btnsWrap.style.display = '';
   };
   wrap.querySelector('.qzw-btn-ok').onclick = function () {
-    qzPedirPinComision_(tipo, color, input.value, function (guardado) {
+    qzPedirPinComision_(tipo, color, input.value, qzComEjecutivaSel, false, function (guardado) {
       if (!guardado) {
         wrap.remove();
         valorSpan.style.display = '';
-        btnEl.style.display = '';
+        btnsWrap.style.display = '';
       }
       // Si se guardó, qzPintarComisionesPanel() ya reconstruyó toda la
       // caja con el valor confirmado por el servidor — no hay nada más
@@ -3764,15 +3795,31 @@ function qzEditarComisionUI(btnEl) {
   };
 }
 
+// Botón ↺ de una caja ya personalizada — borra el override de la
+// ejecutiva seleccionada y esa caja vuelve a usar el % global. Pide PIN
+// igual que cualquier otro cambio (afecta cuánto se le paga a alguien).
+function qzQuitarComisionEjecutivaUI(btnEl) {
+  const caja = btnEl.closest('.qzw-caja-com');
+  if (!caja) return;
+  const tipo = caja.dataset.tipo;
+  const color = caja.dataset.color;
+  qzPedirPinComision_(tipo, color, null, qzComEjecutivaSel, true, function () {});
+}
+
 // Overlay propio (se crea una sola vez y se reutiliza), mismo patrón
 // que insVerFotoGrande — el PIN se valida en el mismo POST que guarda
-// el cambio, un solo viaje al servidor, nunca dos.
-function qzPedirPinComision_(tipo, color, nuevoValorStr, callback) {
-  const nuevoValor = Number(nuevoValorStr);
-  if (isNaN(nuevoValor) || nuevoValor < 0 || nuevoValor > 100) {
-    showToast('Ingresa un porcentaje válido (0 a 100)', 'info');
-    callback(false);
-    return;
+// el cambio, un solo viaje al servidor, nunca dos. Si "ejecutiva" viene
+// vacío, edita/afecta el % global de siempre; si trae un nombre, edita
+// (o "quitar" borra) solo el override de esa ejecutiva puntual.
+function qzPedirPinComision_(tipo, color, nuevoValorStr, ejecutiva, quitar, callback) {
+  let nuevoValor = null;
+  if (!quitar) {
+    nuevoValor = Number(nuevoValorStr);
+    if (isNaN(nuevoValor) || nuevoValor < 0 || nuevoValor > 100) {
+      showToast('Ingresa un porcentaje válido (0 a 100)', 'info');
+      callback(false);
+      return;
+    }
   }
   let overlay = document.getElementById('qzPinOverlay');
   if (!overlay) {
@@ -3781,10 +3828,14 @@ function qzPedirPinComision_(tipo, color, nuevoValorStr, callback) {
     overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:center;justify-content:center;padding:20px';
     document.body.appendChild(overlay);
   }
+  const quien = ejecutiva ? ('de <b>' + ejecutiva + '</b>') : 'GLOBAL';
+  const mensaje = quitar
+    ? ('Se quitará el % personalizado de ' + tipo + ' ' + quien + ' — volverá a usar el global.')
+    : (tipo + ' ' + quien + ' pasará a <b style="color:' + color + '">' + nuevoValor + '%</b>');
   overlay.innerHTML =
-    '<div style="background:var(--surface);border:1px solid ' + color + ';border-radius:10px;padding:20px;width:260px;text-align:center">' +
+    '<div style="background:var(--surface);border:1px solid ' + color + ';border-radius:10px;padding:20px;width:270px;text-align:center">' +
       '<div style="font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text)">Confirmar cambio</div>' +
-      '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">' + tipo + ' pasará a <b style="color:' + color + '">' + nuevoValor + '%</b></div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">' + mensaje + '</div>' +
       '<input type="password" id="qzPinInput" placeholder="PIN admin" maxlength="6" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:9px 10px;font-size:14px;text-align:center;letter-spacing:3px;font-family:inherit;margin-bottom:12px">' +
       '<div id="qzPinError" style="font-size:11px;color:var(--red);margin-bottom:8px;display:none"></div>' +
       '<div style="display:flex;gap:8px">' +
@@ -3806,12 +3857,17 @@ function qzPedirPinComision_(tipo, color, nuevoValorStr, callback) {
     const btn = document.getElementById('qzPinConfirmar');
     btn.disabled = true; btn.textContent = 'Guardando...';
     try {
-      const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzActualizarComisionWallet', tipo: tipo, pct: nuevoValor / 100, pin: pin }) });
+      const payload = { action: 'qzActualizarComisionWallet', tipo: tipo, pin: pin };
+      if (ejecutiva) payload.ejecutiva = ejecutiva;
+      if (quitar) payload.quitar = true; else payload.pct = nuevoValor / 100;
+      const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || 'Error al guardar');
       overlay.style.display = 'none';
-      showToast('✅ Comisión de ' + tipo + ' actualizada a ' + nuevoValor + '%', 'success');
-      if (qzWalletData) qzWalletData.comisiones = json.comisiones;
+      showToast(quitar
+        ? ('✅ Se quitó el % personalizado de ' + tipo + ' ' + quien.replace(/<\/?b[^>]*>/g,''))
+        : ('✅ Comisión ' + tipo + ' ' + quien.replace(/<\/?b[^>]*>/g,'') + ' actualizada a ' + nuevoValor + '%'), 'success');
+      if (qzWalletData) { qzWalletData.comisiones = json.comisiones; qzWalletData.comisionesPorEjecutiva = json.comisionesPorEjecutiva; }
       qzPintarComisionesPanel();
       callback(true);
     } catch (e) {
