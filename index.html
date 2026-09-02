@@ -4031,21 +4031,60 @@ function cgTitleCase_(v) {
     .replace(/(^|\s)([a-zà-ÿ])/g, function (m, sep, ch) { return sep + ch.toUpperCase(); });
 }
 
-async function cgCargarDatos(forzar) {
-  const url = API_URL + '?action=cgGetFacturacion' + (forzar ? '&forzar=1' : '');
+// El backend manda la facturación PAGINADA (ver CG_PAGINA_TAM en Code.gs)
+// porque con los ~8,444 registros de hoy una sola respuesta pesa varios
+// MB, y eso es demasiado para que Apps Script la entregue de forma
+// confiable de un solo viaje (el web app redirige respuestas grandes a
+// una URL temporal que puede fallar en la entrega — era la causa real
+// del "Unexpected token '<'... is not valid JSON"). Pedir las páginas
+// una por una (secuencial) hubiera sumado el tiempo de las 11 — en vez
+// de eso, la primera página va sola (además de traer datos, dice cuántas
+// páginas hay y, si forzar=true, repuebla el caché del servidor para
+// todas las demás) y el resto se pide EN PARALELO con un tope de 5 a la
+// vez — rápido, y sin mandar de golpe decenas de peticiones simultáneas
+// si la facturación sigue creciendo con los meses.
+const CG_PAGINAS_EN_PARALELO = 5;
+async function cgPedirPaginaFacturacion_(pagina, forzar) {
+  const url = API_URL + '?action=cgGetFacturacion' + (forzar ? '&forzar=1' : '') + '&pagina=' + pagina;
   const res = await fetch(url, { cache: 'no-store' });
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'Error al cargar facturación');
-  // El backend manda {headers, rows} (array de arrays) en vez de array de
-  // objetos, para no repetir las 24 llaves de columna en cada una de miles
-  // de filas (eso era lo que hacía tan pesada la respuesta y causaba que
-  // Comercial General se colgara o fallara). Se reconstruyen los objetos
-  // una sola vez acá — ninguna otra función cg* que lee d['Ejecutiva'],
-  // d['Cliente'], etc. se entera del cambio de formato.
-  const cgHeaders = json.headers || [];
-  cgDataCache = (json.rows || []).map(row => {
+  return json;
+}
+async function cgCargarDatos(forzar) {
+  const progresoEl = document.querySelector('#cgBoard .empty p');
+  const primera = await cgPedirPaginaFacturacion_(0, forzar);
+  const headers = primera.headers || [];
+  const totalPaginas = primera.totalPaginas || 1;
+  const porPagina = [primera.rows || []];
+
+  if (totalPaginas > 1) {
+    if (progresoEl) progresoEl.textContent = 'Cargando facturación... (1/' + totalPaginas + ')';
+    const indices = Array.from({ length: totalPaginas - 1 }, (_, i) => i + 1);
+    let hechas = 1;
+    let cursor = 0;
+    // Pool fijo de "trabajadores": cada uno va tomando el siguiente
+    // índice disponible hasta que no queden — así nunca hay más de
+    // CG_PAGINAS_EN_PARALELO peticiones en vuelo al mismo tiempo.
+    const trabajador = async () => {
+      while (cursor < indices.length) {
+        const pag = indices[cursor++];
+        const json = await cgPedirPaginaFacturacion_(pag, false);
+        porPagina[pag] = json.rows || [];
+        hechas++;
+        if (progresoEl) progresoEl.textContent = 'Cargando facturación... (' + hechas + '/' + totalPaginas + ')';
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CG_PAGINAS_EN_PARALELO, indices.length) }, trabajador));
+  }
+
+  const rows = [].concat(...porPagina);
+  // Se reconstruyen los objetos una sola vez acá — ninguna otra función
+  // cg* que lee d['Ejecutiva'], d['Cliente'], etc. se entera de que el
+  // viaje vino paginado/en paralelo ni en formato {headers, rows}.
+  cgDataCache = rows.map(row => {
     const obj = {};
-    cgHeaders.forEach((h, i) => { obj[h] = row[i]; });
+    headers.forEach((h, i) => { obj[h] = row[i]; });
     return obj;
   });
   cgDataCache.forEach(d => { if (d['Ejecutiva']) d['Ejecutiva'] = cgTitleCase_(d['Ejecutiva']); });
