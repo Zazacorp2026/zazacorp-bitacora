@@ -3980,7 +3980,18 @@ async function cgCargarDatos(forzar) {
   const res = await fetch(url, { cache: 'no-store' });
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'Error al cargar facturación');
-  cgDataCache = json.filas || [];
+  // El backend manda {headers, rows} (array de arrays) en vez de array de
+  // objetos, para no repetir las 24 llaves de columna en cada una de miles
+  // de filas (eso era lo que hacía tan pesada la respuesta y causaba que
+  // Comercial General se colgara o fallara). Se reconstruyen los objetos
+  // una sola vez acá — ninguna otra función cg* que lee d['Ejecutiva'],
+  // d['Cliente'], etc. se entera del cambio de formato.
+  const cgHeaders = json.headers || [];
+  cgDataCache = (json.rows || []).map(row => {
+    const obj = {};
+    cgHeaders.forEach((h, i) => { obj[h] = row[i]; });
+    return obj;
+  });
   cgDataCache.forEach(d => { if (d['Ejecutiva']) d['Ejecutiva'] = cgTitleCase_(d['Ejecutiva']); });
   cgAllEjecutivas = [...new Set(cgDataCache.map(d => d['Ejecutiva']).filter(Boolean))].sort();
   cgAllClientes = [...new Set(cgDataCache.map(d => d['Cliente']).filter(Boolean))].sort();
