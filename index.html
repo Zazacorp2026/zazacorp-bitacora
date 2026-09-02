@@ -7528,11 +7528,15 @@ async function exportarPPTInventario() {
   }
 
   try {
-    // Si hay selección, exportar solo las seleccionadas; si no, exportar todas
-    const todasVallas = getFiltered();
+    // Si hay selección, exportar ESAS exactas — de todo el inventario
+    // (DATA), no solo de lo que calza con el filtro/búsqueda actual en
+    // pantalla en este momento (antes filtraba sobre getFiltered() y una
+    // seleccionada que ya no aparecía en la vista filtrada se perdía sin
+    // avisar). Sin selección, se exporta lo que hay filtrado, igual que
+    // siempre.
     const vallas = selectedInv.size > 0
-      ? todasVallas.filter(v => selectedInv.has(v.codigo))
-      : todasVallas;
+      ? DATA.filter(v => selectedInv.has(v.codigo))
+      : getFiltered();
     if (!vallas.length) { showToast('No hay vallas con los filtros actuales', 'info'); return; }
 
     const pres = new PptxGenJS();
@@ -7908,11 +7912,15 @@ async function exportarPPTAlertas() {
   }
 
   try {
-  // Si hay selección, exportar solo las seleccionadas; si no, exportar todas
-  const todasAlertas = getFiltered();
+  // Si hay selección, exportar ESAS exactas — de todo el inventario
+  // (DATA), no solo de lo que calza con el filtro/búsqueda actual (mismo
+  // bug ya corregido en exportarPPTInventario: filtrar sobre getFiltered()
+  // perdía en silencio cualquier seleccionada que ya no calzara con la
+  // vista filtrada actual). Sin selección, se exporta lo filtrado, igual
+  // que siempre.
   const alertas = selectedAlertas.size > 0
-    ? todasAlertas.filter(v => selectedAlertas.has(v.codigo))
-    : todasAlertas;
+    ? DATA.filter(v => selectedAlertas.has(v.codigo))
+    : getFiltered();
   if (!alertas.length) { showToast('No hay alertas con los filtros actuales', 'info'); return; }
 
   const pres = new PptxGenJS();
