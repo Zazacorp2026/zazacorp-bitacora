@@ -603,6 +603,7 @@
   </div>
   <button id="btnInvPPT" onclick="exportarPPTInventario()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
   <button id="btnInvExcel" onclick="exportarExcelInventario()" style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.35);border-radius:8px;color:#4ade80;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(74,222,128,.18)'" onmouseout="this.style.background='rgba(74,222,128,.08)'">⬇ Exportar Excel</button>
+  <button id="btnScrMigrar" onclick="migrarContratosScrollingUI()" style="display:none;background:rgba(167,139,250,.12);border:1px solid #a78bfa;border-radius:8px;color:#a78bfa;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" title="Pasa cualquier Totem Scroll contratado bajo el modelo antiguo a la nueva estructura de anunciantes">🔄 Migrar Scrolling</button>
   <button id="btnMultiSelectInv" onclick="toggleMultiSelectInv()" style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.35);border-radius:8px;color:#a78bfa;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(139,92,246,.25)'" onmouseout="this.style.background='rgba(139,92,246,.12)'">☐ Seleccionar</button>
       <button id="btnMultiSelect" onclick="toggleMultiSelect()" style="display:none;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;color:#3b82f6;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(59,130,246,.25)'" onmouseout="this.style.background='rgba(59,130,246,.12)'">☐ Selección múltiple</button>
       <button id="btnMultiSelectRes" onclick="toggleMultiSelect()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">☐ Selección para contratar</button>
@@ -1082,7 +1083,12 @@ let state = {
 // ── INICIO ──────────────────────────────────────────────────
 async function init() {
   poblarSelectoresMes();
-  await Promise.all([loadData(), cargarBloqueos()]);
+  // A diferencia de getVNNOXData (externo, lento, sacado de aquí más
+  // arriba en esta misma sesión), getContratosScrolling solo lee una
+  // hoja propia del script — rápido y sin dependencias externas, seguro
+  // de cargar en cada login para que "Disponibles" cuente bien los
+  // espacios ocupados desde el primer momento.
+  await Promise.all([loadData(), cargarBloqueos(), cargarContratosScrollingGlobal()]);
   // getVNNOXData (adentro de cargarLedContratosGlobal) es la llamada más
   // pesada de todo el login: consulta VNNOX externo, ~5-6s en frío, y si
   // VNNOX está lento o caído (fuera de nuestro control) puede tardar
@@ -1243,6 +1249,8 @@ function onDataLoaded() {
   const msBtn    = document.getElementById('btnMultiSelect');
   if (invPPT)   invPPT.style.display   = t === 'inventario' ? 'block' : 'none';
   if (invExcel) invExcel.style.display = t === 'inventario' ? 'block' : 'none';
+  const scrMigrarBtn0 = document.getElementById('btnScrMigrar');
+  if (scrMigrarBtn0) scrMigrarBtn0.style.display = (t === 'inventario' && (_usuarioActual||'').toUpperCase()==='JORGE') ? 'block' : 'none';
   if (pptBtn)   pptBtn.style.display   = t === 'disponibles' ? 'block' : 'none';
   if (msBtn)    msBtn.style.display    = t === 'disponibles' ? 'block' : 'none';
   render();
@@ -1365,6 +1373,47 @@ function espaciosLEDDisponibles(v) {
 function esLEDtipo(v) { return (v.tipo || '').toUpperCase().indexOf('LED') >= 0; }
 function esLEDtipo_str(tipo) { return (tipo || '').toUpperCase().indexOf('LED') >= 0; }
 
+// Elementos "Totem Scroll- Metrovia" (o cualquier tipo que contenga
+// "Scroll") rotan hasta SCR_CAPACIDAD anunciantes en el mismo elemento
+// físico — mismo problema que resuelve LED arriba, mismo patrón de
+// solución (contar contratos activos contra un tope).
+const SCR_CAPACIDAD = 5;
+let _scrContratosGlobal = [];
+async function cargarContratosScrollingGlobal() {
+  try {
+    const res = await fetch(API_URL + '?action=getContratosScrolling', { cache: 'no-store' });
+    const json = await res.json();
+    if (json.ok) _scrContratosGlobal = json.contratos || [];
+  } catch (e) {}
+}
+function espaciosScrollingDisponibles(v) {
+  const ocupados = _scrContratosGlobal.filter(c => c.codigo === v.codigo && c.activo).length;
+  return Math.max(0, SCR_CAPACIDAD - ocupados);
+}
+function esScrollingTipo(v) { return (v.tipo || '').toUpperCase().indexOf('SCROLL') >= 0; }
+
+// Solo Jorge — botón visible únicamente en Inventario. Pasa cualquier
+// Totem Scroll contratado bajo el modelo antiguo (1 fila = 1 cliente en
+// la BITÁCORA) a la nueva estructura de Contratos_Scrolling. Segura de
+// correr más de una vez: el backend nunca migra dos veces el mismo código.
+async function migrarContratosScrollingUI() {
+  if (!confirm('¿Migrar contratos existentes de elementos Scrolling a la nueva estructura de anunciantes?')) return;
+  const btn = document.getElementById('btnScrMigrar');
+  btn.disabled = true; btn.textContent = '⏳ Migrando...';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'migrarContratosScrollingExistentes' }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error al migrar');
+    showToast('✅ ' + json.migrados + ' elemento(s) migrado(s)', 'success');
+    await cargarContratosScrollingGlobal();
+    await fetchFresh();
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '🔄 Migrar Scrolling';
+  }
+}
+
 // Reservas por vencer (bloqueo de 48h) no generaban ninguna alerta en
 // pantalla — solo llegaba un correo a Jorge y la ejecutiva dueña. Este
 // helper calcula lo mismo que ya usa el aviso por correo de "vence en
@@ -1414,6 +1463,13 @@ function getFiltered() {
           }
           return true;
         }
+        // Scrolling: igual que LED, la ocupación real vive en sus
+        // contratos (no en v.estado/v.termino, que quedan neutros tras
+        // migrar) — por ahora solo se filtra por "libre ahora mismo",
+        // sin proyectar espacios que se liberan en un mes futuro (eso
+        // requeriría comparar el fin de cada uno de sus hasta 5
+        // contratos, fuera de alcance de esta primera entrega).
+        if (esScrollingTipo(v)) return espaciosScrollingDisponibles(v) > 0;
         if (v.estado === 'DISPONIBLE' && !isBlocked(v.codigo)) return true;
         if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
           return v.termino.substring(0, 7) <= state.filterMesDisp;
@@ -1430,7 +1486,9 @@ function getFiltered() {
       // es por espacio/capacidad, no por estado binario).
       d = d.filter(v => esLEDtipo(v)
         ? espaciosLEDDisponibles(v) > 0
-        : (v.estado === 'DISPONIBLE' || (state.mostrarReservadasDisp && v.estado === 'RESERVADA')));
+        : esScrollingTipo(v)
+          ? espaciosScrollingDisponibles(v) > 0
+          : (v.estado === 'DISPONIBLE' || (state.mostrarReservadasDisp && v.estado === 'RESERVADA')));
     }
   }
   else if (state.tab === 'reservadas') d = d.filter(v => !esLEDtipo(v) && (v.estado === 'RESERVADA' || (v.estado === 'DISPONIBLE' && isBlocked(v.codigo))));
@@ -5083,6 +5141,8 @@ function switchTab(t) {
   if (invPPT)   invPPT.style.display   = t === 'inventario' ? 'block' : 'none';
   if (invExcel) invExcel.style.display = t === 'inventario' ? 'block' : 'none';
   if (invSel)   invSel.style.display   = (!isReadOnly() && t === 'inventario') ? 'block' : 'none';
+  const scrMigrarBtn = document.getElementById('btnScrMigrar');
+  if (scrMigrarBtn) scrMigrarBtn.style.display = (t === 'inventario' && (_usuarioActual||'').toUpperCase()==='JORGE') ? 'block' : 'none';
   if (t !== 'inventario') { multiSelectInvMode = false; selectedInv.clear(); }
   if (t !== 'disponibles' && t !== 'reservadas') { multiSelectMode = false; selectedVallas.clear(); updateFloatingBtn(); }
   if (t === 'reservadas' && !multiSelectMode) { selectedVallas.clear(); }
@@ -5290,7 +5350,15 @@ function renderCard(v) {
   }
   const efectivoReservada = v.estado === 'RESERVADA' || bloqueo;
   const esLEDv = (v.tipo || '').toUpperCase().indexOf('LED') >= 0;
-  const rBtn = esLEDv
+  const esScrollingV = esScrollingTipo(v);
+  const rBtn = esScrollingV
+    ? (function () {
+        const libres = espaciosScrollingDisponibles(v);
+        const ocupados = SCR_CAPACIDAD - libres;
+        return '<div style="font-size:11px;color:var(--accent);text-align:center;padding:4px;font-weight:700">🔄 ' + ocupados + '/' + SCR_CAPACIDAD + ' espacios ocupados</div>' +
+          '<button class="reserve-btn" onclick="event.stopPropagation();openModal(\'' + v.codigo + '\')">👥 Ver / agregar anunciantes</button>';
+      })()
+    : esLEDv
     ? (state.tab === 'disponibles'
         ? '<div style="font-size:11px;color:var(--accent);text-align:center;padding:6px;font-weight:700">📺 ' + espaciosLEDDisponibles(v) + ' espacios disponibles</div>'
         : '<div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Se contrata desde la pestaña LED</div>')
@@ -5515,6 +5583,202 @@ function renderPag(pages, total) {
 
 function goPage(p) { state.page = p; render(); window.scrollTo(0,0); }
 
+// ── SCROLLING: panel de anunciantes dentro del modal de la tarjeta ──
+// Mismo problema que resuelve el módulo LED (varios anunciantes en un
+// mismo elemento físico), pero sin pestaña nueva: el panel vive dentro
+// del modal que ya se abre al hacer clic en la tarjeta.
+function scrRenderAnunciantesPanel_(codigo) {
+  const activos = _scrContratosGlobal.filter(c => c.codigo === codigo && c.activo).sort((a,b)=>(a.orden||999)-(b.orden||999));
+  const libres = Math.max(0, SCR_CAPACIDAD - activos.length);
+  const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const lista = activos.length
+    ? activos.map(c => (
+        '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+            '<div>' +
+              '<div style="font-weight:700;font-size:13px">' + esc(c.cliente) + '</div>' +
+              '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + esc(c.ejecutiva || '—') + ' · ' + c.inicio + ' → ' + c.fin +
+                (c.valorMensual ? ' · $' + Number(c.valorMensual).toLocaleString() + '/mes' : '') + '</div>' +
+            '</div>' +
+            '<button onclick="scrCancelarContrato(\'' + c.id + '\',\'' + codigo + '\')" title="Cancelar" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--red);width:26px;height:26px;cursor:pointer;flex-shrink:0">🗑</button>' +
+          '</div>' +
+        '</div>'
+      )).join('')
+    : '<div style="text-align:center;padding:10px;color:var(--muted);font-size:12px">Sin anunciantes activos por ahora.</div>';
+  const btnAgregar = libres > 0
+    ? '<button onclick="abrirFormularioAnuncianteScrolling(\'' + codigo + '\')" style="width:100%;margin-top:8px;padding:10px;background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-weight:700;font-size:12.5px;cursor:pointer">+ Agregar anunciante</button>'
+    : '<div style="text-align:center;padding:8px;color:var(--muted);font-size:11px">Sin espacios libres — cancela uno para agregar otro.</div>';
+  return '<div class="scr-panel">' +
+    '<h4 style="margin-bottom:8px">🔄 Anunciantes · ' + activos.length + '/' + SCR_CAPACIDAD + ' espacios ocupados' + '</h4>' +
+    lista + btnAgregar +
+  '</div>';
+}
+
+async function scrCancelarContrato(id, codigo) {
+  if (!confirm('¿Cancelar este anunciante? El espacio queda libre de inmediato.')) return;
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'editarContratoScrolling', id, estado: 'CANCELADO' }) });
+    const json = await res.json();
+    if (!json.ok && json.error) throw new Error(json.error);
+    showToast('✅ Anunciante cancelado', 'success');
+    await cargarContratosScrollingGlobal();
+    openModal(codigo);
+  } catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
+
+let _scrPdfBase64 = null, _scrPdfFile = null;
+function abrirFormularioAnuncianteScrolling(codigo) {
+  const v = DATA.find(x => String(x.codigo).trim() === String(codigo).trim());
+  const today = new Date().toISOString().split('T')[0];
+  const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA']
+    .map(e => '<option>' + e + '</option>').join('');
+  document.getElementById('modalTitle').textContent = '🔄 Nuevo anunciante';
+  document.getElementById('modalSubtitle').textContent = codigo + (v ? ' · ' + esc(v.direccion).substring(0,50) : '');
+  document.getElementById('modalBody').innerHTML = `
+    <div class="contratar-form">
+      <button onclick="openModal('${codigo}')" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);padding:6px 12px;font-size:11px;cursor:pointer;margin-bottom:12px">‹ Volver a anunciantes</button>
+      <h4>👤 Contratación</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Cliente</label><input type="text" id="scr-cliente" placeholder="Nombre del cliente" oninput="checkScrForm()"></div>
+        <div class="form-group"><label>Ejecutiva</label><select id="scr-ejecutiva" onchange="checkScrForm()"><option value="">Seleccionar...</option>${execOpts}</select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Inicio</label><input type="date" id="scr-inicio" value="${today}" oninput="calcScrPeriodo()"></div>
+        <div class="form-group"><label>Fin</label><input type="date" id="scr-fin" oninput="calcScrPeriodo()"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Valor mensual (USD)</label><input type="number" id="scr-valor" placeholder="Ej: 400" oninput="checkScrForm()"></div>
+        <div class="form-group"><label>Período</label><input type="text" id="scr-periodo" readonly style="background:var(--surface2)"></div>
+      </div>
+      <h4>💼 Agencia/Comisión/Contratante</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Agencia contratante</label><input type="text" id="scr-agencia" placeholder="Nombre de agencia o 'Cliente directo'" oninput="checkScrForm()"></div>
+        <div class="form-group"><label>Comisión de agencia</label>
+          <select id="scr-comision" onchange="toggleScrComisionManual()">
+            <option value="">Seleccionar...</option>
+            <option value="0%">0%</option><option value="10%">10%</option>
+            <option value="15%">15%</option><option value="20%">20%</option>
+            <option value="manual">Manual...</option>
+          </select>
+          <input type="text" id="scr-comision-manual" placeholder="Ej: 12%" style="display:none;margin-top:6px" oninput="checkScrForm()">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Contratado por</label>
+        <select id="scr-contratadopor" onchange="toggleScrContratadoPorManual()">
+          <option value="">Seleccionar...</option>
+          <option value="Zazacorp">Zazacorp</option><option value="ALAC">ALAC</option>
+          <option value="Vea">Vea</option><option value="Otros">Otros</option>
+        </select>
+        <input type="text" id="scr-contratadopor-manual" placeholder="Especificar" style="display:none;margin-top:6px" oninput="checkScrForm()">
+      </div>
+      <div class="pdf-upload-area" id="scrPdfUploadArea" onclick="document.getElementById('scrPdfFileInput').click()">
+        📎 <span id="scrPdfFileName">${(_usuarioActual||'').toUpperCase()==='JORGE' ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
+      </div>
+      <input type="file" id="scrPdfFileInput" accept="application/pdf" style="display:none" onchange="handleScrPdfFile(event)">
+      <button id="btnScrConfirmar" onclick="confirmarContratoScrolling('${codigo}')" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:not-allowed;opacity:.5">🔄 Registrar anunciante</button>
+    </div>`;
+  _scrPdfBase64 = null; _scrPdfFile = null;
+  autoSetEjecutiva('scr-ejecutiva');
+  checkScrForm();
+}
+
+function handleScrPdfFile(e) {
+  const file = e.target.files[0]; if (!file) return;
+  _scrPdfFile = file;
+  document.getElementById('scrPdfFileName').textContent = '✓ ' + file.name;
+  const reader = new FileReader();
+  reader.onload = ev => { _scrPdfBase64 = ev.target.result.split(',')[1]; checkScrForm(); };
+  reader.readAsDataURL(file);
+}
+function toggleScrComisionManual() {
+  document.getElementById('scr-comision-manual').style.display = document.getElementById('scr-comision').value === 'manual' ? 'block' : 'none';
+  checkScrForm();
+}
+function getScrComision() {
+  const sel = document.getElementById('scr-comision')?.value;
+  return sel === 'manual' ? (document.getElementById('scr-comision-manual')?.value.trim() || '') : (sel || '');
+}
+function toggleScrContratadoPorManual() {
+  document.getElementById('scr-contratadopor-manual').style.display = document.getElementById('scr-contratadopor').value === 'Otros' ? 'block' : 'none';
+  checkScrForm();
+}
+function getScrContratadoPor() {
+  const sel = document.getElementById('scr-contratadopor')?.value;
+  return sel === 'Otros' ? (document.getElementById('scr-contratadopor-manual')?.value.trim() || '') : (sel || '');
+}
+function calcScrPeriodo() {
+  const inicio = document.getElementById('scr-inicio')?.value;
+  const fin    = document.getElementById('scr-fin')?.value;
+  if (inicio && fin && fin > inicio) {
+    const diffDias = Math.round((new Date(fin+'T00:00:00') - new Date(inicio+'T00:00:00')) / 86400000);
+    const meses = diffDias < 30 ? diffDias/30 : Math.round((diffDias/30)*2)/2;
+    const mesesTxt = (meses % 1 === 0) ? meses.toString() : meses.toFixed(1);
+    const per = document.getElementById('scr-periodo');
+    if (per) per.value = mesesTxt + (meses===1?' MES':' MESES');
+  }
+  checkScrForm();
+}
+function checkScrForm() {
+  const esAdminActual = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const camposBasicos = document.getElementById('scr-cliente')?.value?.trim() &&
+             document.getElementById('scr-ejecutiva')?.value &&
+             document.getElementById('scr-inicio')?.value &&
+             document.getElementById('scr-fin')?.value;
+  const ok = esAdminActual
+    ? camposBasicos
+    : camposBasicos &&
+      document.getElementById('scr-agencia')?.value?.trim() &&
+      getScrComision() && getScrContratadoPor() && _scrPdfBase64;
+  const btn = document.getElementById('btnScrConfirmar');
+  if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; btn.style.cursor = ok ? 'pointer' : 'not-allowed'; }
+}
+
+async function confirmarContratoScrolling(codigo) {
+  const cliente   = document.getElementById('scr-cliente').value.trim().toUpperCase();
+  const ejecutiva = document.getElementById('scr-ejecutiva').value;
+  const inicio    = document.getElementById('scr-inicio').value;
+  const fin       = document.getElementById('scr-fin').value;
+  const valorMensual = document.getElementById('scr-valor').value;
+  const periodo   = document.getElementById('scr-periodo').value;
+  const agenciaContratante = document.getElementById('scr-agencia').value.trim();
+  const comisionAgencia = getScrComision();
+  const contratadoPor = getScrContratadoPor();
+
+  const esAdminActual = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const faltantes = [];
+  if (!cliente) faltantes.push('cliente');
+  if (!ejecutiva) faltantes.push('ejecutiva');
+  if (!inicio) faltantes.push('fecha inicio');
+  if (!fin) faltantes.push('fecha fin');
+  if (!esAdminActual) {
+    if (!agenciaContratante) faltantes.push('agencia contratante');
+    if (!comisionAgencia) faltantes.push('comisión de agencia');
+    if (!contratadoPor) faltantes.push('contratado por');
+    if (!_scrPdfBase64) faltantes.push('PDF de la orden de contratación');
+  }
+  if (faltantes.length) { showToast('Falta completar: ' + faltantes.join(', '), 'info'); return; }
+  if (fin <= inicio) { showToast('❌ La fecha fin debe ser posterior a la fecha de inicio', 'error'); return; }
+
+  const btn = document.getElementById('btnScrConfirmar');
+  btn.disabled = true; btn.textContent = '⏳ Registrando...';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'registrarContratoScrolling', codigo, cliente, ejecutiva, inicio, fin,
+      valorMensual, periodo, agenciaContratante, comisionAgencia, contratadoPor,
+      pdfBase64: _scrPdfBase64, pdfNombre: _scrPdfFile ? _scrPdfFile.name : 'orden.pdf'
+    })});
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ Anunciante registrado', 'success');
+    await cargarContratosScrollingGlobal();
+    openModal(codigo);
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = '🔄 Registrar anunciante';
+  }
+}
+
 // ── MODAL ────────────────────────────────────────────────────
 let _modalCodigoActual = null;
 
@@ -5545,7 +5809,9 @@ function openModal(codigo) {
 
   let rSec = '';
   const bloqueoActivo = isBlocked(v.codigo);
-  if (esLEDtipo(v)) {
+  if (esScrollingTipo(v)) {
+    rSec = scrRenderAnunciantesPanel_(v.codigo);
+  } else if (esLEDtipo(v)) {
     rSec = '<div style="text-align:center;padding:14px;color:var(--muted);font-size:12px">📺 Este elemento se contrata desde la pestaña <strong style="color:var(--accent)">LED</strong>, no desde acá.</div>';
   } else if (v.estado === 'DISPONIBLE' && bloqueoActivo) {
     rSec = '<div class="block-info"><h5>🔒 BLOQUEADA TEMPORALMENTE</h5>' +
@@ -6778,8 +7044,16 @@ async function confirmarMultiContratacion() {
     const json = await res.json();
     if (json.error) throw new Error(json.error);
 
-    showToast('✅ ' + codigos.length + ' vallas contratadas — email enviado', 'success');
-    mostrarCelebracionZaza('contratacion-multi', '¡Contratación múltiple exitosa!', 'Se envió el email a administración.', [
+    // El backend ahora dice de verdad si el correo falló (antes se
+    // asumía "email enviado" sin confirmarlo — si el envío fallaba en
+    // silencio, nadie se enteraba hasta que alguien notaba que nunca
+    // llegó el correo).
+    if (json.avisoCorreo) {
+      showToast('✅ ' + codigos.length + ' vallas contratadas — ⚠️ ' + json.avisoCorreo, 'info');
+    } else {
+      showToast('✅ ' + codigos.length + ' vallas contratadas — email enviado', 'success');
+    }
+    mostrarCelebracionZaza('contratacion-multi', '¡Contratación múltiple exitosa!', json.avisoCorreo ? 'Se guardó bien, pero el correo de confirmación falló.' : 'Se envió el email a administración.', [
       { label: 'Cantidad', value: codigos.length },
       { label: 'Cliente', value: cliente }
     ]);
@@ -7488,8 +7762,14 @@ async function confirmarContratacion(codigo) {
     const json = await res.json();
     if (json.error) throw new Error(json.error);
 
-    showToast('✅ Valla contratada — email enviado a administración', 'success');
-    mostrarCelebracionZaza('contratacion', '¡Valla contratada!', 'Se envió el email a administración.', [
+    // El backend ahora dice de verdad si el correo falló (antes se
+    // asumía "email enviado" sin confirmarlo).
+    if (json.avisoCorreo) {
+      showToast('✅ Valla contratada — ⚠️ ' + json.avisoCorreo, 'info');
+    } else {
+      showToast('✅ Valla contratada — email enviado a administración', 'success');
+    }
+    mostrarCelebracionZaza('contratacion', '¡Valla contratada!', json.avisoCorreo ? 'Se guardó bien, pero el correo de confirmación falló.' : 'Se envió el email a administración.', [
       { label: 'Código', value: codigo },
       { label: 'Cliente', value: cliente }
     ]);
