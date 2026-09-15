@@ -855,12 +855,14 @@ function aplicarPermisoInstalaciones() {
   if (tab) tab.style.display = _usuarioActual ? '' : 'none';
 }
 
-// El Asistente de IA queda habilitado solo para Jorge, por pedido
-// explícito — el gate real está también en el backend (iaConsultar
-// exige sesion.user === 'JORGE'), esto solo decide si el botón
-// flotante se muestra en pantalla.
+// El Asistente de IA — antes solo Jorge, ahora abierto además a este
+// grupo (2026-09-15, tras probar que la clave de Gemini aguanta varias
+// preguntas a la vez sin problema). El gate real está también en el
+// backend (iaConsultar tiene la misma lista) — esto solo decide si el
+// botón flotante se muestra en pantalla.
+const IA_USUARIOS_AUTORIZADOS = new Set(['JORGE', 'VERONICA TERAN', 'RICARDO', 'LORENA', 'ZULIA', 'SASKYA', 'SHAYRA']);
 function aplicarPermisoAsistente() {
-  const tieneAcceso = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const tieneAcceso = IA_USUARIOS_AUTORIZADOS.has((_usuarioActual || '').toUpperCase());
   const btn = document.getElementById('iaFabBtn');
   const panel = document.getElementById('iaPanel');
   if (btn) btn.style.display = tieneAcceso ? 'flex' : 'none';
