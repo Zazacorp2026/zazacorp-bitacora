@@ -4106,10 +4106,21 @@ function cgTitleCase_(v) {
 const CG_PAGINAS_EN_PARALELO = 5;
 async function cgPedirPaginaFacturacion_(pagina, forzar) {
   const url = API_URL + '?action=cgGetFacturacion' + (forzar ? '&forzar=1' : '') + '&pagina=' + pagina;
-  const res = await fetch(url, { cache: 'no-store' });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'Error al cargar facturación');
-  return json;
+  // Con 5 páginas pidiéndose en paralelo, Apps Script a veces entrega
+  // una sola mal (la respuesta se redirige a una URL temporal que puede
+  // no llegar a tiempo) — sin esto, esa página fallida tumbaba TODA la
+  // carga de facturación de una. Un reintento resuelve la mayoría.
+  for (let intento = 0; intento < 2; intento++) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Error al cargar facturación');
+      return json;
+    } catch (e) {
+      if (intento === 1) throw e;
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
 }
 async function cgCargarDatos(forzar) {
   const progresoEl = document.querySelector('#cgBoard .empty p');
@@ -4153,13 +4164,28 @@ async function cgCargarDatos(forzar) {
   cgAllMarcas = [...new Set(cgDataCache.map(d => d['Marca']).filter(Boolean))].sort();
 }
 
+// Evita que 2 llamadas se disparen al mismo tiempo (ej. entrar dos
+// veces seguidas a la pestaña, o "Actualizar datos" mientras la carga
+// inicial todavía está en curso) — sin esto, cada una lanzaba su propio
+// grupo de 5 páginas en paralelo, duplicando la carga sobre Apps
+// Script (10 peticiones en vuelo a la vez en vez de 5) y aumentando el
+// riesgo de que alguna termine fallando por la sobrecarga. Ahora, si ya
+// hay una carga en curso, la segunda llamada simplemente espera esa
+// misma en vez de arrancar otra.
+let cgCargaEnCurso_ = null;
+function cgCargarDatosUnaVez_(forzar) {
+  if (cgCargaEnCurso_) return cgCargaEnCurso_;
+  cgCargaEnCurso_ = cgCargarDatos(forzar).finally(() => { cgCargaEnCurso_ = null; });
+  return cgCargaEnCurso_;
+}
+
 // Fuerza saltarse el caché de 10 min del servidor — para cuando Jorge
 // acaba de cargar facturas nuevas y quiere verlas ya, sin esperar.
 async function cgActualizarDatos() {
   const btn = document.getElementById('cgBtnActualizar');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Actualizando...'; }
   try {
-    await cgCargarDatos(true);
+    await cgCargarDatosUnaVez_(true);
     cgSincronizarFiltrosUI();
     cgRepintarTodo();
     showToast('✅ Datos actualizados', 'success');
@@ -5018,7 +5044,7 @@ async function renderComercialGeneral(container) {
     });
   }
   try {
-    if (!cgDataCache) await cgCargarDatos();
+    if (!cgDataCache) await cgCargarDatosUnaVez_();
   } catch (e) {
     document.getElementById('cgBoard').innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>No se pudo cargar la facturación</p><p style="color:var(--muted);font-size:12px">' + esc(e.message) + '</p></div>';
     return;
