@@ -9315,7 +9315,16 @@ function iaScrollAbajo_() {
 // dentro de DATA según su estado real (disponible/reservado/
 // contratado), y las coordenadas del Mapa no aportan nada útil para
 // que un modelo de lenguaje razone sobre ellas.
-const IA_TOPE_POR_CATEGORIA = 600;
+// Antes en 600 — más alto que el inventario completo (~544), así que
+// en la práctica nunca recortaba nada: cada pregunta le mandaba a
+// Gemini el inventario ENTERO sin importar qué tan puntual fuera la
+// pregunta. Eso hacía el contexto innecesariamente pesado y lento — y
+// con más gente usando el botón (2026-09-15), más riesgo de que una
+// petición así de grande falle. 50 por categoría sigue siendo una
+// muestra generosa (además el total real de cada categoría se incluye
+// aparte en el texto, así Gemini sabe que hay más aunque no los vea
+// todos).
+const IA_TOPE_POR_CATEGORIA = 50;
 
 function iaFmtValla_(v) {
   return v.codigo + ' | ' + (v.lugar || '') + ' - ' + (v.direccion || '') + ' | ' + (v.tipo || '') + ' ' + (v.medidas || '') + ' | $' + (v.valor || 0) + '/mes';
@@ -9391,7 +9400,17 @@ async function iaEnviarMensaje() {
 
   try {
     const contexto = await iaConstruirContexto_();
-    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'iaConsultar', pregunta: pregunta, contexto: contexto }) });
+    // "Failed to fetch" (tropiezo de red a mitad de la petición, antes
+    // de recibir cualquier respuesta) se ve de vez en cuando — un
+    // reintento automático resuelve la mayoría de estos casos sin que
+    // la persona tenga que volver a escribir su pregunta.
+    let res;
+    try {
+      res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'iaConsultar', pregunta: pregunta, contexto: contexto }) });
+    } catch (e1) {
+      await new Promise(r => setTimeout(r, 1000));
+      res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'iaConsultar', pregunta: pregunta, contexto: contexto }) });
+    }
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error al consultar el asistente');
     iaMensajes.push({ rol: 'ia', texto: json.respuesta });
