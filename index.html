@@ -4128,6 +4128,9 @@ async function cgCargarDatos(forzar) {
   const headers = primera.headers || [];
   const totalPaginas = primera.totalPaginas || 1;
   const porPagina = [primera.rows || []];
+  // Cuándo se modificó por última vez el archivo de facturación (dato del
+  // servidor) — se muestra arriba del dashboard y se guarda con la copia.
+  const metaNueva = { archivoActualizado: primera.archivoActualizado || 0, cacheActualizado: primera.cacheActualizado || '' };
 
   if (totalPaginas > 1) {
     if (progresoEl) progresoEl.textContent = 'Cargando facturación... (1/' + totalPaginas + ')';
@@ -4150,9 +4153,44 @@ async function cgCargarDatos(forzar) {
   }
 
   const rows = [].concat(...porPagina);
-  // Se reconstruyen los objetos una sola vez acá — ninguna otra función
-  // cg* que lee d['Ejecutiva'], d['Cliente'], etc. se entera de que el
-  // viaje vino paginado/en paralelo ni en formato {headers, rows}.
+  cgAplicarDatos_(headers, rows);
+  cgMetaFacturacion_ = metaNueva;
+  cgIdbGuardar_(headers, rows, metaNueva); // para abrir al instante la próxima vez (ver cgIdbLeer_)
+}
+
+// Fechas de la última actualización de la facturación (ver cgCargarDatos).
+let cgMetaFacturacion_ = null;
+function cgFmtFechaHora_(ms) {
+  return new Date(ms).toLocaleString('es-EC', { timeZone: 'America/Guayaquil', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+}
+// Último mes con facturas en los datos (ej. "Septiembre 2026"), para saber
+// hasta dónde llega la facturación aunque no se sepa cuándo se editó el archivo.
+function cgUltimoPeriodoFacturado_() {
+  let mejor = 0;
+  (cgDataCache || []).forEach(d => {
+    const a = Number(d['Año']), m = Number(d['Mes']);
+    if (a && m >= 1 && m <= 12 && a * 100 + m > mejor) mejor = a * 100 + m;
+  });
+  return mejor ? CG_MONTH_NAMES[mejor % 100] + ' ' + Math.floor(mejor / 100) : '';
+}
+function cgPintarFechaFacturacion_() {
+  const el = document.getElementById('cgFechaFacturacion');
+  if (!el) return;
+  const m = cgMetaFacturacion_;
+  const partes = [];
+  if (m && m.archivoActualizado) partes.push('📅 Archivo de facturación actualizado: <b>' + cgFmtFechaHora_(m.archivoActualizado) + '</b>');
+  else if (m && m.cacheActualizado) partes.push('📅 Datos leídos del archivo el: <b>' + cgFmtFechaHora_(new Date(m.cacheActualizado).getTime()) + '</b>');
+  const periodo = cgUltimoPeriodoFacturado_();
+  if (periodo) partes.push('Facturas hasta: <b>' + esc(periodo) + '</b>');
+  el.innerHTML = partes.join(' &nbsp;·&nbsp; ');
+}
+
+// Se reconstruyen los objetos una sola vez acá — ninguna otra función
+// cg* que lee d['Ejecutiva'], d['Cliente'], etc. se entera de que el
+// viaje vino paginado/en paralelo ni en formato {headers, rows}. Sirve
+// igual para datos recién bajados del servidor que para los guardados
+// en el navegador (cgIdbLeer_).
+function cgAplicarDatos_(headers, rows) {
   cgDataCache = rows.map(row => {
     const obj = {};
     headers.forEach((h, i) => { obj[h] = row[i]; });
@@ -4162,6 +4200,88 @@ async function cgCargarDatos(forzar) {
   cgAllEjecutivas = [...new Set(cgDataCache.map(d => d['Ejecutiva']).filter(Boolean))].sort();
   cgAllClientes = [...new Set(cgDataCache.map(d => d['Cliente']).filter(Boolean))].sort();
   cgAllMarcas = [...new Set(cgDataCache.map(d => d['Marca']).filter(Boolean))].sort();
+}
+
+// ── Copia local de la facturación (IndexedDB) ────────────────────
+// Comercial General tardaba en abrir porque CADA vez que se recargaba la
+// página tenía que volver a bajar las ~11 páginas de facturación (miles
+// de filas) desde Apps Script antes de mostrar nada. Ahora la última
+// copia queda guardada en el navegador: al abrir el módulo se muestra de
+// inmediato con esa copia y, por detrás, se baja la versión al día (ver
+// cgRefrescarEnSegundoPlano_). IndexedDB y no localStorage porque la
+// facturación pesa varios MB y localStorage se queda corto (~5MB).
+// Si el navegador no permite IndexedDB (ej. modo privado), todo esto se
+// salta sin romper nada — simplemente se carga como siempre.
+const CG_IDB_NOMBRE = 'zz_cache_facturacion';
+const CG_IDB_CLAVE = 'facturacion_v1';
+function cgIdbAbrir_() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) { reject(new Error('sin IndexedDB')); return; }
+    const req = indexedDB.open(CG_IDB_NOMBRE, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore('kv'); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function cgIdbLeer_() {
+  try {
+    const db = await cgIdbAbrir_();
+    return await new Promise((resolve) => {
+      const r = db.transaction('kv', 'readonly').objectStore('kv').get(CG_IDB_CLAVE);
+      r.onsuccess = () => resolve(r.result || null);
+      r.onerror = () => resolve(null);
+    });
+  } catch (e) { return null; }
+}
+async function cgIdbGuardar_(headers, rows, meta) {
+  try {
+    if (!rows || !rows.length) return;
+    const db = await cgIdbAbrir_();
+    db.transaction('kv', 'readwrite').objectStore('kv').put({ headers: headers, rows: rows, ts: Date.now(), meta: meta || null }, CG_IDB_CLAVE);
+  } catch (e) { /* no crítico: solo se pierde la copia local */ }
+}
+function cgHaceCuanto_(ts) {
+  const min = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  if (min < 1) return 'hace un momento';
+  if (min < 60) return 'hace ' + min + ' min';
+  const h = Math.round(min / 60);
+  if (h < 48) return 'hace ' + h + ' h';
+  return 'hace ' + Math.round(h / 24) + ' días';
+}
+
+// Baja la versión al día MIENTRAS el usuario ya está viendo la copia
+// guardada, y la repinta cuando llega. Si falla, se queda con lo que ya
+// se ve y lo avisa — no reemplaza los datos por un error.
+async function cgRefrescarEnSegundoPlano_(tsCopia) {
+  const marcar = txt => { const el = document.getElementById('cgEstadoDatos'); if (el) el.textContent = txt; };
+  marcar('🕒 Mostrando la última copia guardada (' + cgHaceCuanto_(tsCopia) + ') · actualizando...');
+  try {
+    await cgCargarDatosUnaVez_();
+    if (!document.getElementById('cgBoard')) return; // el usuario ya salió del módulo
+    cgRefrescarOpcionesFiltros_();
+    cgSincronizarFiltrosUI();
+    cgRepintarTodo();
+    cgPintarFechaFacturacion_();
+    marcar('✅ Datos al día');
+    setTimeout(() => { if (document.getElementById('cgEstadoDatos')?.textContent === '✅ Datos al día') marcar(''); }, 4000);
+  } catch (e) {
+    marcar('⚠️ No se pudo actualizar — mostrando la última copia guardada (' + cgHaceCuanto_(tsCopia) + '). Toca "Actualizar datos" para reintentar.');
+  }
+}
+
+// Si en los datos nuevos apareció un año o un tipo de elemento que no
+// estaba en la copia guardada, agrégalos a los filtros sin perder la
+// selección actual (el resto de los filtros se sincroniza aparte).
+function cgRefrescarOpcionesFiltros_() {
+  const rehacer = (id, valores, etiqueta) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const actual = sel.value;
+    sel.innerHTML = '<option value="">Todos</option>' + valores.map(v => '<option value="' + esc(v) + '">' + esc(etiqueta ? etiqueta(v) : v) + '</option>').join('');
+    sel.value = actual;
+  };
+  rehacer('cgFilterYear', [...new Set(cgDataCache.map(d => d['Año']))].filter(Boolean).sort());
+  rehacer('cgFilterTipo', [...new Set(cgDataCache.map(d => d['Tipo de Elemento']))].filter(Boolean).sort());
 }
 
 // Evita que 2 llamadas se disparen al mismo tiempo (ej. entrar dos
@@ -4188,6 +4308,7 @@ async function cgActualizarDatos() {
     await cgCargarDatosUnaVez_(true);
     cgSincronizarFiltrosUI();
     cgRepintarTodo();
+    cgPintarFechaFacturacion_();
     showToast('✅ Datos actualizados', 'success');
   } catch (e) {
     showToast('❌ Error: ' + e.message, 'error');
@@ -5043,14 +5164,28 @@ async function renderComercialGeneral(container) {
       document.head.appendChild(s);
     });
   }
+  // Si hay una copia guardada en el navegador (ver cgIdbLeer_), se muestra
+  // ya mismo y se actualiza por detrás — así el módulo abre al instante en
+  // vez de esperar las ~11 páginas desde Apps Script. Solo la PRIMERA vez
+  // en un navegador (sin copia) toca esperar la carga completa.
+  let tsCopiaGuardada = 0;
   try {
-    if (!cgDataCache) await cgCargarDatosUnaVez_();
+    if (!cgDataCache) {
+      const copia = await cgIdbLeer_();
+      if (copia && Array.isArray(copia.headers) && Array.isArray(copia.rows) && copia.rows.length) {
+        cgAplicarDatos_(copia.headers, copia.rows);
+        cgMetaFacturacion_ = copia.meta || null;
+        tsCopiaGuardada = copia.ts || Date.now();
+      } else {
+        await cgCargarDatosUnaVez_();
+      }
+    }
   } catch (e) {
     document.getElementById('cgBoard').innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>No se pudo cargar la facturación</p><p style="color:var(--muted);font-size:12px">' + esc(e.message) + '</p></div>';
     return;
   }
 
-  const years = [...new Set(cgDataCache.map(d => d['Año']))].filter(Boolean).sort();
+  const years =[...new Set(cgDataCache.map(d => d['Año']))].filter(Boolean).sort();
   const tipos = [...new Set(cgDataCache.map(d => d['Tipo de Elemento']))].filter(Boolean).sort();
   const monthOpts = ['<option value="">Todos</option>'];
   for (let m = 1; m <= 12; m++) monthOpts.push('<option value="' + m + '">' + CG_MONTH_NAMES[m] + '</option>');
@@ -5081,6 +5216,8 @@ async function renderComercialGeneral(container) {
       '</div>' +
     '</div>' +
     '<div class="cg-chips-row" id="cgChipsRow"></div>' +
+    '<div id="cgFechaFacturacion" style="font-size:12px;color:var(--text);margin:0 0 4px"></div>' +
+    '<div id="cgEstadoDatos" style="font-size:11px;color:var(--muted);margin:0 0 8px;min-height:14px"></div>' +
     '<div class="cg-kpis">' +
       '<div class="cg-kpi-card"><span class="cg-kpi-label">Neto Total</span><span class="cg-kpi-value" id="cgKpiNeto">—</span></div>' +
       '<div class="cg-kpi-card" style="border-left-color:var(--accent)"><span class="cg-kpi-label">Bruto Total</span><span class="cg-kpi-value" id="cgKpiBruto">—</span></div>' +
@@ -5124,14 +5261,22 @@ async function renderComercialGeneral(container) {
       '<div style="max-height:460px;overflow:auto;border-top:1px solid var(--border)"><table class="cg-table cg-sticky-head"><thead><tr><th>Cliente / Marca</th><th>Ejecutiva</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th><th style="text-align:right">% del grupo</th></tr></thead><tbody id="cgTablaDetalleEjBody"></tbody></table></div>' +
     '</div>';
 
-  document.addEventListener('click', function cgCerrarPanelFuera(e) {
-    const panel = document.getElementById('cgEjecutivaPanel');
-    if (panel && !e.target.closest('.cg-filter-group')) panel.style.display = 'none';
-    if (!e.target.closest('.cg-multi-select')) document.querySelectorAll('.cg-multi-panel').forEach(p => p.classList.remove('open'));
-  });
+  // Antes este listener se volvía a agregar CADA vez que se entraba al
+  // módulo (uno más por cada visita, todos haciendo lo mismo en cada
+  // clic de la página) — ahora se instala una sola vez.
+  if (!window._cgCerrarPanelFueraInstalado) {
+    window._cgCerrarPanelFueraInstalado = true;
+    document.addEventListener('click', function cgCerrarPanelFuera(e) {
+      const panel = document.getElementById('cgEjecutivaPanel');
+      if (panel && !e.target.closest('.cg-filter-group')) panel.style.display = 'none';
+      if (!e.target.closest('.cg-multi-select')) document.querySelectorAll('.cg-multi-panel').forEach(p => p.classList.remove('open'));
+    });
+  }
 
   cgSincronizarFiltrosUI();
   cgRepintarTodo();
+  cgPintarFechaFacturacion_();
+  if (tsCopiaGuardada) cgRefrescarEnSegundoPlano_(tsCopiaGuardada);
 }
 
 function switchTab(t) {
