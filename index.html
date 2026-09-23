@@ -6024,7 +6024,14 @@ function openModal(codigo) {
   const bloqueo = isBlocked(v.codigo) || (v.bloqueo_expira ? {expira: v.bloqueo_expira, ejecutiva: v.bloqueo_ejecutiva} : null);
   const seg2Cliente = esc(v.reserva2_cliente) || '';
   const seg2Ejec = esc(v.reserva2_ejecutiva) || '';
-  const seg2Badge = seg2Cliente ? '<div class="segunda-badge">🔔 2ª reserva en cola: ' + seg2Cliente + ' (' + seg2Ejec + ')</div>' : '';
+  // Este badge es SOLO para la cola de "segunda reserva" (detrás de una
+  // reserva activa de 48h) — RESERVA2_* se reusa también para la
+  // pre-reserva de un contrato (ver el badge "Pre-reserva registrada" más
+  // abajo, único gate correcto: v.estado === 'CONTRATADA'). Sin este
+  // "&& v.estado === 'RESERVADA'" aquí, una valla CONTRATADA con
+  // pre-reserva mostraba los DOS avisos a la vez hablando del mismo
+  // cliente en cola, como si fueran dos colas distintas.
+  const seg2Badge = (seg2Cliente && v.estado === 'RESERVADA') ? '<div class="segunda-badge">🔔 2ª reserva en cola: ' + seg2Cliente + ' (' + seg2Ejec + ')</div>' : '';
 
   // Visor con zoom + arrastre
   const fotoVisor = fotoLocal
