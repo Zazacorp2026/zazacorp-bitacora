@@ -9610,7 +9610,22 @@ async function iaEnviarMensaje() {
       await new Promise(r => setTimeout(r, 1000));
       res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'iaConsultar', pregunta: pregunta, contexto: contexto }) });
     }
-    const json = await res.json();
+    // "Unexpected token '<'... is not valid JSON": Apps Script a veces
+    // entrega una respuesta lenta/pesada a través de una URL de
+    // redirección temporal que puede fallar en el camino — llega una
+    // página HTML de error en vez del JSON esperado, aunque la petición
+    // en sí sí haya llegado (por eso el catch de arriba, que es para
+    // fallos de RED, no lo agarra). Un segundo intento casi siempre lo
+    // resuelve, así que se reintenta una vez antes de mostrar el error
+    // ilegible tal cual.
+    let json;
+    try {
+      json = await res.json();
+    } catch (eParse) {
+      await new Promise(r => setTimeout(r, 1200));
+      res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'iaConsultar', pregunta: pregunta, contexto: contexto }) });
+      json = await res.json();
+    }
     if (!json.ok) throw new Error(json.error || 'Error al consultar el asistente');
     iaMensajes.push({ rol: 'ia', texto: json.respuesta });
   } catch (e) {
