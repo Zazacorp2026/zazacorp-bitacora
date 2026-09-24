@@ -7277,7 +7277,14 @@ async function confirmarMultiContratacion() {
 async function liberarValla(codigo) {
   const pin = prompt('🔐 PIN de administrador para liberar valla:');
   if (pin === null) return;
-  if (!(await checkAdminPin(pin))) { showToast('❌ PIN incorrecto', 'error'); return; }
+  // FIX (2026-09-23): antes se validaba el PIN con una llamada aparte
+  // (checkAdminPin) ANTES de mostrar este diálogo — eso hacía esperar
+  // un viaje completo a Apps Script solo para poder preguntar "¿seguro
+  // que quieres liberar?". El backend de liberarValla YA valida el PIN
+  // por su cuenta (nxCheckAdminPin adentro), así que esa llamada era
+  // redundante — se quita y el diálogo aparece de inmediato. Si el PIN
+  // está mal, el error real llega recién al confirmar, en la única
+  // llamada que hace falta.
   if (!confirm('¿Seguro que deseas liberar ' + codigo + '? Si no hay nadie en cola quedará DISPONIBLE; si hay una pre-reserva o segunda reserva esperando, se activará para ese cliente en su lugar.')) return;
 
   showToast('⏳ Liberando valla...', 'info');
@@ -8607,14 +8614,40 @@ function showToast(msg, type = 'info') {
 const ADMIN_PIN  = null; // el PIN real vive solo en el backend (Code.gs)
 async function checkAdminPin(pin) {
   if (!pin) return false;
+  // Antes iba por GET con el PIN en la URL — mismo motivo que el
+  // login, ahora va en el cuerpo.
+  //
+  // FIX (2026-09-24): al reintento de ayer le faltaba un límite de
+  // tiempo — si la petición se quedaba "Pendiente" sin llegar a fallar
+  // ni a responder (el mismo patrón que se vio y arregló en Report),
+  // esta función se quedaba esperando para siempre sin reintentar ni
+  // avisar nada. Ahora cada intento aborta solo a los 12s si no hay
+  // respuesta, para poder reintentar (o rendirse) en vez de colgarse.
+  const intentar = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    try {
+      const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'nxCheckAdminPin', pin }), signal: controller.signal });
+      const data = await res.json();
+      return !!data.ok;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
   try {
-    // Antes iba por GET con el PIN en la URL — mismo motivo que el
-    // login, ahora va en el cuerpo.
-    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'nxCheckAdminPin', pin }) });
-    const data = await res.json();
-    return !!data.ok;
+    return await intentar();
   } catch (e) {
-    return false;
+    // FIX (2026-09-23): un fallo de red o una respuesta que no llegó
+    // como JSON válido ("Unexpected token '<'...", el mismo patrón que
+    // ya se vio en el Asistente IA) se estaba interpretando como "PIN
+    // incorrecto" — aunque el PIN escrito fuera el correcto y solo
+    // hubiera tropezado la ENTREGA de la respuesta, no la verificación
+    // en sí. Se reintenta una vez antes de decir que el PIN está mal.
+    try {
+      return await intentar();
+    } catch (e2) {
+      return false;
+    }
   }
 }
 const BLOCK_HOURS = 48; // horas laborales (sin contar sábado ni domingo)
