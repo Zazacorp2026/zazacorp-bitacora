@@ -1506,7 +1506,18 @@ function getFiltered() {
   );
   if (state.filterCiudad.size)    d = d.filter(v => state.filterCiudad.has(v.lugar));
   if (state.filterTipo.size)      d = d.filter(v => state.filterTipo.has(v.tipo));
-  if (state.filterEjecutiva.size) d = d.filter(v => state.filterEjecutiva.has(v.ejecutiva));
+  // FIX (2026-09-25): una valla RESERVADA guarda a su ejecutiva en
+  // v.ejecutiva_reserva (o v.bloqueo_ejecutiva si es un bloqueo de
+  // 48h) — v.ejecutiva es solo para contratos activos y queda vacío en
+  // una reserva. El filtro solo revisaba v.ejecutiva, así que ninguna
+  // valla reservada coincidía nunca con el filtro, aunque sí tuviera
+  // ejecutiva asignada (se veía bien en la tarjeta/detalle, que sí
+  // revisan los 3 campos — mismo patrón que se usa acá ahora).
+  if (state.filterEjecutiva.size) d = d.filter(v =>
+    state.filterEjecutiva.has(v.ejecutiva) ||
+    state.filterEjecutiva.has(v.ejecutiva_reserva) ||
+    state.filterEjecutiva.has(v.bloqueo_ejecutiva)
+  );
   if (state.filterCliente.size)   d = d.filter(v => state.filterCliente.has(v.cliente));
   return d;
 }
