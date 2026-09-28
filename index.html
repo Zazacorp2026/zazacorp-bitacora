@@ -806,9 +806,12 @@ function aplicarPermisoDashboard() {
 }
 
 // El Cotizador y el Pipeline quedan habilitados para usuarios autorizados.
-// Jorge conserva acceso total; Ricardo puede usar el módulo con las reglas
-// del backend: ve sus cotizaciones y su pipeline, salvo permisos admin.
-const USUARIOS_COTIZADOR_AUTORIZADOS = ['JORGE', 'RICARDO'];
+// Jorge conserva acceso total. FEATURE (2026-09-28): se abre además
+// para Shayra, Saskya, Lorena, Verónica Terán, Zulia, Verónica Triviño
+// y Pamela — cada una ve/gestiona solo sus propias cotizaciones (el
+// backend, QZ_USUARIOS_AUTORIZADOS en Code.gs, ya lo exige de su lado,
+// esto solo decide si la pestaña se muestra).
+const USUARIOS_COTIZADOR_AUTORIZADOS = ['JORGE', 'RICARDO', 'SHAYRA', 'SASKYA', 'LORENA', 'VERONICA TERAN', 'ZULIA', 'VERONICA TRIVINO', 'PAMELA LARA'];
 const USUARIOS_COMERCIAL_GENERAL_AUTORIZADOS = ['JORGE', 'RICARDO', 'VERONICA TERAN'];
 
 function aplicarPermisoCotizador() {
@@ -2502,7 +2505,7 @@ function qzEsAdmin() { return (_usuarioActual || '').toUpperCase() === 'JORGE'; 
 // para decidir qué botones mostrar; el servidor vuelve a revisar esto
 // por su cuenta antes de aprobar de verdad, así que no pasa nada si
 // alguien manipula esto en el navegador.
-const QZ_APROBADORES_RESTRINGIDOS_FRONT = { 'VERONICA TERAN': ['SASKYA', 'SHAYRA'] };
+const QZ_APROBADORES_RESTRINGIDOS_FRONT = { 'VERONICA TERAN': ['SASKYA', 'SHAYRA', 'VERONICA TRIVINO', 'PAMELA LARA'] };
 function qzPuedeAprobarEsta_(c) {
   if (qzEsAdmin()) return true;
   const u = (_usuarioActual || '').toUpperCase();
