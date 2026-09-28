@@ -2056,9 +2056,13 @@ async function qzAprobarPin() {
 // dueña de la cotización, así se entera aunque no esté mirando la
 // pantalla en ese momento.
 async function qzResolverPendientePin(cotId, decision) {
+  // El campo de PIN solo existe en pantalla para Jorge (admin) — un
+  // aprobador restringido (p.ej. Verónica Terán) no lo tiene, así que
+  // acá pinInput da null y no hay que exigir nada; el servidor decide
+  // si esa sesión está autorizada sin PIN.
   const pinInput = document.getElementById('qzPipelinePin_' + cotId);
   const pin = pinInput ? pinInput.value : '';
-  if (!pin) { showToast('Ingresa el PIN admin', 'info'); return; }
+  if (pinInput && !pin) { showToast('Ingresa el PIN admin', 'info'); return; }
   try {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzAprobarDescuentoConPin', cotId, pin, decision }) });
     const json = await res.json();
@@ -2493,6 +2497,19 @@ const QZ_ETAPA_COLOR = {
 
 function qzEsAdmin() { return (_usuarioActual || '').toUpperCase() === 'JORGE'; }
 
+// FEATURE (2026-09-28): aprobadores restringidos — mismo mapa que el
+// backend (QZ_APROBADORES_RESTRINGIDOS en Code.gs), copiado acá SOLO
+// para decidir qué botones mostrar; el servidor vuelve a revisar esto
+// por su cuenta antes de aprobar de verdad, así que no pasa nada si
+// alguien manipula esto en el navegador.
+const QZ_APROBADORES_RESTRINGIDOS_FRONT = { 'VERONICA TERAN': ['SASKYA', 'SHAYRA'] };
+function qzPuedeAprobarEsta_(c) {
+  if (qzEsAdmin()) return true;
+  const u = (_usuarioActual || '').toUpperCase();
+  const permitidas = QZ_APROBADORES_RESTRINGIDOS_FRONT[u];
+  return !!(permitidas && c.ejecutiva && permitidas.indexOf(String(c.ejecutiva).toUpperCase()) !== -1);
+}
+
 function qzFilasDeCotizacion(cotId) {
   if (!qzPipelineData) return [];
   return qzPipelineData.pipeline.filter(p => p.cotId === cotId).slice().sort((a, b) => new Date(a.fechaEtapa) - new Date(b.fechaEtapa));
@@ -2522,7 +2539,15 @@ function qzRenderTarjetaCotizacion(c) {
   const idx = QZ_ETAPAS_FLUJO.indexOf(etapaActual);
   // Siguiente etapa del flujo NORMAL (nunca PERDIDO — eso es aparte).
   const siguiente = (idx >= 0 && idx < QZ_ETAPAS_FLUJO.length - 1) ? QZ_ETAPAS_FLUJO[idx + 1] : null;
-  const puedeMover = siguiente && (siguiente !== 'CERTIFICADO' || qzEsAdmin());
+  // FIX/AMPLIADO (2026-09-28): un aprobador restringido (p.ej. Verónica
+  // Terán sobre Saskya/Shayra) ahora puede mover etapa, marcar perdida
+  // Y exportar — no solo aprobar/negar margen — pero SOLO sobre las
+  // cotizaciones de sus ejecutivas asignadas (qzPuedeAprobarEsta_ ya
+  // valida eso). El servidor vuelve a revisar esto por su cuenta en
+  // cada acción (qzMoverEtapaPipeline), así que esto es solo para
+  // decidir qué botones mostrar, no la seguridad real.
+  const esDuenaOAdmin = qzPuedeAprobarEsta_(c) || ((c.creadoPor || '').toUpperCase() === (_usuarioActual || '').toUpperCase());
+  const puedeMover = esDuenaOAdmin && siguiente && (siguiente !== 'CERTIFICADO' || qzEsAdmin());
   // Se puede marcar como perdida desde cualquier etapa activa del
   // flujo normal — no aplica si ya está Cobrada o ya está Perdida.
   const puedeMarcarPerdida = etapaActual !== 'COBRADO' && etapaActual !== 'PERDIDO';
@@ -2541,15 +2566,22 @@ function qzRenderTarjetaCotizacion(c) {
     // donde esté — la ejecutiva ve el resultado (aprobado/negado) la
     // próxima vez que entre, sin que Jorge tenga que estar con ella.
     html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Descuento pendiente de aprobación' + (c.ejecutiva ? ' · ' + esc(c.ejecutiva) : '') + '</div>';
-    if (qzEsAdmin()) {
+    if (qzPuedeAprobarEsta_(c)) {
+      // Jorge sigue necesitando el PIN admin (como siempre); un
+      // aprobador restringido (p.ej. Verónica Terán para Saskya/Shayra)
+      // no lo necesita — su propia sesión ya la autoriza y ya la limita
+      // a esas ejecutivas, así que el campo de PIN ni se muestra.
       html += '<div style="display:flex;gap:6px;align-items:center;margin-top:8px">' +
-        '<input id="qzPipelinePin_' + c.cotId + '" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:11.5px;font-family:inherit">' +
+        (qzEsAdmin() ? '<input id="qzPipelinePin_' + c.cotId + '" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:11.5px;font-family:inherit">' : '') +
         '<button onclick="qzResolverPendientePin(\'' + c.cotId + '\',\'APROBADO\')" style="background:var(--green);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:10.5px;padding:7px 9px;cursor:pointer;white-space:nowrap">✅ Aprobar</button>' +
         '<button onclick="qzResolverPendientePin(\'' + c.cotId + '\',\'NEGADO\')" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:10.5px;padding:7px 9px;cursor:pointer;white-space:nowrap">❌ Negar</button>' +
         '</div>';
     }
   } else if (c.estadoAprobacion === 'NEGADO') {
-    html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">❌ Descuento negado por Jorge</div>';
+    // Ya no dice "por Jorge" a secas — ahora también puede negarla un
+    // aprobador restringido (p.ej. Verónica Terán) y el Sheet no
+    // guarda quién decidió, solo el resultado.
+    html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">❌ Descuento negado</div>';
   }
   if (siguiente) {
     if (puedeMover) {
@@ -2559,6 +2591,8 @@ function qzRenderTarjetaCotizacion(c) {
         html += '<button onclick="qzConfirmarMoverEtapa(\'' + c.cotId + '\',\'PERDIDO\')" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-radius:7px;color:var(--red);font-size:10.5px;font-weight:700;padding:7px 10px;cursor:pointer" title="Marcar como perdida">Perdida</button>';
       }
       html += '</div>';
+    } else if (!esDuenaOAdmin) {
+      html += '<div style="margin-top:8px;font-size:10px;color:var(--muted)">Solo la ejecutiva dueña (o Jorge) puede mover esta cotización</div>';
     } else {
       html += '<div style="margin-top:8px;font-size:10px;color:var(--muted)">Solo Jorge puede marcar Certificado</div>';
     }
@@ -2576,6 +2610,15 @@ function qzRenderTarjetaCotizacion(c) {
     html += '</div>';
   } else if (etapaActual === 'PERDIDO') {
     html += '<div style="margin-top:8px;font-size:11px;color:var(--red);font-weight:700">✕ Cotización perdida</div>';
+  }
+  // FEATURE (2026-09-28): antes no existía ninguna forma de volver a
+  // exportar una cotización YA guardada — el botón de exportar solo
+  // aparecía en la sesión en que se acababa de crear. Hacía falta esto
+  // para que un aprobador restringido (p.ej. Verónica Terán) pudiera
+  // exportar las propuestas de Saskya/Shayra, pero también sirve para
+  // cualquier dueña (o Jorge) que necesite reexportar algo de antes.
+  if (esDuenaOAdmin) {
+    html += '<button onclick="qzCargarCotizacionParaExportar(\'' + c.cotId + '\')" style="width:100%;margin-top:8px;background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font-size:10.5px;font-weight:700;padding:7px;cursor:pointer">📤 Abrir para exportar</button>';
   }
   html += '</div>';
   return html;
@@ -2620,6 +2663,36 @@ async function qzConfirmarMoverEtapa(cotId, etapaDestino) {
   } catch (e) {
     showToast('❌ Error: ' + e.message, 'error');
     if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
+  }
+}
+
+// FEATURE (2026-09-28): reabre una cotización YA GUARDADA (de
+// qzPipelineData, ya sea propia, de un aprobador restringido, o de
+// Jorge) en el wizard, directo en el paso de exportar — recalcula con
+// los mismos datos guardados (elementos/agencia/descuento) para armar
+// el mismo resultado que se vería si se acabara de calcular, sin tener
+// que rehacer la cotización desde cero.
+async function qzCargarCotizacionParaExportar(cotId) {
+  if (!qzPipelineData) { showToast('Espera a que cargue el pipeline', 'info'); return; }
+  const c = qzPipelineData.cotizaciones.find(x => x.cotId === cotId);
+  if (!c) { showToast('No se encontró la cotización', 'error'); return; }
+  showToast('⏳ Cargando cotización...', 'info');
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzCalcularCotizacion', elementos: c.elementos, agencia: c.agencia, descuentoPct: c.descuentoPct }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error al recalcular la cotización');
+    qzCotizacionActual = Object.assign({}, c, json, {
+      cotId: c.cotId, estado_aprobacion: c.estadoAprobacion, cliente: c.cliente, agencia: c.agencia
+    });
+    qzWizardStep = 4;
+    qzWizardMaxStep = 4;
+    // switchTab -> render() -> renderCotizador() ya pinta el resultado y
+    // salta al paso 4 solita al final si qzCotizacionActual/qzWizardStep
+    // ya están seteados (por eso se asignan ANTES de este llamado).
+    switchTab('cotizador');
+    showToast('✅ Cotización cargada — ya puedes exportarla', 'success');
+  } catch (e) {
+    showToast('❌ Error: ' + e.message, 'error');
   }
 }
 
