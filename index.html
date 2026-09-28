@@ -1974,6 +1974,14 @@ function qzPintarAprobacion() {
   if (qzCotizacionActual && qzCotizacionActual.estado_aprobacion === 'PENDIENTE') {
     panel.style.display = 'flex';
     if (btnExport) btnExport.disabled = true;
+  } else if (qzCotizacionActual && qzCotizacionActual.estado_aprobacion === 'NEGADO') {
+    // FIX (2026-09-28): antes solo bloqueaba si seguía PENDIENTE — si
+    // Jorge la negaba remotamente mientras la ejecutiva seguía en el
+    // wizard, esto no lo contemplaba y dejaba exportar igual. El panel
+    // de PIN ya no aplica acá (negar/aprobar ahora se hace desde el
+    // Pipeline, no desde este mismo panel) — solo se bloquea exportar.
+    panel.style.display = 'none';
+    if (btnExport) btnExport.disabled = true;
   } else {
     panel.style.display = 'none';
     if (btnExport) btnExport.disabled = !qzCotizacionActual;
@@ -2037,6 +2045,27 @@ async function qzAprobarPin() {
     qzCotizacionActual.estado_aprobacion = 'APROBADO';
     qzPintarAprobacion();
     showToast('✅ Descuento aprobado', 'success');
+  } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
+}
+
+// FEATURE (2026-09-28): aprobación/negación remota desde el Pipeline
+// — Jorge resuelve cotizaciones pendientes de cualquier ejecutiva
+// desde donde esté, sin necesitar que ella esté presente. Reusa la
+// misma acción de siempre (qzAprobarDescuentoConPin), ahora con un
+// 'decision' explícito; el backend avisa por correo a la ejecutiva
+// dueña de la cotización, así se entera aunque no esté mirando la
+// pantalla en ese momento.
+async function qzResolverPendientePin(cotId, decision) {
+  const pinInput = document.getElementById('qzPipelinePin_' + cotId);
+  const pin = pinInput ? pinInput.value : '';
+  if (!pin) { showToast('Ingresa el PIN admin', 'info'); return; }
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzAprobarDescuentoConPin', cotId, pin, decision }) });
+    const json = await res.json();
+    if (!json.ok) { showToast('❌ ' + (json.error || 'PIN incorrecto'), 'error'); return; }
+    showToast(decision === 'APROBADO' ? '✅ Descuento aprobado — se avisó a la ejecutiva' : '❌ Descuento negado — se avisó a la ejecutiva', 'success');
+    await qzCargarPipeline();
+    qzPintarPipeline();
   } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
 }
 
@@ -2504,7 +2533,23 @@ function qzRenderTarjetaCotizacion(c) {
     '<div style="font-size:10.5px;color:var(--muted);margin-top:2px">' + (esc(c.agencia) || 'Venta directa') + ' · ' + c.elementos.length + ' elem.</div>' +
     '<div style="font-size:14px;font-weight:800;color:var(--accent);margin-top:6px">$' + c.precioFinal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + '</div>';
   if (c.estadoAprobacion === 'PENDIENTE') {
-    html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Descuento pendiente de aprobación</div>';
+    // FEATURE (2026-09-28): aprobación remota — antes esto solo se
+    // podía resolver con la ejecutiva y Jorge juntos frente a la misma
+    // pantalla tecleando el PIN ahí mismo. Como el Pipeline ya le
+    // muestra a Jorge las cotizaciones de TODAS las ejecutivas, se le
+    // agrega acá mismo un panel para aprobar/negar con su PIN, desde
+    // donde esté — la ejecutiva ve el resultado (aprobado/negado) la
+    // próxima vez que entre, sin que Jorge tenga que estar con ella.
+    html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Descuento pendiente de aprobación' + (c.ejecutiva ? ' · ' + esc(c.ejecutiva) : '') + '</div>';
+    if (qzEsAdmin()) {
+      html += '<div style="display:flex;gap:6px;align-items:center;margin-top:8px">' +
+        '<input id="qzPipelinePin_' + c.cotId + '" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:11.5px;font-family:inherit">' +
+        '<button onclick="qzResolverPendientePin(\'' + c.cotId + '\',\'APROBADO\')" style="background:var(--green);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:10.5px;padding:7px 9px;cursor:pointer;white-space:nowrap">✅ Aprobar</button>' +
+        '<button onclick="qzResolverPendientePin(\'' + c.cotId + '\',\'NEGADO\')" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:10.5px;padding:7px 9px;cursor:pointer;white-space:nowrap">❌ Negar</button>' +
+        '</div>';
+    }
+  } else if (c.estadoAprobacion === 'NEGADO') {
+    html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">❌ Descuento negado por Jorge</div>';
   }
   if (siguiente) {
     if (puedeMover) {
