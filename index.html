@@ -4232,25 +4232,37 @@ function cgTitleCase_(v) {
 // una por una (secuencial) hubiera sumado el tiempo de las 11 — en vez
 // de eso, la primera página va sola (además de traer datos, dice cuántas
 // páginas hay y, si forzar=true, repuebla el caché del servidor para
-// todas las demás) y el resto se pide EN PARALELO con un tope de 5 a la
-// vez — rápido, y sin mandar de golpe decenas de peticiones simultáneas
+// todas las demás) y el resto se pide EN PARALELO con un tope a la vez
+// — rápido, y sin mandar de golpe decenas de peticiones simultáneas
 // si la facturación sigue creciendo con los meses.
-const CG_PAGINAS_EN_PARALELO = 5;
+// FIX (2026-09-30): bajado de 5 a 3 — mismo ajuste que ya se hizo en
+// Report cuando varias peticiones simultáneas competían por los
+// recursos limitados de Apps Script y hacían que CADA UNA tardara
+// mucho más (un caso real llegó a 20-30s+ por petición). Menos
+// peticiones en vuelo a la vez es más predecible, aunque en el papel
+// sea un poco más lento cuando todo está bien.
+const CG_PAGINAS_EN_PARALELO = 3;
 async function cgPedirPaginaFacturacion_(pagina, forzar) {
   const url = API_URL + '?action=cgGetFacturacion' + (forzar ? '&forzar=1' : '') + '&pagina=' + pagina;
-  // Con 5 páginas pidiéndose en paralelo, Apps Script a veces entrega
-  // una sola mal (la respuesta se redirige a una URL temporal que puede
-  // no llegar a tiempo) — sin esto, esa página fallida tumbaba TODA la
-  // carga de facturación de una. Un reintento resuelve la mayoría.
-  for (let intento = 0; intento < 2; intento++) {
+  // Con varias páginas pidiéndose en paralelo, Apps Script a veces
+  // entrega una sola mal (la respuesta se redirige a una URL temporal
+  // que puede no llegar a tiempo) — sin esto, esa página fallida
+  // tumbaba TODA la carga de facturación de una.
+  // FIX (2026-09-30): en momentos de saturación fuerte de Apps Script
+  // (varias peticiones seguidas tardando 20-30s+, como se vio en una
+  // captura real), 2 intentos con 800ms de espera no alcanzaban — la
+  // 2ª también podía toparse con la misma saturación, sin haber tenido
+  // tiempo de bajar. Ahora son 3 intentos, con más espera entre cada
+  // uno (800ms, 2s) para darle tiempo real a que la saturación baje.
+  for (let intento = 0; intento < 3; intento++) {
     try {
       const res = await fetch(url, { cache: 'no-store' });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || 'Error al cargar facturación');
       return json;
     } catch (e) {
-      if (intento === 1) throw e;
-      await new Promise(r => setTimeout(r, 800));
+      if (intento === 2) throw e;
+      await new Promise(r => setTimeout(r, intento === 0 ? 800 : 2000));
     }
   }
 }
