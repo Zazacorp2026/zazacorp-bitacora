@@ -6213,6 +6213,12 @@ function openModal(codigo) {
   // Add liberar + edit buttons to modal
   const existingBody = document.getElementById('modalBody');
   if (existingBody && liberarBtn && !isReadOnly()) existingBody.insertAdjacentHTML('beforeend', liberarBtn);
+  // FEATURE (2026-10-01): reenviar el correo de "Nueva Contratación"
+  // cuando no salió al contratar (falla puntual de red/Gmail) — para
+  // una valla ya CONTRATADA, sin tener que tocar nada de su contrato.
+  if (existingBody && v.estado === 'CONTRATADA' && !isReadOnly()) {
+    existingBody.insertAdjacentHTML('beforeend', '<button class="liberar-btn" style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.4);color:var(--blue);margin-top:8px" onclick="abrirReenvioCorreoContratacion(\'' + v.codigo + '\')">📧 Reenviar correo de contratación (Admin)</button>');
+  }
   if (existingBody) {
     // Segunda reserva badge
     if (seg2Badge) existingBody.insertAdjacentHTML('beforeend', seg2Badge);
@@ -7444,6 +7450,51 @@ async function liberarValla(codigo) {
     closeModal();
     await loadData(true);
   } catch(err) {
+    showToast('❌ Error: ' + err.message, 'error');
+  }
+}
+
+// FEATURE (2026-10-01): reenviar el correo de "Nueva Contratación"
+// cuando no salió al contratar (falla puntual de red/Gmail) — sin
+// tener que tocar el contrato ya guardado. El PDF original nunca se
+// guarda en el servidor (solo se adjuntaba al correo), así que si
+// quien reenvía todavía lo tiene a mano puede volver a adjuntarlo; si
+// no, el correo sale igual, solo que sin el PDF.
+async function abrirReenvioCorreoContratacion(codigo) {
+  const pin = prompt('🔐 PIN de administrador para reenviar el correo de contratación de ' + codigo + ':');
+  if (pin === null) return;
+
+  const quiereAdjuntar = confirm('¿Tienes a mano el PDF de la orden de contratación original para volver a adjuntarlo?\n\nAceptar = sí, elegir el archivo.\nCancelar = enviar el correo sin el PDF adjunto.');
+  let pdfBase64 = null, pdfNombre = null;
+  if (quiereAdjuntar) {
+    const file = await new Promise(resolve => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/pdf';
+      input.onchange = () => resolve(input.files[0] || null);
+      input.click();
+    });
+    if (file) {
+      pdfNombre = file.name;
+      pdfBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+  }
+
+  showToast('⏳ Reenviando correo...', 'info');
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'reenviarCorreoContratacion', codigo, pin, pdfBase64, pdfNombre })
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ ' + (json.mensaje || 'Correo reenviado'), 'success');
+  } catch (err) {
     showToast('❌ Error: ' + err.message, 'error');
   }
 }
