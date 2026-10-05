@@ -3396,7 +3396,7 @@ function insCardPendiente(r) {
         '<div>' +
           '<div style="font-weight:800;font-size:13px;color:var(--accent)">' + esc(r.codigo) + '</div>' +
           '<div style="font-size:11px;color:var(--muted)">' + esc(r.direccion) + ' · ' + esc(r.ciudad) + '</div>' +
-          '<div style="font-size:11.5px;color:var(--text);margin-top:4px"><b>' + esc(r.cliente) + '</b> · ' + esc(r.ejecutiva) + '</div>' +
+          '<div style="font-size:11.5px;color:var(--text);margin-top:4px"><b>' + esc(r.cliente) + '</b> · ' + esc(r.ejecutiva) + (r.tipo === 'RENOVACIÓN' ? ' <span style="font-size:9px;font-weight:800;color:#34d399;background:rgba(16,185,129,.15);border-radius:20px;padding:2px 8px;margin-left:4px">🔁 RENOVACIÓN</span>' : '') + '</div>' +
           insHistoricoHTML(r) +
         '</div>' +
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">' +
@@ -3431,7 +3431,7 @@ function insCardCertificada(r) {
       '<div style="flex:1;min-width:0;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
         '<div>' +
           '<div style="font-weight:800;font-size:13px;color:var(--accent)">' + esc(r.codigo) + '</div>' +
-          '<div style="font-size:11.5px;color:var(--text);margin-top:2px"><b>' + esc(r.cliente) + '</b> · ' + esc(r.ejecutiva) + '</div>' +
+          '<div style="font-size:11.5px;color:var(--text);margin-top:2px"><b>' + esc(r.cliente) + '</b> · ' + esc(r.ejecutiva) + (r.tipo === 'RENOVACIÓN' ? ' <span style="font-size:9px;font-weight:800;color:#34d399;background:rgba(16,185,129,.15);border-radius:20px;padding:2px 8px;margin-left:4px">🔁 RENOVACIÓN</span>' : '') + '</div>' +
           insHistoricoHTML(r) +
         '</div>' +
         '<div style="text-align:right">' +
@@ -4071,8 +4071,19 @@ function qzPedirPinComision_(tipo, color, nuevoValorStr, ejecutiva, quitar, call
       const payload = { action: 'qzActualizarComisionWallet', tipo: tipo, pin: pin };
       if (ejecutiva) payload.ejecutiva = ejecutiva;
       if (quitar) payload.quitar = true; else payload.pct = nuevoValor / 100;
-      const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
-      const json = await res.json();
+      // Guardar un % es idempotente (fija un valor, no suma): si Apps Script
+      // responde roto (HTML / "Failed to fetch"), es seguro reintentar.
+      let json = null, ultimoErr = null;
+      for (let intento = 0; intento < 3 && !json; intento++) {
+        try {
+          const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+          json = await res.json();
+        } catch (netErr) {
+          ultimoErr = netErr;
+          if (intento < 2) { btn.textContent = 'Reintentando...'; await new Promise(r => setTimeout(r, 1500 * (intento + 1))); }
+        }
+      }
+      if (!json) throw new Error('El servidor está saturado y no respondió. Espera unos segundos y vuelve a confirmar.');
       if (!json.ok) throw new Error(json.error || 'Error al guardar');
       overlay.style.display = 'none';
       showToast(quitar
@@ -6235,6 +6246,9 @@ function openModal(codigo) {
   // FEATURE (2026-10-01): reenviar el correo de "Nueva Contratación"
   // cuando no salió al contratar (falla puntual de red/Gmail) — para
   // una valla ya CONTRATADA, sin tener que tocar nada de su contrato.
+  if (existingBody && !isReadOnly() && rnElegible_(v)) {
+    existingBody.insertAdjacentHTML('beforeend', '<button class="contratar-btn" style="margin-top:8px;background:rgba(16,185,129,.15);border-color:rgba(16,185,129,.5);color:#34d399" onclick="closeModal(); setTimeout(function(){ openModalRenovar(\'' + v.codigo + '\'); }, 200)">🔁 RENOVAR CONTRATACIÓN ACTUAL</button>');
+  }
   if (existingBody && v.estado === 'CONTRATADA' && !isReadOnly()) {
     existingBody.insertAdjacentHTML('beforeend', '<button class="liberar-btn" style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.4);color:var(--blue);margin-top:8px" onclick="abrirReenvioCorreoContratacion(\'' + v.codigo + '\')">📧 Reenviar correo de contratación (Admin)</button>');
   }
@@ -8141,6 +8155,162 @@ function checkContratarForm() {
   btn.disabled = !ok;
   btn.textContent = fechasInvalidas ? '❌ La fecha fin debe ser posterior al inicio' : (bloqueadoPorMinimo ? '❌ El valor es menor al permitido' : (ok ? '⚡ Confirmar Contratación' : '📎 Sube el PDF para continuar'));
 }
+
+// ══════════════════════════════════════════════════════════════
+//  RENOVAR CONTRATACIÓN ACTUAL (2026-10-05)
+//  Extiende una contratación vigente cuando hay una pre-reserva del MISMO
+//  cliente y MISMA ejecutiva. Inicio = día siguiente al término actual.
+//  El modal lista todas las vallas elegibles de ese cliente/ejecutiva para
+//  poder renovar varias a la vez (renovación múltiple). El backend vuelve a
+//  validar todo (cliente, ejecutiva, dueña, mínimos, fechas).
+// ══════════════════════════════════════════════════════════════
+let _rnPdfBase64 = null, _rnPdfFile = null, _rnCodigoBase = null;
+function rnNorm_(t) { return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase(); }
+function rnSumarDia_(iso) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; }
+function rnPuedeUsuario_(v) {
+  const u = rnNorm_(_usuarioActual);
+  return u === 'JORGE' || u === rnNorm_(v.ejecutiva);
+}
+function rnElegible_(v) {
+  return !!v && v.estado === 'CONTRATADA' && !!v.termino && !!v.reserva2_cliente &&
+    rnNorm_(v.reserva2_cliente) === rnNorm_(v.cliente) &&
+    rnNorm_(v.reserva2_ejecutiva) === rnNorm_(v.ejecutiva) &&
+    rnPuedeUsuario_(v);
+}
+function openModalRenovar(codigo) {
+  const base = DATA.find(x => x.codigo === codigo);
+  if (!rnElegible_(base)) { showToast('Esta valla no cumple las condiciones para renovar', 'info'); return; }
+  _rnCodigoBase = codigo; _rnPdfBase64 = null; _rnPdfFile = null;
+  const hermanas = DATA.filter(v => rnElegible_(v) && rnNorm_(v.cliente) === rnNorm_(base.cliente) && rnNorm_(v.ejecutiva) === rnNorm_(base.ejecutiva))
+    .sort((a, b) => (a.codigo === codigo ? -1 : b.codigo === codigo ? 1 : a.codigo.localeCompare(b.codigo)));
+  document.getElementById('modalTitle').textContent = '🔁 Renovar contratación actual';
+  document.getElementById('modalSubtitle').textContent = esc(base.cliente) + ' · ' + esc(base.ejecutiva);
+  document.getElementById('modalBody').innerHTML = `
+    <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#34d399">
+      El nuevo período empieza el día siguiente al término del contrato actual. Si marcas varias vallas, se renuevan juntas con la misma fecha fin.
+    </div>
+    <div id="rn-lista" style="margin-bottom:14px">
+      ${hermanas.map(v => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px;flex-wrap:wrap">
+        <input type="checkbox" class="rn-chk" data-codigo="${esc(v.codigo)}" ${v.codigo === codigo ? 'checked' : ''} onchange="rnActualizar()">
+        <strong>${esc(v.codigo)}</strong>
+        <span style="color:var(--muted)">hoy hasta ${esc(v.termino)} → renueva desde <b style="color:#34d399">${rnSumarDia_(v.termino)}</b></span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:4px">$<input type="number" class="rn-valor" data-codigo="${esc(v.codigo)}" value="${Number(v.valor) || ''}" placeholder="Valor mensual" oninput="rnActualizar()" style="width:110px"></span>
+      </div>`).join('')}
+    </div>
+    <div class="contratar-form">
+      <div class="form-row">
+        <div class="form-group"><label>Cliente</label><input type="text" value="${esc(base.cliente)}" readonly style="background:var(--surface2);color:var(--muted)"></div>
+        <div class="form-group"><label>Ejecutiva</label><input type="text" value="${esc(base.ejecutiva)}" readonly style="background:var(--surface2);color:var(--muted)"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group full"><label>Nueva fecha fin</label><input type="date" id="rn-fin" oninput="rnActualizar()"></div>
+      </div>
+      <div id="rn-resumen" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
+      <div id="rn-error" style="display:none;color:var(--red);font-size:11px;font-weight:700;margin-bottom:8px"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Agencia contratante</label><input type="text" id="rn-agencia" placeholder="Nombre de agencia o 'Cliente directo'" oninput="rnActualizar()"></div>
+        <div class="form-group"><label>Comisión de agencia</label>
+          <select id="rn-comision" onchange="document.getElementById('rn-comision-manual').style.display=this.value==='manual'?'block':'none';rnActualizar()">
+            <option value="">Seleccionar...</option><option value="0%">0%</option><option value="10%">10%</option><option value="15%">15%</option><option value="20%">20%</option><option value="manual">Manual...</option>
+          </select>
+          <input type="text" id="rn-comision-manual" placeholder="Ej: 12%" style="display:none;margin-top:6px" oninput="rnActualizar()">
+        </div>
+      </div>
+      <div class="pdf-upload-area" id="rnPdfArea" onclick="document.getElementById('rnPdfInput').click()">
+        <div class="pdf-icon">📎</div><p><strong>Click para subir la Orden de Renovación</strong></p><p>Solo PDF · Obligatorio</p>
+        <div class="pdf-name" id="rnPdfNombre"></div>
+      </div>
+      <input type="file" id="rnPdfInput" accept="application/pdf" style="display:none" onchange="rnPdf(event)">
+      <button class="btn-contratar-confirm" id="btnRenovar" onclick="confirmarRenovacion()" disabled>📎 Sube el PDF para continuar</button>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+  rnActualizar();
+}
+function rnPdf(ev) {
+  const f = ev.target.files[0];
+  if (!f || f.type !== 'application/pdf') return;
+  _rnPdfFile = f;
+  document.getElementById('rnPdfNombre').textContent = '✓ ' + f.name;
+  document.getElementById('rnPdfArea').classList.add('has-file');
+  const r = new FileReader();
+  r.onload = e => { _rnPdfBase64 = e.target.result.split(',')[1]; rnActualizar(); };
+  r.readAsDataURL(f);
+}
+function rnComision_() {
+  const sel = document.getElementById('rn-comision')?.value;
+  return sel === 'manual' ? (document.getElementById('rn-comision-manual')?.value.trim() || '') : (sel || '');
+}
+function rnSeleccion_() {
+  return [...document.querySelectorAll('.rn-chk:checked')].map(c => c.dataset.codigo);
+}
+function rnActualizar() {
+  const btn = document.getElementById('btnRenovar'); if (!btn) return;
+  const sel = rnSeleccion_();
+  const fin = document.getElementById('rn-fin')?.value || '';
+  let error = '', suma = 0, total = 0;
+  const sinValor = [];
+  sel.forEach(c => {
+    const v = DATA.find(x => x.codigo === c); if (!v) return;
+    const ini = rnSumarDia_(v.termino);
+    const val = parseFloat(document.querySelector('.rn-valor[data-codigo="' + c + '"]')?.value) || 0;
+    const min = qzValorMinimoDe(c);
+    if (!val) sinValor.push(c);
+    if (val && min > 0 && val < min) error = '❌ El valor ingresado es menor al permitido: ' + c;
+    if (fin && fin <= ini) error = error || ('❌ La fecha fin debe ser posterior al inicio de la renovación (' + ini + ') de ' + c);
+    if (fin && fin > ini) {
+      const dias = Math.round((new Date(fin + 'T00:00:00') - new Date(ini + 'T00:00:00')) / 86400000);
+      const m = dias < 30 ? dias / 30 : Math.round((dias / 30) * 2) / 2;
+      suma += val; total += val * m;
+    }
+  });
+  const errEl = document.getElementById('rn-error');
+  errEl.style.display = error ? 'block' : 'none'; errEl.textContent = error;
+  document.getElementById('rn-resumen').innerHTML = sel.length
+    ? sel.length + ' valla(s) · suma mensual <b>' + qzMoney(suma) + '</b> · total renovación <b style="color:#4ade80">' + qzMoney(total) + '</b>'
+    : 'Marca al menos una valla';
+  const ok = sel.length && fin && !error && sinValor.length === 0 && document.getElementById('rn-agencia').value.trim() && rnComision_() && _rnPdfBase64;
+  btn.disabled = !ok;
+  btn.textContent = error ? 'Corrige los datos marcados' : (ok ? '🔁 Confirmar renovación' + (sel.length > 1 ? ' múltiple' : '') : (sinValor.length ? 'Ingresa el valor mensual de cada valla' : (!_rnPdfBase64 ? '📎 Sube el PDF para continuar' : 'Completa los campos')));
+}
+async function confirmarRenovacion() {
+  const codigos = rnSeleccion_();
+  const base = DATA.find(x => x.codigo === _rnCodigoBase);
+  const fin = document.getElementById('rn-fin').value;
+  if (!codigos.length || !base || !fin) return;
+  const valoresPorCodigo = {};
+  document.querySelectorAll('.rn-valor').forEach(i => { if (codigos.includes(i.dataset.codigo)) valoresPorCodigo[i.dataset.codigo] = parseFloat(i.value) || ''; });
+  const btn = document.getElementById('btnRenovar');
+  btn.disabled = true; btn.textContent = '⏳ Procesando...';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'contratar', renovacion: true,
+      codigos, cliente: base.cliente, ejecutiva: base.ejecutiva, fin, valoresPorCodigo,
+      agenciaContratante: document.getElementById('rn-agencia').value.trim(), comisionAgencia: rnComision_(),
+      pdfBase64: _rnPdfBase64, pdfNombre: _rnPdfFile ? _rnPdfFile.name : 'orden_renovacion.pdf'
+    }) });
+    let json;
+    try { json = await res.json(); }
+    catch (e) {
+      // Respuesta rota: se comprueba contra el inventario real si ya quedó renovada
+      try { await loadData(true); } catch (e2) {}
+      const ok = codigos.every(c => { const v = DATA.find(x => x.codigo === c); return v && v.termino === fin; });
+      json = ok ? { ok: true, avisoCorreo: 'El servidor tardó en responder: no se pudo confirmar el envío del correo, revisa que haya llegado.' }
+                : { error: 'El servidor no respondió bien y la renovación NO se ve registrada completa. Revisa el estado de las vallas antes de reintentar.' };
+    }
+    if (json.error) throw new Error(json.error);
+    showToast(json.avisoCorreo ? '✅ Renovada — ⚠️ ' + json.avisoCorreo : '✅ Contratación renovada — email enviado', json.avisoCorreo ? 'info' : 'success');
+    mostrarCelebracionZaza('contratacion', '¡Contratación renovada!', json.avisoCorreo ? 'Se guardó bien, pero el correo de confirmación falló.' : 'Se envió el email a administración.', [
+      { label: 'Vallas', value: codigos.length }, { label: 'Cliente', value: base.cliente }
+    ]);
+    closeModal();
+    _rnPdfBase64 = null; _rnPdfFile = null;
+    await loadData(true);
+  } catch (err) {
+    showToast('❌ Error: ' + err.message, 'error');
+    btn.disabled = false; btn.textContent = '🔁 Confirmar renovación';
+  }
+}
+
 
 // Tras una respuesta rota al contratar: recarga el inventario y comprueba si
 // la valla quedó realmente CONTRATADA con ese cliente. Si sí, devuelve un
