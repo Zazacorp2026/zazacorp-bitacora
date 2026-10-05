@@ -7411,7 +7411,9 @@ async function confirmarMultiContratacion() {
         pdfNombre: _multiPdfFile ? _multiPdfFile.name : 'orden.pdf'
       })
     });
-    const json = await res.json();
+    let json;
+    try { json = await res.json(); }
+    catch (parseErr) { json = await verificarContratacionMultipleTrasFallo_(codigos, cliente); }
     if (json.error) throw new Error(json.error);
 
     // El backend ahora dice de verdad si el correo falló (antes se
@@ -8140,6 +8142,34 @@ function checkContratarForm() {
   btn.textContent = fechasInvalidas ? '❌ La fecha fin debe ser posterior al inicio' : (bloqueadoPorMinimo ? '❌ El valor es menor al permitido' : (ok ? '⚡ Confirmar Contratación' : '📎 Sube el PDF para continuar'));
 }
 
+// Tras una respuesta rota al contratar: recarga el inventario y comprueba si
+// la valla quedó realmente CONTRATADA con ese cliente. Si sí, devuelve un
+// resultado de éxito (sin poder confirmar el correo); si no, un error claro.
+async function verificarContratacionTrasFallo_(codigo, cliente) {
+  try { await loadData(true); } catch (e) {}
+  const v = DATA.find(x => x.codigo === codigo);
+  const norm = t => String(t || '').trim().toUpperCase();
+  if (v && v.estado === 'CONTRATADA' && norm(v.cliente) === norm(cliente)) {
+    return { ok: true, avisoCorreo: 'El servidor tardó en responder: no se pudo confirmar el envío del correo, revisa que haya llegado a administración.' };
+  }
+  return { error: 'El servidor no respondió bien y la contratación NO se ve registrada. Revisa el estado de la valla antes de reintentar.' };
+}
+
+// Igual que verificarContratacionTrasFallo_, para contratación múltiple:
+// éxito solo si TODAS las vallas quedaron CONTRATADAS con ese cliente.
+async function verificarContratacionMultipleTrasFallo_(codigos, cliente) {
+  try { await loadData(true); } catch (e) {}
+  const norm = t => String(t || '').trim().toUpperCase();
+  const quedaron = codigos.filter(c => { const v = DATA.find(x => x.codigo === c); return v && v.estado === 'CONTRATADA' && norm(v.cliente) === norm(cliente); });
+  if (quedaron.length === codigos.length) {
+    return { ok: true, avisoCorreo: 'El servidor tardó en responder: no se pudo confirmar el envío del correo, revisa que haya llegado a administración.' };
+  }
+  if (quedaron.length > 0) {
+    return { error: 'Solo ' + quedaron.length + ' de ' + codigos.length + ' vallas quedaron contratadas (' + quedaron.join(', ') + '). Revisa el estado de las demás antes de reintentar.' };
+  }
+  return { error: 'El servidor no respondió bien y la contratación NO se ve registrada. Revisa el estado de las vallas antes de reintentar.' };
+}
+
 async function confirmarContratacion(codigo) {
   const cliente   = document.getElementById('ct-cliente').value.trim();
   const ejecutiva = document.getElementById('ct-ejecutiva').value;
@@ -8181,7 +8211,13 @@ async function confirmarContratacion(codigo) {
         pdfNombre: _pdfFile ? _pdfFile.name : 'orden.pdf'
       })
     });
-    const json = await res.json();
+    let json;
+    try { json = await res.json(); }
+    catch (parseErr) {
+      // Apps Script guardó pero la respuesta no llegó bien (HTML en vez de
+      // JSON). Se verifica contra el inventario real antes de dar error.
+      json = await verificarContratacionTrasFallo_(codigo, cliente);
+    }
     if (json.error) throw new Error(json.error);
 
     // El backend ahora dice de verdad si el correo falló (antes se
