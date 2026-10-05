@@ -724,6 +724,32 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbyTlN29P6a_52u7vmAk9hwG
 // ══════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════
+//  fetchJsonGet — lectura GET resiliente (solo para acciones de LECTURA)
+//  Apps Script, cuando la respuesta es grande o tarda, redirige a una URL
+//  temporal que a veces no llega a tiempo: el navegador recibe HTML y
+//  res.json() revienta con "Unexpected token '<'". Aquí se reintenta
+//  (3 intentos, timeout 20s, espera creciente) antes de rendirse.
+//  NO usar con POST/escrituras (no son idempotentes).
+// ══════════════════════════════════════════════════════════════
+async function fetchJsonGet(url, intentos) {
+  intentos = intentos || 3;
+  let ultimoError;
+  for (let i = 0; i < intentos; i++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20000);
+    try {
+      const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+      const texto = await res.text();
+      return JSON.parse(texto);
+    } catch (e) {
+      ultimoError = e;
+      if (i < intentos - 1) await new Promise(r => setTimeout(r, 800 * (i + 1) * (i + 1)));
+    } finally { clearTimeout(t); }
+  }
+  throw new Error('El servidor no respondió bien (' + (ultimoError && ultimoError.name === 'AbortError' ? 'tiempo agotado' : 'respuesta no válida') + '). Reintenta en unos segundos.');
+}
+
+// ══════════════════════════════════════════════════════════════
 //  FIREBASE — Autenticación anónima
 //  La base de datos ahora exige "auth != null" en sus reglas (antes
 //  cualquiera en internet podía leer/escribir directo con curl, sin
@@ -1364,8 +1390,7 @@ let _ledContratosGlobal = [];
 let _ledCapacidadesGlobal = {};
 async function cargarLedContratosGlobal() {
   try {
-    const res = await fetch(API_URL + '?action=getVNNOXData', { cache: 'no-store' });
-    const json = await res.json();
+    const json = await fetchJsonGet(API_URL + '?action=getVNNOXData');
     if (json.ok) { _ledContratosGlobal = json.contratos || []; _ledCapacidadesGlobal = {}; (json.elementosLED||[]).forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; }); }
   } catch(e) {}
 }
@@ -1386,8 +1411,7 @@ const SCR_CAPACIDAD = 5;
 let _scrContratosGlobal = [];
 async function cargarContratosScrollingGlobal() {
   try {
-    const res = await fetch(API_URL + '?action=getContratosScrolling', { cache: 'no-store' });
-    const json = await res.json();
+    const json = await fetchJsonGet(API_URL + '?action=getContratosScrolling');
     if (json.ok) _scrContratosGlobal = json.contratos || [];
   } catch (e) {}
 }
@@ -1575,8 +1599,7 @@ let qzPreciosPublicosCache = null;
 async function qzCargarPreciosPublicos(forzar) {
   if (qzPreciosPublicosCache && !forzar) return qzPreciosPublicosCache;
   try {
-    const res = await fetch(API_URL + '?action=qzGetPreciosPublicos', { cache: 'no-store' });
-    const json = await res.json();
+    const json = await fetchJsonGet(API_URL + '?action=qzGetPreciosPublicos');
     qzPreciosPublicosCache = (json && typeof json === 'object') ? json : {};
   } catch (e) {
     qzPreciosPublicosCache = {};
@@ -1856,8 +1879,7 @@ async function qzCargarAgencias() {
   if (!sel) return;
   if (!qzAgenciasCache) {
     try {
-      const res = await fetch(API_URL + '?action=qzListarAgencias', { cache: 'no-store' });
-      const json = await res.json();
+      const json = await fetchJsonGet(API_URL + '?action=qzListarAgencias');
       qzAgenciasCache = (json.ok && json.agencias) ? json.agencias : [];
     } catch (e) { qzAgenciasCache = []; }
   }
@@ -2039,7 +2061,7 @@ function qzNuevaCotizacion() {
 }
 
 async function qzAprobarPin() {
-  const pin = document.getElementById('qzPinInput')?.value || '';
+  const pin = document.getElementById('qzPinInputWiz')?.value || '';
   if (!qzCotizacionActual || !qzCotizacionActual.cotId) { showToast('Guarda la cotización antes de aprobar', 'info'); return; }
   try {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'qzAprobarDescuentoConPin', cotId: qzCotizacionActual.cotId, pin }) });
@@ -2445,7 +2467,7 @@ function renderCotizador(container) {
       '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;max-width:760px;margin:0 auto">' +
         '<div style="font-weight:900;font-size:14px;color:var(--text);margin-bottom:12px">🧮 Resultado de la cotización</div>' +
         '<div id="qzResultadoPanel" style="font-size:12px;color:var(--muted)">Calculando...</div>' +
-        '<div id="qzPinPanel" style="display:none;gap:8px;align-items:center;background:rgba(239,68,68,.08);border:1px solid var(--red);border-radius:8px;padding:10px;margin-top:12px"><input id="qzPinInput" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit"><button onclick="qzAprobarPin()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:11.5px;padding:8px 10px;cursor:pointer">Aprobar</button></div>' +
+        '<div id="qzPinPanel" style="display:none;gap:8px;align-items:center;background:rgba(239,68,68,.08);border:1px solid var(--red);border-radius:8px;padding:10px;margin-top:12px"><input id="qzPinInputWiz" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit"><button onclick="qzAprobarPin()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:11.5px;padding:8px 10px;cursor:pointer">Aprobar</button></div>' +
       '</div>' +
       '<div style="display:flex;justify-content:space-between;margin-top:14px;max-width:760px;margin-left:auto;margin-right:auto">' +
         '<button onclick="qzIrPaso(2)" style="background:transparent;border:1px solid var(--border);border-radius:9px;color:var(--muted);font-weight:800;font-size:13px;padding:11px 20px;cursor:pointer;display:inline-flex;align-items:center">' + qzArrowLeft() + 'Atrás</button>' +
@@ -2528,8 +2550,7 @@ function qzFechaEtapaActual(cotId) {
 
 async function qzCargarPipeline() {
   try {
-    const res = await fetch(API_URL + '?action=qzGetPipeline', { cache: 'no-store' });
-    const json = await res.json();
+    const json = await fetchJsonGet(API_URL + '?action=qzGetPipeline');
     if (json.ok) qzPipelineData = json;
     return json;
   } catch (e) {
@@ -2839,8 +2860,7 @@ async function qzCargarWallet() {
   const board = document.getElementById('qzWalletBoard');
   if (board) board.innerHTML = '<div class="empty"><p>Cargando wallet...</p></div>';
   try {
-    const res = await fetch(API_URL + '?action=qzGetWalletMes&mes=' + encodeURIComponent(qzWalletMes), { cache: 'no-store' });
-    const json = await res.json();
+    const json = await fetchJsonGet(API_URL + '?action=qzGetWalletMes&mes=' + encodeURIComponent(qzWalletMes));
     if (!json.ok) throw new Error(json.error || 'Error al cargar');
     qzWalletData = json;
   } catch (e) {
@@ -3140,8 +3160,7 @@ function insDiasEntre(a, b) {
 async function insCargarDatos() {
   const board = document.getElementById('insBoard');
   try {
-    const res = await fetch(API_URL + '?action=insListar', { cache: 'no-store' });
-    const json = await res.json();
+    const json = await fetchJsonGet(API_URL + '?action=insListar');
     if (!json.ok) throw new Error(json.error || 'Error al cargar');
     insDataCache = json.filas || [];
     insPuedeCertificar = !!json.puedeCertificar;
@@ -9068,13 +9087,18 @@ let _ledData = null; // cache en memoria
 async function renderLED(container, forzar) {
   container.innerHTML = '<div class="empty"><div class="icon" style="animation:spin 1s linear infinite">⏳</div><p>Cargando pantallas desde VNNOX...</p></div>';
   try {
-    const res  = await fetch(API_URL + '?action=getVNNOXData' + (forzar ? '&forzar=1' : ''), { cache: 'no-store' });
-    const json = await res.json();
+    const json = await fetchJsonGet(API_URL + '?action=getVNNOXData' + (forzar ? '&forzar=1' : ''));
     if (!json.ok) throw new Error(json.error || 'Error VNNOX');
     _ledData = json;
     _ledContratosGlobal = json.contratos || []; _ledCapacidadesGlobal = {}; (json.elementosLED||[]).forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; });
     buildLEDUI(container, json);
   } catch(err) {
+    if (_ledData) {
+      // Respaldo: se muestran los últimos datos buenos en vez de una pantalla de error
+      buildLEDUI(container, _ledData);
+      if (typeof showToast === 'function') showToast('⚠️ No se pudo actualizar LED; mostrando los últimos datos cargados', 'error');
+      return;
+    }
     container.innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>Error cargando datos LED: ' + err.message + '</p><button onclick="renderLED(document.getElementById(\'mainContent\'))" style="margin-top:10px;padding:8px 16px;background:var(--accent);color:#000;border:none;border-radius:8px;cursor:pointer">↺ Reintentar</button></div>';
   }
 }
