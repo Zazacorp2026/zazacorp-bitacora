@@ -9355,6 +9355,7 @@ function buildLEDUI(container, data) {
     '</div>';
 
   html += '<div style="display:flex;justify-content:flex-end;margin-bottom:12px">' +
+    (qzEsAdmin() ? '<button onclick="openModalCargaMasivaLED()" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.4);border-radius:8px;color:var(--blue);font-size:12px;font-weight:700;padding:8px 16px;cursor:pointer;margin-right:8px">📥 Carga masiva</button>' : '') +
     '<button onclick="openModalNuevoContratoLED()" style="background:rgba(245,158,11,.15);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-size:12px;font-weight:700;padding:8px 16px;cursor:pointer">⚡ Nuevo Contrato LED</button>' +
     '</div>';
 
@@ -9645,6 +9646,178 @@ async function cancelarContratoLED(id) {
     showToast('✅ Contrato cancelado', 'success');
     renderLED(document.getElementById('mainContent'));
   } catch(e) { showToast('❌ ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CARGA MASIVA DE CONTRATOS LED (2026-10-07) — solo Jorge
+//  1) "Descargar plantilla": Excel con la lista de pantallas en un desplegable.
+//  2) Se llena: Pantalla, Cliente, Fecha inicio, Fecha fin (y opcionales).
+//  3) "Subir archivo": se revisa fila por fila (no escribe) y luego se importa.
+//  El sistema asigna el ID, orden, nombre/ciudad, período y valor total.
+// ══════════════════════════════════════════════════════════════
+let _ledMasivoFilas = null;
+async function ledCargarExcelJS_() {
+  if (typeof ExcelJS !== 'undefined') return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+    s.onload = resolve;
+    s.onerror = () => {
+      const s2 = document.createElement('script');
+      s2.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+      s2.onload = resolve; s2.onerror = () => reject(new Error('No se pudo cargar la librería de Excel'));
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s);
+  });
+}
+function openModalCargaMasivaLED() {
+  if (!qzEsAdmin()) { showToast('Solo el administrador puede hacer carga masiva', 'info'); return; }
+  _ledMasivoFilas = null;
+  document.getElementById('modalTitle').textContent = '📥 Carga masiva de contratos LED';
+  document.getElementById('modalSubtitle').textContent = 'Campañas que ya están al aire';
+  document.getElementById('modalBody').innerHTML = `
+    <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+      <b style="color:var(--text)">1.</b> Descarga la plantilla y llénala: <b>Pantalla, Cliente, Fecha inicio, Fecha fin</b>
+      (opcionales: Ejecutiva, Valor mensual, Agencia, Comisión). Si no pones ejecutiva queda JORGE.<br>
+      <b style="color:var(--text)">2.</b> Sube el archivo: primero se revisa fila por fila (no se guarda nada).<br>
+      <b style="color:var(--text)">3.</b> Confirma y el sistema crea los contratos con su ID, orden y período.
+    </div>
+    <button onclick="ledDescargarPlantilla()" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.4);border-radius:8px;color:var(--blue);font-weight:700;font-size:12px;padding:9px 14px;cursor:pointer;margin-right:8px">⬇️ Descargar plantilla</button>
+    <button onclick="document.getElementById('ledMasivoInput').click()" style="background:rgba(245,158,11,.15);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-weight:700;font-size:12px;padding:9px 14px;cursor:pointer">📤 Subir archivo lleno</button>
+    <input type="file" id="ledMasivoInput" accept=".xlsx" style="display:none" onchange="ledMasivoArchivo(event)">
+    <div id="ledMasivoResultado" style="margin-top:16px"></div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+async function ledDescargarPlantilla() {
+  try {
+    await ledCargarExcelJS_();
+    const pantallas = ((_ledData && _ledData.elementosLED) || []).slice().sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Contratos');
+    const wp = wb.addWorksheet('Pantallas');
+    const wi = wb.addWorksheet('Instrucciones');
+    ws.columns = [
+      { header: 'Pantalla', key: 'p', width: 26 }, { header: 'Cliente', key: 'c', width: 32 },
+      { header: 'Fecha inicio', key: 'i', width: 14 }, { header: 'Fecha fin', key: 'f', width: 14 },
+      { header: 'Ejecutiva (opcional)', key: 'e', width: 22 }, { header: 'Valor mensual (opcional)', key: 'v', width: 20 },
+      { header: 'Agencia (opcional)', key: 'a', width: 24 }, { header: 'Comisión (opcional)', key: 'm', width: 18 }
+    ];
+    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A2B4A' } };
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    wp.columns = [{ header: 'Código', width: 24 }, { header: 'Dirección', width: 60 }, { header: 'Ciudad', width: 16 }, { header: 'Player ID', width: 24 }];
+    wp.getRow(1).font = { bold: true };
+    pantallas.forEach(el => wp.addRow([el.codigo, el.direccion || '', el.ciudad || '', el.playerVnnoxId || '']));
+    const ult = Math.max(2, pantallas.length + 1);
+    const ejecutivas = 'JORGE,LORENA,RICARDO,SASKYA,SHAYRA,VERONICA TERAN,VERONICA TRIVINO,YESENIA,ZULIA';
+    for (let r = 2; r <= 301; r++) {
+      ws.getCell('A' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['Pantallas!$A$2:$A$' + ult], showErrorMessage: true, errorTitle: 'Pantalla', error: 'Elige una pantalla de la lista' };
+      ws.getCell('E' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['"' + ejecutivas + '"'] };
+      ws.getCell('C' + r).numFmt = 'yyyy-mm-dd'; ws.getCell('D' + r).numFmt = 'yyyy-mm-dd';
+    }
+    wi.getColumn(1).width = 110;
+    [
+      'CARGA MASIVA DE CONTRATOS LED',
+      '',
+      'Una fila = una campaña (un cliente en una pantalla).',
+      'Obligatorias: Pantalla (elige de la lista), Cliente, Fecha inicio, Fecha fin (AAAA-MM-DD).',
+      'Opcionales: Ejecutiva (si queda vacía = JORGE), Valor mensual, Agencia, Comisión.',
+      'El ID, el orden en la pantalla, el período y el valor total los pone el sistema.',
+      'Los materiales se agregan después, desde cada contrato en la pestaña LED.',
+      'Se rechazan filas con pantalla inexistente, fechas inválidas, duplicadas o sin espacio disponible en la pantalla.'
+    ].forEach(t => wi.addRow([t]));
+    wi.getRow(1).font = { bold: true, size: 14 };
+    const buf = await wb.xlsx.writeBuffer();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    a.download = 'plantilla-carga-masiva-led.xlsx';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
+function ledMasivoValorCelda_(v) {
+  if (v == null) return '';
+  if (v instanceof Date) return v;
+  if (typeof v === 'object') {
+    if (v.richText) return v.richText.map(t => t.text).join('');
+    if (v.result !== undefined) return v.result;
+    if (v.text !== undefined) return v.text;
+  }
+  return v;
+}
+function ledMasivoFecha_(v) {
+  v = ledMasivoValorCelda_(v);
+  if (v === '' || v == null) return '';
+  if (v instanceof Date) return v.getUTCFullYear() + '-' + String(v.getUTCMonth() + 1).padStart(2, '0') + '-' + String(v.getUTCDate()).padStart(2, '0');
+  if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 86400000)); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); }
+  const t = String(v).trim();
+  const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  return t.split('T')[0];
+}
+async function ledMasivoArchivo(ev) {
+  const file = ev.target.files[0]; ev.target.value = '';
+  if (!file) return;
+  const box = document.getElementById('ledMasivoResultado');
+  box.innerHTML = '<div style="color:var(--muted);font-size:12px">⏳ Leyendo el archivo...</div>';
+  try {
+    await ledCargarExcelJS_();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await file.arrayBuffer());
+    const ws = wb.getWorksheet('Contratos') || wb.worksheets[0];
+    const filas = [];
+    ws.eachRow({ includeEmpty: false }, (row, n) => {
+      if (n === 1) return;
+      const g = i => ledMasivoValorCelda_(row.getCell(i).value);
+      const fila = { fila: n, pantalla: String(g(1)).trim(), cliente: String(g(2)).trim(), inicio: ledMasivoFecha_(row.getCell(3).value),
+        fin: ledMasivoFecha_(row.getCell(4).value), ejecutiva: String(g(5)).trim(), valorMensual: g(6), agencia: String(g(7)).trim(), comision: String(g(8)).trim() };
+      if (fila.pantalla || fila.cliente || fila.inicio || fila.fin) filas.push(fila);
+    });
+    if (!filas.length) { box.innerHTML = '<div style="color:var(--red);font-size:12px">El archivo no trae filas con datos.</div>'; return; }
+    _ledMasivoFilas = filas;
+    await ledMasivoEnviar_('validar');
+  } catch (e) { box.innerHTML = '<div style="color:var(--red);font-size:12px">❌ ' + esc(e.message) + '</div>'; }
+}
+async function ledMasivoEnviar_(modo) {
+  const box = document.getElementById('ledMasivoResultado');
+  box.innerHTML = '<div style="color:var(--muted);font-size:12px">⏳ ' + (modo === 'importar' ? 'Importando...' : 'Revisando ' + _ledMasivoFilas.length + ' filas...') + '</div>';
+  let json = null;
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledCargaMasiva', modo, filas: _ledMasivoFilas }) });
+    json = await res.json();
+  } catch (e) {
+    if (modo === 'importar') {
+      // La respuesta se perdió: la importación pudo haberse hecho. Volver a revisar:
+      // las filas ya creadas aparecen como "Ya existe un contrato igual".
+      box.innerHTML = '<div style="color:var(--muted);font-size:12px">La respuesta no llegó; verificando qué quedó guardado...</div>';
+      return ledMasivoEnviar_('validar');
+    }
+    box.innerHTML = '<div style="color:var(--red);font-size:12px">❌ El servidor no respondió bien. Intenta de nuevo.</div>';
+    return;
+  }
+  if (!json.ok) { box.innerHTML = '<div style="color:var(--red);font-size:12px">❌ ' + esc(json.error || 'Error') + '</div>'; return; }
+  const filasHtml = json.resultados.map(r =>
+    '<tr style="border-top:1px solid rgba(255,255,255,.08)"><td style="padding:4px 6px">' + r.fila + '</td><td style="padding:4px 6px">' + esc(r.pantalla || '') +
+    '</td><td style="padding:4px 6px">' + esc(r.cliente || '') + '</td><td style="padding:4px 6px;white-space:nowrap">' + esc(r.inicio || '') + ' → ' + esc(r.fin || '') +
+    '</td><td style="padding:4px 6px;color:' + (r.ok ? '#4ade80' : 'var(--red)') + '">' + esc(r.mensaje) + '</td></tr>').join('');
+  const yaImportadas = json.resultados.filter(r => /^Ya existe un contrato igual/.test(r.mensaje)).length;
+  box.innerHTML =
+    '<div style="font-size:13px;margin-bottom:8px">' +
+      (json.modo === 'importar' ? '✅ <b>' + json.importadas + '</b> contratos importados · ' : '<b style="color:#4ade80">' + json.filasOk + '</b> filas correctas · ') +
+      '<b style="color:' + (json.filasConError ? 'var(--red)' : 'var(--muted)') + '">' + json.filasConError + '</b> con error' +
+      (json.modo === 'validar' && yaImportadas ? ' <span style="color:var(--muted)">(' + yaImportadas + ' ya existen — si acabas de importar, quedaron guardadas)</span>' : '') +
+    '</div>' +
+    '<div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table style="width:100%;font-size:11px;border-collapse:collapse"><tr style="color:var(--muted)"><th style="padding:4px 6px;text-align:left">Fila</th><th style="padding:4px 6px;text-align:left">Pantalla</th><th style="padding:4px 6px;text-align:left">Cliente</th><th style="padding:4px 6px;text-align:left">Fechas</th><th style="padding:4px 6px;text-align:left">Resultado</th></tr>' + filasHtml + '</table></div>' +
+    (json.modo === 'validar' && json.filasOk
+      ? '<button onclick="ledMasivoEnviar_(\'importar\')" style="margin-top:12px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.5);border-radius:8px;color:#34d399;font-weight:800;font-size:12.5px;padding:10px 16px;cursor:pointer">✅ Importar ' + json.filasOk + ' filas correctas' + (json.filasConError ? ' (las ' + json.filasConError + ' con error se omiten)' : '') + '</button>'
+      : '') +
+    (json.modo === 'importar' ? '<div style="margin-top:10px;font-size:11px;color:var(--muted)">Corrige las filas con error en tu Excel y vuelve a subirlo: las ya importadas se detectan y no se duplican.</div>' : '');
+  if (json.modo === 'importar' && json.importadas) {
+    showToast('✅ ' + json.importadas + ' contratos LED importados', 'success');
+    _ledData = null;
+    renderLED(document.getElementById('mainContent'), true);
+  }
 }
 
 // ── Modal: Nuevo Contrato LED ─────────────────────────────────
