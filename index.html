@@ -9290,22 +9290,43 @@ if (checkLogin()) {
 // ══════════════════════════════════════════════════════════════
 let _ledData = null; // cache en memoria
 
+let _ledRenderSeq = 0;
 async function renderLED(container, forzar) {
-  container.innerHTML = '<div class="empty"><div class="icon" style="animation:spin 1s linear infinite">⏳</div><p>Cargando pantallas desde VNNOX...</p></div>';
-  try {
-    const json = await fetchJsonGet(API_URL + '?action=getVNNOXData' + (forzar ? '&forzar=1' : ''));
-    if (!json.ok) throw new Error(json.error || 'Error VNNOX');
+  const miSeq = ++_ledRenderSeq;
+  container.innerHTML = '<div class="empty"><div class="icon" style="animation:spin 1s linear infinite">⏳</div><p>Cargando pantallas...</p></div>';
+  const aplicar = (json) => {
     _ledData = json;
-    _ledContratosGlobal = json.contratos || []; _ledCapacidadesGlobal = {}; (json.elementosLED||[]).forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; });
-    buildLEDUI(container, json);
-  } catch(err) {
+    _ledContratosGlobal = json.contratos || []; _ledCapacidadesGlobal = {};
+    (json.elementosLED || []).forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; });
+  };
+  // 1) Carga RÁPIDA: solo lo del sistema (pantallas, contratos, materiales), sin esperar a VNNOX.
+  //    Así la pestaña abre aunque VNNOX o la conexión con Apps Script estén lentos.
+  try {
+    const rapido = await fetchJsonGet(API_URL + '?action=getVNNOXData&rapido=1' + (forzar ? '&forzar=1' : ''));
+    if (!rapido.ok) throw new Error(rapido.error || 'Error cargando LED');
+    if (miSeq !== _ledRenderSeq) return;
+    aplicar(rapido);
+    buildLEDUI(container, rapido);
+  } catch (err) {
+    if (miSeq !== _ledRenderSeq) return;
     if (_ledData) {
       // Respaldo: se muestran los últimos datos buenos en vez de una pantalla de error
       buildLEDUI(container, _ledData);
       if (typeof showToast === 'function') showToast('⚠️ No se pudo actualizar LED; mostrando los últimos datos cargados', 'error');
+    } else {
+      container.innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>Error cargando datos LED: ' + err.message + '</p><button onclick="renderLED(document.getElementById(\'mainContent\'))" style="margin-top:10px;padding:8px 16px;background:var(--accent);color:#000;border:none;border-radius:8px;cursor:pointer">↺ Reintentar</button></div>';
       return;
     }
-    container.innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>Error cargando datos LED: ' + err.message + '</p><button onclick="renderLED(document.getElementById(\'mainContent\'))" style="margin-top:10px;padding:8px 16px;background:var(--accent);color:#000;border:none;border-radius:8px;cursor:pointer">↺ Reintentar</button></div>';
+  }
+  // 2) Carga COMPLETA en segundo plano: trae el estado en línea desde VNNOX y repinta cuando llega.
+  try {
+    const completo = await fetchJsonGet(API_URL + '?action=getVNNOXData' + (forzar ? '&forzar=1' : ''));
+    if (!completo.ok) throw new Error(completo.error || 'Error VNNOX');
+    if (miSeq !== _ledRenderSeq) return;
+    aplicar(completo);
+    if (state.tab === 'led' && document.body.contains(container)) buildLEDUI(container, completo);
+  } catch (err) {
+    if (miSeq === _ledRenderSeq && typeof showToast === 'function') showToast('⚠️ No se pudo leer el estado en línea de VNNOX; se muestran los datos del sistema', 'info');
   }
 }
 
@@ -9417,14 +9438,16 @@ function buildLEDUI(container, data) {
       if (player.esExterno) {
         estadoTag = '<span style="font-size:10px;color:#fb923c;background:rgba(251,146,60,.15);border:1px solid rgba(251,146,60,.4);border-radius:4px;padding:1px 6px">ELEMENTO EXTERNO</span>';
       } else {
-        estadoTag = '<span style="font-size:10px;color:' + (player.isOnline ? '#4ade80' : '#f87171') + '">● ' + (player.isOnline ? 'EN LÍNEA' : 'OFFLINE') + '</span>';
+        estadoTag = player.isOnline === null || player.isOnline === undefined
+          ? '<span style="font-size:10px;color:var(--muted)">● verificando estado…</span>'
+          : '<span style="font-size:10px;color:' + (player.isOnline ? '#4ade80' : '#f87171') + '">● ' + (player.isOnline ? 'EN LÍNEA' : 'OFFLINE') + '</span>';
       }
 
       htmlGrupos += '<div class="led-player-card">';
       htmlGrupos += '<div class="led-banner">' +
         (player.foto ? '<img src="'+cldOptimizar(player.foto, 400)+'" loading="lazy">' : '') +
         '<div class="led-player-header" style="padding:0">' +
-          '<div class="led-online-dot ' + (player.esExterno ? 'offline' : (player.isOnline ? 'online' : 'offline')) + '"></div>' +
+          '<div class="led-online-dot ' + (player.esExterno || player.isOnline === null || player.isOnline === undefined ? 'offline' : (player.isOnline ? 'online' : 'offline')) + '"></div>' +
           '<div>' +
             '<div class="led-player-name">' + player.name + '</div>' +
             '<div class="led-player-sn">' + (player.direccion||'').substring(0,40) + '</div>' +
@@ -9698,7 +9721,8 @@ async function ledDescargarPlantilla() {
     const wp = wb.addWorksheet('Pantallas');
     const wi = wb.addWorksheet('Instrucciones');
     ws.columns = [
-      { header: 'Pantalla', key: 'p', width: 26 }, { header: 'Cliente', key: 'c', width: 32 },
+      { header: 'Pantalla', key: 'p', width: 26 }, { header: 'Dirección (solo referencia)', key: 'd', width: 48 },
+      { header: 'Cliente', key: 'c', width: 32 },
       { header: 'Fecha inicio', key: 'i', width: 14 }, { header: 'Fecha fin', key: 'f', width: 14 },
       { header: 'Ejecutiva (opcional)', key: 'e', width: 22 }, { header: 'Valor mensual (opcional)', key: 'v', width: 20 },
       { header: 'Agencia (opcional)', key: 'a', width: 24 }, { header: 'Comisión (opcional)', key: 'm', width: 18 }
@@ -9713,8 +9737,13 @@ async function ledDescargarPlantilla() {
     const ejecutivas = 'JORGE,LORENA,RICARDO,SASKYA,SHAYRA,VERONICA TERAN,VERONICA TRIVINO,YESENIA,ZULIA';
     for (let r = 2; r <= 301; r++) {
       ws.getCell('A' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['Pantallas!$A$2:$A$' + ult], showErrorMessage: true, errorTitle: 'Pantalla', error: 'Elige una pantalla de la lista' };
-      ws.getCell('E' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['"' + ejecutivas + '"'] };
-      ws.getCell('C' + r).numFmt = 'yyyy-mm-dd'; ws.getCell('D' + r).numFmt = 'yyyy-mm-dd';
+      // Dirección de la pantalla elegida, solo para que quien llena confirme que es la correcta
+      // (busca por código y, si no, por Player ID). Se llena sola; no se modifica.
+      ws.getCell('B' + r).value = { formula: 'IFERROR(VLOOKUP(A' + r + ',Pantallas!$A$2:$B$' + ult + ',2,FALSE),IFERROR(INDEX(Pantallas!$B$2:$B$' + ult + ',MATCH(A' + r + ',Pantallas!$D$2:$D$' + ult + ',0)),""))' };
+      ws.getCell('B' + r).font = { italic: true, color: { argb: 'FF6B7280' } };
+      ws.getCell('B' + r).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+      ws.getCell('F' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['"' + ejecutivas + '"'] };
+      ws.getCell('D' + r).numFmt = 'yyyy-mm-dd'; ws.getCell('E' + r).numFmt = 'yyyy-mm-dd';
     }
     wi.getColumn(1).width = 110;
     [
@@ -9722,6 +9751,7 @@ async function ledDescargarPlantilla() {
       '',
       'Una fila = una campaña (un cliente en una pantalla).',
       'Obligatorias: Pantalla (elige de la lista), Cliente, Fecha inicio, Fecha fin (AAAA-MM-DD).',
+      'Al elegir la pantalla, la columna Dirección se llena sola: úsala para confirmar que es la pantalla correcta (no la modifiques).',
       'Opcionales: Ejecutiva (si queda vacía = JORGE), Valor mensual, Agencia, Comisión.',
       'El ID, el orden en la pantalla, el período y el valor total los pone el sistema.',
       'Los materiales se agregan después, desde cada contrato en la pestaña LED.',
@@ -9766,12 +9796,30 @@ async function ledMasivoArchivo(ev) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(await file.arrayBuffer());
     const ws = wb.getWorksheet('Contratos') || wb.worksheets[0];
+    // Las columnas se buscan por el NOMBRE del encabezado (así sirve cualquier versión de la plantilla)
+    const idx = {};
+    ws.getRow(1).eachCell({ includeEmpty: false }, (cell, c) => {
+      const h = String(ledMasivoValorCelda_(cell.value)).trim().toLowerCase();
+      if (h.indexOf('pantalla') === 0) idx.pantalla = c;
+      else if (h.indexOf('cliente') === 0) idx.cliente = c;
+      else if (h.indexOf('fecha inicio') === 0) idx.inicio = c;
+      else if (h.indexOf('fecha fin') === 0) idx.fin = c;
+      else if (h.indexOf('ejecutiva') === 0) idx.ejecutiva = c;
+      else if (h.indexOf('valor mensual') === 0) idx.valor = c;
+      else if (h.indexOf('agencia') === 0) idx.agencia = c;
+      else if (h.indexOf('comisi') === 0) idx.comision = c;
+    });
+    if (!idx.pantalla || !idx.cliente || !idx.inicio || !idx.fin) {
+      box.innerHTML = '<div style="color:var(--red);font-size:12px">La hoja "Contratos" debe tener las columnas Pantalla, Cliente, Fecha inicio y Fecha fin. Descarga la plantilla otra vez.</div>';
+      return;
+    }
     const filas = [];
     ws.eachRow({ includeEmpty: false }, (row, n) => {
       if (n === 1) return;
-      const g = i => ledMasivoValorCelda_(row.getCell(i).value);
-      const fila = { fila: n, pantalla: String(g(1)).trim(), cliente: String(g(2)).trim(), inicio: ledMasivoFecha_(row.getCell(3).value),
-        fin: ledMasivoFecha_(row.getCell(4).value), ejecutiva: String(g(5)).trim(), valorMensual: g(6), agencia: String(g(7)).trim(), comision: String(g(8)).trim() };
+      const g = k => idx[k] ? ledMasivoValorCelda_(row.getCell(idx[k]).value) : '';
+      const fila = { fila: n, pantalla: String(g('pantalla')).trim(), cliente: String(g('cliente')).trim(),
+        inicio: idx.inicio ? ledMasivoFecha_(row.getCell(idx.inicio).value) : '', fin: idx.fin ? ledMasivoFecha_(row.getCell(idx.fin).value) : '',
+        ejecutiva: String(g('ejecutiva')).trim(), valorMensual: g('valor'), agencia: String(g('agencia')).trim(), comision: String(g('comision')).trim() };
       if (fila.pantalla || fila.cliente || fila.inicio || fila.fin) filas.push(fila);
     });
     if (!filas.length) { box.innerHTML = '<div style="color:var(--red);font-size:12px">El archivo no trae filas con datos.</div>'; return; }
