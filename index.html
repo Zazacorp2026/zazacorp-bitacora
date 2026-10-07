@@ -9784,8 +9784,23 @@ async function ledMasivoEnviar_(modo) {
   box.innerHTML = '<div style="color:var(--muted);font-size:12px">⏳ ' + (modo === 'importar' ? 'Importando...' : 'Revisando ' + _ledMasivoFilas.length + ' filas...') + '</div>';
   let json = null;
   try {
-    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledCargaMasiva', modo, filas: _ledMasivoFilas }) });
-    json = await res.json();
+    // 'validar' no escribe nada: es seguro reintentar si la respuesta de Apps Script llega rota.
+    // 'importar' NO se reintenta a ciegas (se verifica abajo con una validación).
+    const intentos = modo === 'validar' ? 3 : 1;
+    let ultimoErr = null;
+    for (let n = 0; n < intentos && !json; n++) {
+      try {
+        const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledCargaMasiva', modo, filas: _ledMasivoFilas }) });
+        json = await res.json();
+      } catch (e2) {
+        ultimoErr = e2;
+        if (n < intentos - 1) {
+          box.innerHTML = '<div style="color:var(--muted);font-size:12px">⏳ El servidor tardó en responder, reintentando (' + (n + 2) + '/' + intentos + ')...</div>';
+          await new Promise(r => setTimeout(r, 1500 * (n + 1)));
+        }
+      }
+    }
+    if (!json) throw ultimoErr || new Error('sin respuesta');
   } catch (e) {
     if (modo === 'importar') {
       // La respuesta se perdió: la importación pudo haberse hecho. Volver a revisar:
