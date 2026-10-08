@@ -731,6 +731,21 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbyTlN29P6a_52u7vmAk9hwG
 //  (3 intentos, timeout 20s, espera creciente) antes de rendirse.
 //  NO usar con POST/escrituras (no son idempotentes).
 // ══════════════════════════════════════════════════════════════
+// ── Caché "pinta primero, actualiza después" (stale-while-revalidate) ──────────
+// Guarda en este navegador la última respuesta buena de las pestañas pesadas (LED,
+// Instalaciones) por usuario, para pintarlas AL INSTANTE al volver a abrirlas mientras
+// llega la versión nueva del servidor. Se borra al cerrar sesión / expirar la sesión.
+function swrClave_(clave) { return 'zz_swr_' + String(_usuarioActual || '').toUpperCase() + '_' + clave; }
+function swrLeer_(clave) {
+  try { const raw = localStorage.getItem(swrClave_(clave)); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function swrGuardar_(clave, json) {
+  try { localStorage.setItem(swrClave_(clave), JSON.stringify({ ts: Date.now(), json: json })); } catch (e) { /* sin espacio: no pasa nada */ }
+}
+function swrLimpiar_() {
+  try { Object.keys(localStorage).filter(k => k.indexOf('zz_swr_') === 0).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+}
+
 async function fetchJsonGet(url, intentos) {
   intentos = intentos || 3;
   let ultimoError;
@@ -809,6 +824,7 @@ function sesionExpirada() {
   return !ts || (Date.now() - ts) > SESION_TTL_MS;
 }
 function forzarLogoutPorExpiracion() {
+  swrLimpiar_();
   sessionStorage.removeItem('zz_usuario');
   sessionStorage.removeItem('zz_token');
   sessionStorage.removeItem('zz_readonly');
@@ -1050,6 +1066,7 @@ function isReadOnly() {
 
 function cerrarSesion() {
   if (!confirm('¿Cerrar sesión?')) return;
+  swrLimpiar_();
   sessionStorage.removeItem('zz_usuario');
   _usuarioActual = null;
   document.getElementById('loginOverlay').classList.remove('hidden');
@@ -3159,11 +3176,19 @@ function insDiasEntre(a, b) {
 
 async function insCargarDatos() {
   const board = document.getElementById('insBoard');
+  // Pinta primero la última copia guardada (si la hay) y luego la actualiza con la del servidor.
+  const previo = swrLeer_('ins');
+  if (previo && previo.json && Array.isArray(previo.json.filas) && !(insDataCache && insDataCache.length)) {
+    insDataCache = previo.json.filas;
+    insPuedeCertificar = !!previo.json.puedeCertificar;
+    insRenderLista();
+  }
   try {
     const json = await fetchJsonGet(API_URL + '?action=insListar');
     if (!json.ok) throw new Error(json.error || 'Error al cargar');
     insDataCache = json.filas || [];
     insPuedeCertificar = !!json.puedeCertificar;
+    swrGuardar_('ins', json);
     insRenderLista();
   } catch (e) {
     if (board) board.innerHTML = '<div class="empty"><p>❌ ' + esc(e.message) + '</p></div>';
@@ -9293,7 +9318,19 @@ let _ledData = null; // cache en memoria
 let _ledRenderSeq = 0;
 async function renderLED(container, forzar) {
   const miSeq = ++_ledRenderSeq;
-  container.innerHTML = '<div class="empty"><div class="icon" style="animation:spin 1s linear infinite">⏳</div><p>Cargando pantallas...</p></div>';
+  // Si hay una copia reciente guardada en este navegador, se pinta AL INSTANTE; el servidor la actualiza después.
+  // (También si ya hay datos en memoria de una visita anterior en esta misma sesión.)
+  const swrPrevio = forzar ? null : (_ledData ? { json: _ledData } : swrLeer_('led'));
+  let pintadoDesdeCopia = false;
+  if (swrPrevio && swrPrevio.json && swrPrevio.json.elementosLED) {
+    _ledData = swrPrevio.json;
+    _ledContratosGlobal = _ledData.contratos || []; _ledCapacidadesGlobal = {};
+    (_ledData.elementosLED || []).forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; });
+    buildLEDUI(container, _ledData);
+    pintadoDesdeCopia = true;
+  } else {
+    container.innerHTML = '<div class="empty"><div class="icon" style="animation:spin 1s linear infinite">⏳</div><p>Cargando pantallas...</p></div>';
+  }
   const aplicar = (json) => {
     _ledData = json;
     _ledContratosGlobal = json.contratos || []; _ledCapacidadesGlobal = {};
@@ -9306,7 +9343,10 @@ async function renderLED(container, forzar) {
     if (!rapido.ok) throw new Error(rapido.error || 'Error cargando LED');
     if (miSeq !== _ledRenderSeq) return;
     aplicar(rapido);
-    buildLEDUI(container, rapido);
+    // Si ya se pintó la copia guardada (con estado en línea), no se pisa con datos "rápidos" sin ese estado.
+    if (!pintadoDesdeCopia) buildLEDUI(container, rapido);
+    else if (state.tab === 'led' && document.body.contains(container)) buildLEDUI(container, Object.assign({}, rapido, { elementosLED: (rapido.elementosLED || []).map(el => { const antes = ((swrPrevio.json.elementosLED) || []).find(x => x.codigo === el.codigo); return antes ? Object.assign({}, el, { isOnline: antes.isOnline, sn: antes.sn, account: antes.account }) : el; }) }));
+    swrGuardar_('led', rapido);
   } catch (err) {
     if (miSeq !== _ledRenderSeq) return;
     if (_ledData) {
@@ -9324,6 +9364,7 @@ async function renderLED(container, forzar) {
     if (!completo.ok) throw new Error(completo.error || 'Error VNNOX');
     if (miSeq !== _ledRenderSeq) return;
     aplicar(completo);
+    swrGuardar_('led', completo);
     if (state.tab === 'led' && document.body.contains(container)) buildLEDUI(container, completo);
   } catch (err) {
     if (miSeq === _ledRenderSeq && typeof showToast === 'function') showToast('⚠️ No se pudo leer el estado en línea de VNNOX; se muestran los datos del sistema', 'info');
