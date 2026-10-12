@@ -2004,17 +2004,32 @@ function qzPintarResultado() {
   // El PIN se pide por MARGEN real, no por superar un % de descuento
   // fijo — un descuento alto puede seguir dentro del margen, y uno
   // chico puede romperlo si el elemento ya venía justo.
-  if (r.semaforo === 'REQUIERE_APROBACION') html += '<div style="margin-top:8px;padding:10px;border-radius:9px;background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);font-size:12px;font-weight:800">⚠️ Con este precio, al menos un elemento cae por debajo de su margen mínimo. Guarda y aprueba con PIN antes de enviar propuesta final.</div>';
+  if (r.semaforo === 'REQUIERE_APROBACION') html += '<div style="margin-top:8px;padding:10px;border-radius:9px;background:rgba(239,68,68,.1);border:1px solid var(--red);color:var(--red);font-size:12px;font-weight:800">⚠️ Con este precio, al menos un elemento cae por debajo de su margen mínimo. ' + (qzPuedeAprobarEsta_({ ejecutiva: _usuarioActual }) ? 'Guarda y aprueba con PIN antes de enviar propuesta final.' : 'Guárdala: se envía a aprobación (' + qzAprobadoresDe_(_usuarioActual).join(' o ') + ' reciben un correo y la aprueban desde su Pipeline, sin que estén contigo). Te avisamos por correo con la decisión.') + '</div>';
   el.innerHTML = html;
   ['qzBtnGuardar','qzBtnVistaPDF'].forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
 }
 
 function qzPintarAprobacion() {
   const panel = document.getElementById('qzPinPanel');
+  const aviso = document.getElementById('qzAvisoPendiente');
   const btnExport = document.getElementById('qzBtnExportar');
   if (!panel) return;
+  if (aviso) aviso.style.display = 'none';
   if (qzCotizacionActual && qzCotizacionActual.estado_aprobacion === 'PENDIENTE') {
-    panel.style.display = 'flex';
+    // Quien puede aprobar (Jorge, o Verónica sobre sus ejecutivas) ve el PIN por si está presente.
+    // Una ejecutiva NO ve el PIN: su cotización queda en el Pipeline de los aprobadores, que la aprueban
+    // o niegan desde SU sesión, en cualquier momento y lugar, y a ella le llega un correo con la decisión.
+    const puedeAprobarAqui = qzPuedeAprobarEsta_({ ejecutiva: qzCotizacionActual.ejecutiva || _usuarioActual });
+    if (puedeAprobarAqui) {
+      panel.style.display = 'flex';
+    } else {
+      panel.style.display = 'none';
+      if (aviso) {
+        aviso.innerHTML = '⏳ Cotización guardada y <b>enviada para aprobación</b>. ' + esc(qzAprobadoresDe_(_usuarioActual).join(' o ')) +
+          ' recibieron un correo y la aprueban o niegan desde su Pipeline (no necesitan estar contigo). Te llegará un correo con la decisión; cuando la aprueben podrás exportar la propuesta.';
+        aviso.style.display = 'block';
+      }
+    }
     if (btnExport) btnExport.disabled = true;
   } else if (qzCotizacionActual && qzCotizacionActual.estado_aprobacion === 'NEGADO') {
     // FIX (2026-09-28): antes solo bloqueaba si seguía PENDIENTE — si
@@ -2060,7 +2075,7 @@ async function qzGuardarYContinuar() {
   // dijera "Requiere revisión de margen", como si ya hubiera quedado
   // todo bien.
   if (qzCotizacionActual && qzCotizacionActual.estado_aprobacion === 'PENDIENTE') {
-    showToast('⚠️ Cotización guardada, pero necesita aprobación por PIN antes de continuar', 'info');
+    showToast(qzPuedeAprobarEsta_({ ejecutiva: qzCotizacionActual.ejecutiva || _usuarioActual }) ? '⚠️ Cotización guardada, pero necesita aprobación por PIN antes de continuar' : '⏳ Cotización guardada y enviada a aprobación — te avisamos por correo', 'info');
     return;
   }
   qzIrPaso(4);
@@ -2151,7 +2166,7 @@ function qzAbrirPropuestaImprimible() {
 
 async function qzExportarCotizacionPPT() {
   if (!qzCotizacionActual) { showToast('Primero calcula la cotización', 'info'); return; }
-  if (qzCotizacionActual.estado_aprobacion === 'PENDIENTE') { showToast('Aprueba el descuento con PIN antes de exportar', 'info'); return; }
+  if (qzCotizacionActual.estado_aprobacion === 'PENDIENTE') { showToast(qzPuedeAprobarEsta_({ ejecutiva: qzCotizacionActual.ejecutiva || _usuarioActual }) ? 'Aprueba el descuento con PIN antes de exportar' : 'Esta cotización espera la aprobación de ' + qzAprobadoresDe_(_usuarioActual).join(' o ') + ' — te avisamos por correo', 'info'); return; }
   const btn = document.getElementById('qzBtnExportar');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando...'; }
   if (typeof PptxGenJS === 'undefined') {
@@ -2485,6 +2500,7 @@ function renderCotizador(container) {
         '<div style="font-weight:900;font-size:14px;color:var(--text);margin-bottom:12px">🧮 Resultado de la cotización</div>' +
         '<div id="qzResultadoPanel" style="font-size:12px;color:var(--muted)">Calculando...</div>' +
         '<div id="qzPinPanel" style="display:none;gap:8px;align-items:center;background:rgba(239,68,68,.08);border:1px solid var(--red);border-radius:8px;padding:10px;margin-top:12px"><input id="qzPinInputWiz" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit"><button onclick="qzAprobarPin()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:11.5px;padding:8px 10px;cursor:pointer">Aprobar</button></div>' +
+        '<div id="qzAvisoPendiente" style="display:none;background:rgba(245,158,11,.1);border:1px solid var(--accent);border-radius:8px;padding:12px;margin-top:12px;font-size:12px;font-weight:700;color:var(--accent);line-height:1.5"></div>' +
       '</div>' +
       '<div style="display:flex;justify-content:space-between;margin-top:14px;max-width:760px;margin-left:auto;margin-right:auto">' +
         '<button onclick="qzIrPaso(2)" style="background:transparent;border:1px solid var(--border);border-radius:9px;color:var(--muted);font-weight:800;font-size:13px;padding:11px 20px;cursor:pointer;display:inline-flex;align-items:center">' + qzArrowLeft() + 'Atrás</button>' +
@@ -2545,6 +2561,16 @@ function qzEsAdmin() { return (_usuarioActual || '').toUpperCase() === 'JORGE'; 
 // por su cuenta antes de aprobar de verdad, así que no pasa nada si
 // alguien manipula esto en el navegador.
 const QZ_APROBADORES_RESTRINGIDOS_FRONT = { 'VERONICA TERAN': ['SASKYA', 'SHAYRA', 'VERONICA TRIVINO', 'PAMELA LARA'] };
+// Nombres de quienes pueden aprobar el margen bajo de una ejecutiva (solo para mostrar en textos;
+// el servidor valida la aprobación de verdad).
+function qzAprobadoresDe_(ejecutiva) {
+  const e = String(ejecutiva || '').toUpperCase();
+  const nombres = ['Jorge'];
+  Object.keys(QZ_APROBADORES_RESTRINGIDOS_FRONT).forEach(k => {
+    if (QZ_APROBADORES_RESTRINGIDOS_FRONT[k].indexOf(e) !== -1) nombres.push(k.charAt(0) + k.slice(1).toLowerCase());
+  });
+  return nombres;
+}
 function qzPuedeAprobarEsta_(c) {
   if (qzEsAdmin()) return true;
   const u = (_usuarioActual || '').toUpperCase();
@@ -2757,7 +2783,12 @@ function qzPintarPipeline() {
     if (fecha && String(fecha).slice(0, 7) === qzPipelineMes) porEtapa[etapa].push(c);
   });
 
-  let html = '<div style="display:flex;gap:14px;padding-bottom:6px">';
+  // Aviso para quien aprueba: cuántas cotizaciones (de las que puede aprobar) esperan su decisión, de cualquier mes.
+  const pendientesMias = cotizaciones.filter(c => c.estadoAprobacion === 'PENDIENTE' && qzPuedeAprobarEsta_(c));
+  let html = pendientesMias.length
+    ? '<div style="background:rgba(239,68,68,.1);border:1px solid var(--red);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;font-weight:800;color:var(--red)">⚠️ ' + pendientesMias.length + (pendientesMias.length === 1 ? ' cotización espera' : ' cotizaciones esperan') + ' tu aprobación de margen — búscalas marcadas como "pendiente de aprobación" y apruébalas o niégalas con tu PIN.</div>'
+    : '';
+  html += '<div style="display:flex;gap:14px;padding-bottom:6px">';
   QZ_ETAPAS_FRONT.forEach(etapa => {
     const items = porEtapa[etapa];
     const total = items.reduce((s, c) => s + (c.precioFinal || 0), 0);
@@ -9170,7 +9201,9 @@ async function cargarBloqueos() {
     // Limpiar vencidos
     let changed = false;
     Object.keys(_bloqueos).forEach(k => {
-      if (_bloqueos[k] && new Date(_bloqueos[k].expira) < new Date()) {
+      // Se borran los vencidos Y los que no traen una fecha de expiración válida (antes un bloqueo sin fecha
+      // válida nunca vencía y mostraba "NaN:NaN:NaN" para siempre).
+      if (_bloqueos[k] && !(new Date(_bloqueos[k].expira) >= new Date())) {
         delete _bloqueos[k]; changed = true;
       }
     });
@@ -9222,6 +9255,8 @@ function removeBloqueo(codigo) {
 function isBlocked(codigo) {
   const b = _bloqueos[codigo];
   if (!b) return null;
+  // Sin fecha de expiración válida no es un bloqueo real: se ignora (la tarjeta cae a la fecha del Sheet).
+  if (isNaN(new Date(b.expira).getTime())) return null;
   if (new Date() > new Date(b.expira)) {
     removeBloqueo(codigo);
     return null;
@@ -9237,7 +9272,7 @@ setInterval(async () => {
 
 function tiempoRestante(expira) {
   const diff = new Date(expira) - new Date();
-  if (diff <= 0) return null;
+  if (!(diff > 0)) return null; // también cubre fechas inválidas (NaN)
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
   const s = Math.floor((diff % 60000) / 1000);
