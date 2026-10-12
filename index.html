@@ -9453,6 +9453,7 @@ function buildLEDUI(container, data) {
 
   html += '<div style="display:flex;justify-content:flex-end;margin-bottom:12px">' +
     (qzEsAdmin() ? '<button onclick="openModalCargaMasivaLED()" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.4);border-radius:8px;color:var(--blue);font-size:12px;font-weight:700;padding:8px 16px;cursor:pointer;margin-right:8px">📥 Carga masiva</button>' : '') +
+    (isReadOnly() ? '' : '<button onclick="ledToggleMulti()" style="background:' + (ledMultiMode ? 'rgba(239,68,68,.12)' : 'rgba(99,102,241,.12)') + ';border:1px solid ' + (ledMultiMode ? 'rgba(239,68,68,.4)' : 'rgba(99,102,241,.4)') + ';border-radius:8px;color:' + (ledMultiMode ? 'var(--red)' : '#818cf8') + ';font-size:12px;font-weight:700;padding:8px 16px;cursor:pointer;margin-right:8px">' + (ledMultiMode ? '✕ Cancelar selección' : '☐ Contratación múltiple') + '</button>') +
     '<button onclick="openModalNuevoContratoLED()" style="background:rgba(245,158,11,.15);border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-size:12px;font-weight:700;padding:8px 16px;cursor:pointer">⚡ Nuevo Contrato LED</button>' +
     '</div>';
 
@@ -9520,6 +9521,14 @@ function buildLEDUI(container, data) {
       }
 
       htmlGrupos += '<div class="led-player-card">';
+      if (ledMultiMode) {
+        // Contratación múltiple: casilla para elegir esta pantalla (no si está llena o fuera de línea)
+        const llena = playerContratos.length >= capacidad;
+        const noSeleccionable = llena || bloqueadoOffline;
+        htmlGrupos += '<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:800;border-bottom:1px solid var(--border);cursor:' + (noSeleccionable ? 'not-allowed' : 'pointer') + ';color:' + (noSeleccionable ? 'var(--muted)' : '#818cf8') + '">' +
+          '<input type="checkbox" ' + (noSeleccionable ? 'disabled' : '') + ' ' + (ledMultiSel.has(player.playerId) ? 'checked' : '') + ' data-pid="' + esc(player.playerId) + '" onchange="ledMultiToggle(this.dataset.pid, this.checked)"> ' +
+          (llena ? 'Sin espacios libres' : (bloqueadoOffline ? 'Fuera de línea' : 'Incluir en la contratación múltiple')) + '</label>';
+      }
       htmlGrupos += '<div class="led-banner">' +
         (player.foto ? '<img src="'+cldOptimizar(player.foto, 400)+'" loading="lazy">' : '') +
         '<div class="led-player-header" style="padding:0">' +
@@ -9587,7 +9596,15 @@ function buildLEDUI(container, data) {
     htmlGrupos += '</div></div>'; // cerrar led-grid + led-tipo-section
   });
 
-  container.innerHTML = html.replace('<div class="led-grid"></div>', '') + htmlGrupos;
+  const barraMulti = ledMultiMode
+    ? '<div id="ledMultiBar" style="position:sticky;bottom:12px;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--surface);border:1px solid #818cf8;border-radius:12px;padding:12px 16px;margin:16px auto 0;max-width:720px;box-shadow:0 6px 24px rgba(0,0,0,.4)">' +
+        '<span id="ledMultiConteo" style="font-size:13px;font-weight:800;color:var(--text)"></span>' +
+        '<button id="ledMultiBtn" onclick="openModalMultiContratoLED()" style="background:#6366f1;border:none;border-radius:8px;color:#fff;font-weight:800;font-size:13px;padding:10px 18px;cursor:pointer">📺 Contratar</button>' +
+      '</div>'
+    : '';
+  container.innerHTML = html.replace('<div class="led-grid"></div>', '') + htmlGrupos + barraMulti;
+  _ledContenedorActual = container;
+  if (ledMultiMode) ledMultiActualizarBarra_();
 }
 
 const SPOTS_DIA_CLIENT = 5940;
@@ -9956,6 +9973,198 @@ async function ledMasivoEnviar_(modo) {
     showToast('✅ ' + json.importadas + ' contratos LED importados', 'success');
     _ledData = null;
     renderLED(document.getElementById('mainContent'), true);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CONTRATACIÓN MÚLTIPLE LED (2026-10-12)
+//  Un cliente, mismas fechas y UNA orden (PDF) en varias pantallas a la vez, con el valor mensual de CADA
+//  pantalla. Todo o nada (el servidor valida todo antes de crear nada). Materiales opcionales (hasta 2) que
+//  se aplican a todas las pantallas elegidas.
+// ══════════════════════════════════════════════════════════════
+let ledMultiMode = false;
+let ledMultiSel = new Set();
+let _ledContenedorActual = null;
+let _ledMultiPdfBase64 = null, _ledMultiPdfFile = null;
+
+function ledToggleMulti() {
+  ledMultiMode = !ledMultiMode;
+  ledMultiSel.clear();
+  if (_ledData && _ledContenedorActual) buildLEDUI(_ledContenedorActual, _ledData);
+}
+function ledMultiToggle(playerId, marcado) {
+  if (marcado) ledMultiSel.add(playerId); else ledMultiSel.delete(playerId);
+  ledMultiActualizarBarra_();
+}
+function ledMultiActualizarBarra_() {
+  const c = document.getElementById('ledMultiConteo'), b = document.getElementById('ledMultiBtn');
+  const n = ledMultiSel.size;
+  if (c) c.textContent = n === 0 ? 'Marca las pantallas que quieres contratar a la vez' : n + (n === 1 ? ' pantalla seleccionada' : ' pantallas seleccionadas');
+  if (b) { b.disabled = n === 0; b.style.opacity = n === 0 ? '.5' : '1'; b.style.cursor = n === 0 ? 'not-allowed' : 'pointer'; b.textContent = n === 0 ? '📺 Contratar' : '📺 Contratar ' + n + (n === 1 ? ' pantalla' : ' pantallas'); }
+}
+function ledMultiElementos_() {
+  const mapa = {};
+  ((_ledData && _ledData.elementosLED) || []).forEach(el => { mapa[el.playerVnnoxId || el.codigo] = el; });
+  return [...ledMultiSel].map(id => ({ playerId: id, el: mapa[id] || { codigo: id, direccion: '' } }));
+}
+function openModalMultiContratoLED() {
+  if (!ledMultiSel.size) return;
+  const items = ledMultiElementos_();
+  const today = new Date().toISOString().split('T')[0];
+  const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e => '<option>' + e + '</option>').join('');
+  _ledMultiPdfBase64 = null; _ledMultiPdfFile = null;
+  document.getElementById('modalTitle').textContent = '📺 Contratación múltiple LED';
+  document.getElementById('modalSubtitle').textContent = items.length + (items.length === 1 ? ' pantalla' : ' pantallas') + ' · mismo cliente, fechas y orden';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="contratar-form">
+      <h4>📺 Valor mensual de cada pantalla (USD)</h4>
+      <div style="margin-bottom:10px">
+        ${items.map(x => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px">
+          <div style="flex:1;min-width:0"><b>${esc(x.el.codigo)}</b><div style="color:var(--muted);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.el.direccion || '')}</div></div>
+          $<input type="number" class="lm-valor" data-pid="${esc(x.playerId)}" min="0" step="any" placeholder="Valor mensual" oninput="calcLEDMultiTotales()" style="width:120px">
+        </div>`).join('')}
+        <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px"><span>Suma mensual</span><b id="lm-suma">$0.00</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:#4ade80"><span>Total del contrato (todas las pantallas)</span><b id="lm-total">$0.00</b></div>
+      </div>
+      <h4>👤 Contratación</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Cliente</label><input type="text" id="lm-cliente" placeholder="Nombre del cliente" oninput="checkLEDMultiForm()"></div>
+        <div class="form-group"><label>Ejecutiva</label><select id="lm-ejecutiva" onchange="checkLEDMultiForm()"><option value="">Seleccionar...</option>${execOpts}</select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Inicio</label><input type="date" id="lm-inicio" value="${today}" oninput="calcLEDMultiTotales()"></div>
+        <div class="form-group"><label>Fin</label><input type="date" id="lm-fin" oninput="calcLEDMultiTotales()"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Spots por día</label><input type="number" id="lm-spots" value="360" min="1" max="${SPOTS_DIA_CLIENT}"></div>
+        <div class="form-group"><label>Período</label><input type="text" id="lm-periodo" readonly placeholder="Se calcula automático" style="background:var(--surface2)"></div>
+      </div>
+      <h4>💼 Agencia/Comisión/Contratante</h4>
+      <div class="form-row">
+        <div class="form-group"><label>Agencia contratante</label><input type="text" id="lm-agencia" placeholder="Nombre de agencia o 'Cliente directo'" oninput="checkLEDMultiForm()"></div>
+        <div class="form-group"><label>Comisión de agencia</label>
+          <select id="lm-comision" onchange="document.getElementById('lm-comision-manual').style.display=this.value==='manual'?'block':'none';checkLEDMultiForm()">
+            <option value="">Seleccionar...</option><option value="0%">0%</option><option value="10%">10%</option><option value="15%">15%</option><option value="20%">20%</option><option value="manual">Manual...</option>
+          </select>
+          <input type="text" id="lm-comision-manual" placeholder="Ej: 12%" style="display:none;margin-top:6px" oninput="checkLEDMultiForm()">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Contratado por</label>
+        <select id="lm-contratadopor" onchange="document.getElementById('lm-contratadopor-manual').style.display=this.value==='Otros'?'block':'none';checkLEDMultiForm()">
+          <option value="">Seleccionar...</option><option value="Zazacorp">Zazacorp</option><option value="ALAC">ALAC</option><option value="Vea">Vea</option><option value="Otros">Otros</option>
+        </select>
+        <input type="text" id="lm-contratadopor-manual" placeholder="Especificar" style="display:none;margin-top:6px" oninput="checkLEDMultiForm()">
+      </div>
+      <h4>🎬 Materiales (opcional · se aplican a TODAS las pantallas)</h4>
+      ${[1, 2].map(n => `<div style="border:1px dashed var(--border);border-radius:8px;padding:8px;margin-bottom:8px">
+        <div class="form-group" style="margin-bottom:6px"><label>Material ${n} · nombre</label><input type="text" class="lm-mat-nombre" data-n="${n}" placeholder="${n === 1 ? 'Ej: SUPERMAXI_VERANO_2026' : '(opcional)'}" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
+        <div class="form-row">
+          <div class="form-group"><label>Versión</label><input type="text" class="lm-mat-version" data-n="${n}" value="V${n}"></div>
+          <div class="form-group"><label>Duración (seg)</label><input type="number" class="lm-mat-duracion" data-n="${n}" value="10" min="1"></div>
+        </div>
+        <div class="form-group"><label>Link VNNOX</label><input type="text" class="lm-mat-link" data-n="${n}" placeholder="(opcional)"></div>
+      </div>`).join('')}
+      <div class="pdf-upload-area" id="lmPdfArea" onclick="document.getElementById('lmPdfInput').click()">
+        📎 <span id="lmPdfNombre">${(_usuarioActual || '').toUpperCase() === 'JORGE' ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
+      </div>
+      <input type="file" id="lmPdfInput" accept="application/pdf" style="display:none" onchange="handleLEDMultiPdf(event)">
+      <button id="btnLEDMultiConfirmar" onclick="confirmarContratoLEDMulti()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:14px;cursor:not-allowed;opacity:.5">📺 Registrar contratación múltiple</button>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+  setTimeout(function () { autoSetEjecutiva('lm-ejecutiva'); checkLEDMultiForm(); }, 50);
+}
+function handleLEDMultiPdf(e) {
+  const file = e.target.files[0]; if (!file || file.type !== 'application/pdf') return;
+  _ledMultiPdfFile = file;
+  document.getElementById('lmPdfNombre').textContent = '✓ ' + file.name;
+  const r = new FileReader();
+  r.onload = ev => { _ledMultiPdfBase64 = ev.target.result.split(',')[1]; checkLEDMultiForm(); };
+  r.readAsDataURL(file);
+}
+function ledMultiMeses_() {
+  const ini = document.getElementById('lm-inicio')?.value, fin = document.getElementById('lm-fin')?.value;
+  if (!ini || !fin || fin <= ini) return null;
+  const dias = Math.round((new Date(fin + 'T00:00:00') - new Date(ini + 'T00:00:00')) / 86400000);
+  const m = dias < 30 ? dias / 30 : Math.round((dias / 30) * 2) / 2;
+  return { meses: m, texto: (m % 1 === 0 ? m.toString() : m.toFixed(1)) + (m === 1 ? ' MES' : ' MESES') };
+}
+function calcLEDMultiTotales() {
+  const m = ledMultiMeses_();
+  const suma = [...document.querySelectorAll('.lm-valor')].reduce((a, i) => a + (parseFloat(i.value) || 0), 0);
+  const fmt = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.getElementById('lm-suma').textContent = fmt(suma);
+  document.getElementById('lm-total').textContent = fmt(m ? suma * m.meses : 0);
+  document.getElementById('lm-periodo').value = m ? m.texto : '';
+  checkLEDMultiForm();
+}
+function ledMultiComision_() {
+  const sel = document.getElementById('lm-comision')?.value;
+  return sel === 'manual' ? (document.getElementById('lm-comision-manual')?.value.trim() || '') : (sel || '');
+}
+function ledMultiContratadoPor_() {
+  const sel = document.getElementById('lm-contratadopor')?.value;
+  return sel === 'Otros' ? (document.getElementById('lm-contratadopor-manual')?.value.trim() || '') : (sel || '');
+}
+function checkLEDMultiForm() {
+  const btn = document.getElementById('btnLEDMultiConfirmar'); if (!btn) return;
+  const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const todosConValor = [...document.querySelectorAll('.lm-valor')].every(i => parseFloat(i.value) > 0);
+  const basicos = document.getElementById('lm-cliente')?.value.trim() && document.getElementById('lm-ejecutiva')?.value &&
+    document.getElementById('lm-inicio')?.value && document.getElementById('lm-fin')?.value && ledMultiMeses_() && todosConValor;
+  const ok = esAdmin ? basicos : (basicos && document.getElementById('lm-agencia')?.value.trim() && ledMultiComision_() && ledMultiContratadoPor_() && _ledMultiPdfBase64);
+  btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; btn.style.cursor = ok ? 'pointer' : 'not-allowed';
+}
+async function confirmarContratoLEDMulti() {
+  const items = ledMultiElementos_();
+  const cliente = document.getElementById('lm-cliente').value.trim().toUpperCase();
+  const ejecutiva = document.getElementById('lm-ejecutiva').value;
+  const inicio = document.getElementById('lm-inicio').value, fin = document.getElementById('lm-fin').value;
+  if (fin <= inicio) { showToast('❌ La fecha fin debe ser posterior a la fecha de inicio', 'error'); return; }
+  const pantallas = items.map(x => {
+    const v = document.querySelector('.lm-valor[data-pid="' + x.playerId.replace(/"/g, '\\"') + '"]');
+    return { playerId: x.playerId, nombrePantalla: x.el.codigo + ' — ' + x.playerId, valorMensual: parseFloat(v && v.value) || 0 };
+  });
+  const materiales = [1, 2].map(n => ({
+    nombre: (document.querySelector('.lm-mat-nombre[data-n="' + n + '"]')?.value || '').trim(),
+    version: document.querySelector('.lm-mat-version[data-n="' + n + '"]')?.value || '',
+    duracion: document.querySelector('.lm-mat-duracion[data-n="' + n + '"]')?.value || '',
+    linkVNNOX: document.querySelector('.lm-mat-link[data-n="' + n + '"]')?.value || ''
+  })).filter(m => m.nombre);
+  const btn = document.getElementById('btnLEDMultiConfirmar');
+  btn.disabled = true; btn.textContent = '⏳ Registrando...';
+  let json = null;
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'registrarContratoLEDMultiple', pantallas, materiales, cliente, ejecutiva, inicio, fin,
+      spots: document.getElementById('lm-spots').value,
+      agenciaContratante: document.getElementById('lm-agencia').value.trim(), comisionAgencia: ledMultiComision_(), contratadoPor: ledMultiContratadoPor_(),
+      pdfBase64: _ledMultiPdfBase64, pdfNombre: _ledMultiPdfFile ? _ledMultiPdfFile.name : 'orden.pdf'
+    }) });
+    try { json = await res.json(); }
+    catch (e) {
+      // Respuesta rota: se comprueba contra los datos reales si quedaron TODAS creadas (el servidor es todo o nada)
+      let ok = false;
+      try {
+        const datos = await fetchJsonGet(API_URL + '?action=getVNNOXData&rapido=1&forzar=1');
+        ok = datos.ok && pantallas.every(p => (datos.contratos || []).some(c => c.playerId === p.playerId && String(c.cliente).toUpperCase() === cliente && c.inicio === inicio && c.fin === fin));
+      } catch (e2) {}
+      json = ok ? { ok: true, creados: pantallas.length, avisoCorreo: 'El servidor tardó en responder: no se pudo confirmar el envío del correo, revisa que haya llegado.' }
+                : { error: 'El servidor no respondió bien y la contratación NO se ve registrada completa. Revisa la pestaña LED antes de reintentar.' };
+    }
+    if (json.error) throw new Error(json.error);
+    showToast(json.avisoCorreo ? '✅ ' + pantallas.length + ' contratos LED creados — ⚠️ ' + json.avisoCorreo : '✅ ' + pantallas.length + ' contratos LED creados — correo enviado', json.avisoCorreo ? 'info' : 'success');
+    mostrarCelebracionZaza('contratacion-multi', '¡Contratación múltiple LED lista!', json.avisoCorreo ? 'Se guardó bien, pero el correo de confirmación falló.' : 'Se envió un solo correo con la orden.', [
+      { label: 'Pantallas', value: pantallas.length }, { label: 'Cliente', value: cliente }
+    ]);
+    closeModal();
+    ledMultiMode = false; ledMultiSel.clear();
+    _ledData = null;
+    renderLED(document.getElementById('mainContent'), true);
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = '📺 Registrar contratación múltiple';
+    checkLEDMultiForm();
   }
 }
 
