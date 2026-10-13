@@ -1852,7 +1852,8 @@ function qzSetEscenario(meses, desc) {
   const mesesEl = document.getElementById('qzCantidadMeses');
   if (mesesEl) mesesEl.value = meses;
   const pct = (Number(desc) || 0) / 100;
-  selectedQz.forEach(codigo => { qzDescuentosPorElemento[codigo] = pct; });
+  // El botón manda: se borran los precios manuales (si no, el precio manual pisaba al % y el botón parecía no hacer nada)
+  selectedQz.forEach(codigo => { qzDescuentosPorElemento[codigo] = pct; delete qzValorManualPorElemento[codigo]; });
   qzUltimoEscenario = { meses, desc };
   qzRefrescarPanelDerecho();
   if (qzCotizacionActual) qzCalcular();
