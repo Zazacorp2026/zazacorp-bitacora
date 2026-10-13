@@ -9567,15 +9567,12 @@ function buildLEDUI(container, data) {
           (c.contratadoPor ? '<div style="margin-top:4px"><span style="font-size:10px;padding:2px 7px;border-radius:4px;' +
             (esZaza ? 'background:rgba(34,197,94,.18);color:#4ade80;border:1px solid rgba(34,197,94,.4)' : 'background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4)') +
             '">' + c.contratadoPor + '</span></div>' : '');
-        for (let mIdx = 0; mIdx < 2; mIdx++) {
-          const m = mats[mIdx];
-          htmlGrupos += '<div style="font-size:10px;color:var(--muted);margin-top:4px;display:flex;justify-content:space-between;align-items:center" onclick="event.stopPropagation()">' +
-            '<span>Material ' + (mIdx+1) + ': ' + (m ? m.nombre + ' (' + m.version + ')' : '—') + '</span>' +
-            (m
-              ? '<span onclick="openModalEditarMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + m.nombre + '\',\'' + m.version + '\',' + m.duracion + ',\'' + (m.linkVNNOX||'') + '\',\'' + m.inicioMaterial + '\',\'' + m.finMaterial + '\')" style="color:#60a5fa;cursor:pointer">Editar</span>'
-              : '<button onclick="openModalMaterialLED(\'' + c.id + '\',\'' + player.playerId + '\',\'' + (player.name||'') + '\',\'' + c.cliente + '\',\'' + c.inicio + '\',\'' + c.fin + '\')" style="font-size:10px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171;border-radius:5px;padding:2px 7px;cursor:pointer">+ Subir</button>') +
-          '</div>';
-        }
+        // Materiales (hasta 6 versiones) y botón para programarlos día por día
+        const puedeProg = esAdmin || String(c.ejecutiva || '').toUpperCase() === String(_usuarioActual || '').toUpperCase();
+        htmlGrupos += '<div style="font-size:10px;color:var(--muted);margin-top:4px" onclick="event.stopPropagation()">' +
+          (mats.length ? mats.slice().sort((x, y) => String(x.version).localeCompare(String(y.version))).map(m => '<div>' + esc(m.version) + ': ' + esc(m.nombre) + '</div>').join('') : '<div>Sin materiales cargados</div>') +
+          (puedeProg ? '<button onclick="openProgramacionLED(\'' + c.id + '\')" style="margin-top:4px;font-size:10.5px;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.4);border-radius:5px;color:#818cf8;padding:3px 9px;cursor:pointer;font-weight:700">📅 Programar materiales</button>' : '') +
+        '</div>';
         htmlGrupos += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" onclick="event.stopPropagation()">' +
           (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar</button>' : '') +
           (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+playerContratos[idx-1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
@@ -10161,11 +10158,299 @@ async function confirmarContratoLEDMulti() {
     ledMultiMode = false; ledMultiSel.clear();
     _ledData = null;
     renderLED(document.getElementById('mainContent'), true);
+    if (json.ids && json.ids.length) setTimeout(() => openProgramacionLED(json.ids[0]), 700); // siguiente paso: programar los materiales
   } catch (e) {
     showToast('❌ ' + e.message, 'error');
     btn.disabled = false; btn.textContent = '📺 Registrar contratación múltiple';
     checkLEDMultiForm();
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PROGRAMACIÓN DE MATERIALES LED (2026-10-13)
+//  Editor a pantalla completa: hasta 6 versiones de material por contrato y, para cada pantalla, un calendario
+//  día por día de cuál versión está al aire (toca un día para encender, vuelve a tocarlo para apagar).
+//  Máximo 2 versiones a la vez; los días anteriores a hoy ya salieron al aire y no se pueden cambiar.
+//  Al guardar, el servidor manda un correo con el Excel (Pasos para VNNOX, Resumen, Cambios, Calendario)
+//  a John Menoscal, la ejecutiva, Jorge y Yesenia.
+// ══════════════════════════════════════════════════════════════
+const PROG_COLORES = ['#7F77DD', '#1D9E75', '#BA7517', '#D4537E', '#378ADD', '#639922'];
+const PROG_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+let _prog = null;
+let _progDown = false, _progModo = null;
+
+function progOverlay_() {
+  let o = document.getElementById('progOverlay');
+  if (!o) {
+    o = document.createElement('div');
+    o.id = 'progOverlay';
+    o.style.cssText = 'position:fixed;inset:0;z-index:3000;background:var(--bg);overflow:auto;display:none';
+    document.body.appendChild(o);
+    o.addEventListener('mousedown', progMouseDown_);
+    o.addEventListener('mouseover', progMouseOver_);
+    document.addEventListener('mouseup', function () { _progDown = false; _progModo = null; });
+  }
+  return o;
+}
+function progIso_(y, m, d) { return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
+function progDiasEntre_(a, b) {
+  const out = []; let t = Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10)); const fin = Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10));
+  for (; t <= fin; t += 86400000) out.push(new Date(t).toISOString().slice(0, 10));
+  return out;
+}
+function progTramos_(setDias) {
+  const dias = Object.keys(setDias || {}).sort(), out = [];
+  dias.forEach(function (d) {
+    const u = out[out.length - 1];
+    const sig = u ? new Date(Date.UTC(+u.fin.slice(0, 4), +u.fin.slice(5, 7) - 1, +u.fin.slice(8, 10)) + 86400000).toISOString().slice(0, 10) : null;
+    if (u && sig === d) u.fin = d; else out.push({ inicio: d, fin: d });
+  });
+  return out;
+}
+function progSnapshot_() {
+  return JSON.stringify({ s: _prog.slots.map(x => [x.nombre.trim(), x.link.trim(), String(x.duracion)]), g: _prog.grupo.map(g => Object.keys(g.dias).sort().map(v => v + ':' + Object.keys(g.dias[v]).sort().join(','))) });
+}
+function progHayCambios_() { return _prog && progSnapshot_() !== _prog.base; }
+function progCerrar_() {
+  if (progHayCambios_() && !confirm('Hay cambios sin guardar. ¿Cerrar de todos modos?')) return;
+  const o = document.getElementById('progOverlay'); if (o) { o.style.display = 'none'; o.innerHTML = ''; }
+  document.body.style.overflow = '';
+  _prog = null;
+}
+async function openProgramacionLED(idContrato) {
+  const o = progOverlay_();
+  o.style.display = 'block'; document.body.style.overflow = 'hidden';
+  o.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--muted);font-size:14px">⏳ Cargando la programación…</div>';
+  try {
+    const json = await fetchJsonGet(API_URL + '?action=ledGetProgramacion&id=' + encodeURIComponent(idContrato));
+    if (!json.ok) throw new Error(json.error || 'No se pudo cargar');
+    progIniciar_(json, idContrato);
+  } catch (e) {
+    o.innerHTML = '<div style="padding:60px 20px;text-align:center"><div style="color:var(--red);font-size:14px;margin-bottom:14px">❌ ' + esc(e.message) + '</div><button onclick="progCerrar_()" style="padding:9px 18px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">Cerrar</button></div>';
+  }
+}
+function progIniciar_(json, idContrato) {
+  const hoy = json.hoy;
+  const base = json.grupo[0];
+  const slots = [];
+  for (let i = 0; i < json.maxVersiones; i++) {
+    const v = 'V' + (i + 1);
+    const m = base.materiales.find(x => x.version === v);
+    slots.push({ version: v, nombre: m ? m.nombre : '', link: m ? (m.link || '') : '', duracion: m ? (m.duracion || 10) : 10, origVersion: m ? (m.origVersion || v) : '' });
+  }
+  const diferentes = json.grupo.some(g => g.materiales.some(m => { const b = base.materiales.find(x => x.version === m.version); return !b || b.nombre !== m.nombre || (b.link || '') !== (m.link || '') || Number(b.duracion) !== Number(m.duracion); }) || g.materiales.length !== base.materiales.length);
+  const grupo = json.grupo.map(g => {
+    const dias = {};
+    g.tramos.forEach(t => progDiasEntre_(t.inicio, t.fin).forEach(d => { (dias[t.version] = dias[t.version] || {})[d] = true; }));
+    return { id: g.id, codigo: g.codigo, direccion: g.direccion, cliente: g.cliente, ejecutiva: g.ejecutiva, inicio: g.inicio, fin: g.fin, dias: dias, guardado: g.tramos.length > 0 };
+  });
+  // versiones que ya salieron al aire (tienen algún día anterior a hoy): su material queda bloqueado
+  const aireadas = {};
+  grupo.forEach(g => Object.keys(g.dias).forEach(v => { if (Object.keys(g.dias[v]).some(d => d < hoy)) aireadas[v] = true; }));
+  let ini = grupo[0].inicio, fin = grupo[0].fin;
+  grupo.forEach(g => { if (g.inicio < ini) ini = g.inicio; if (g.fin > fin) fin = g.fin; });
+  const meses = [];
+  for (let y = +ini.slice(0, 4), m = +ini.slice(5, 7) - 1; (y < +fin.slice(0, 4)) || (y === +fin.slice(0, 4) && m <= +fin.slice(5, 7) - 1); m++) { if (m > 11) { m = 0; y++; } meses.push({ y: y, m: m }); if (meses.length > 24) break; }
+  let mesIdx = meses.findIndex(x => x.y === +hoy.slice(0, 4) && x.m === +hoy.slice(5, 7) - 1);
+  if (mesIdx < 0) mesIdx = hoy < ini ? 0 : meses.length - 1;
+  _prog = { hoy: hoy, maxActivas: json.maxActivas, grupo: grupo, slots: slots, aireadas: aireadas, meses: meses, mesIdx: mesIdx, puedeEditar: json.puedeEditar, diferentes: diferentes, idRef: idContrato, base: '', aviso: '' };
+  _prog.base = progSnapshot_();
+  progRender_();
+}
+function progNombresActivos_() { return _prog.slots.map((s, i) => s.nombre.trim() ? i : -1).filter(i => i >= 0); }
+function progActivasEn_(g, f) { let c = 0; _prog.slots.forEach((s, i) => { if (s.nombre.trim() && g.dias['V' + (i + 1)] && g.dias['V' + (i + 1)][f]) c++; }); return c; }
+function progRender_() {
+  const o = progOverlay_();
+  const p = _prog;
+  const ed = p.puedeEditar;
+  const g0 = p.grupo[0];
+  let h = '<div style="position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:12px">' +
+    '<div style="flex:1;min-width:240px"><div style="font-size:16px;font-weight:800;color:var(--text)">📅 Programar materiales LED</div>' +
+    '<div style="font-size:12px;color:var(--muted)">' + esc(g0.cliente) + ' · contrato ' + esc(g0.inicio) + ' → ' + esc(g0.fin) + ' · ' + p.grupo.length + (p.grupo.length === 1 ? ' pantalla' : ' pantallas') + ' · ejecutiva ' + esc(g0.ejecutiva) + '</div></div>' +
+    '<span id="progEstado" style="font-size:12px;font-weight:700"></span>' +
+    (ed && p.grupo.some(g => g.guardado) ? '<button onclick="progReenviar_()" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;padding:9px 14px;cursor:pointer">Reenviar Excel vigente</button>' : '') +
+    (ed ? '<button onclick="progGuardar_()" id="progBtnGuardar" style="background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:800;font-size:13px;padding:10px 18px;cursor:pointer">Guardar y avisar a John y equipo</button>' : '<span style="font-size:12px;color:var(--muted)">Solo lectura</span>') +
+    '<button onclick="progCerrar_()" aria-label="Cerrar" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:8px 14px;cursor:pointer">✕</button></div>';
+  h += '<div style="padding:16px 20px;max-width:1500px;margin:0 auto">';
+  if (p.diferentes) h += '<div style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--accent);margin-bottom:12px">Estas pantallas tenían materiales distintos entre sí. Al guardar se unifican con los que ves aquí.</div>';
+  h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
+    '<div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:8px">Materiales (hasta 6 versiones — se aplican a todas las pantallas de esta contratación)</div>' +
+    '<div style="display:grid;grid-template-columns:44px minmax(160px,1.2fr) 80px minmax(220px,2fr);gap:6px 8px;align-items:center;font-size:12px">' +
+    '<div></div><div style="color:var(--muted);font-size:11px">Nombre del material</div><div style="color:var(--muted);font-size:11px">Duración (s)</div><div style="color:var(--muted);font-size:11px">Link</div>';
+  p.slots.forEach((s, i) => {
+    const bloq = !!p.aireadas[s.version] || !ed;
+    h += '<div style="text-align:center"><span style="display:inline-block;min-width:34px;height:22px;line-height:22px;border-radius:5px;background:' + PROG_COLORES[i] + ';color:#fff;font-weight:800;font-size:11px">' + s.version + '</span></div>' +
+      '<input data-i="' + i + '" data-f="nombre" value="' + esc(s.nombre) + '" ' + (bloq ? 'disabled title="Esta versión ya estuvo al aire: no se puede cambiar"' : '') + ' placeholder="' + (i === 0 ? 'Ej: SUPERMAXI_VERANO_2026' : '(opcional)') + '" style="text-transform:uppercase" oninput="progSlotInput_(this)" onchange="progSlotChange_()">' +
+      '<input data-i="' + i + '" data-f="duracion" type="number" min="1" value="' + esc(s.duracion) + '" ' + (bloq ? 'disabled' : '') + ' oninput="progSlotInput_(this)">' +
+      '<input data-i="' + i + '" data-f="link" value="' + esc(s.link) + '" ' + (bloq ? 'disabled' : '') + ' placeholder="link del material" oninput="progSlotInput_(this)">';
+  });
+  h += '</div></div>';
+  const m = p.meses[p.mesIdx];
+  h += '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:6px">' +
+    '<button onclick="progMes_(-1)" ' + (p.mesIdx === 0 ? 'disabled' : '') + ' style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">‹</button>' +
+    '<b style="font-size:16px;min-width:150px;text-align:center;color:var(--text)">' + PROG_MESES[m.m] + ' ' + m.y + '</b>' +
+    '<button onclick="progMes_(1)" ' + (p.mesIdx === p.meses.length - 1 ? 'disabled' : '') + ' style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">›</button>' +
+    '<span style="font-size:11.5px;color:var(--muted)">' + (ed ? 'Toca un día para encender esa versión; vuelve a tocarlo para apagarla. Puedes arrastrar. Máximo ' + p.maxActivas + ' versiones a la vez. Los días anteriores a hoy ya salieron al aire y no cambian.' : '') + '</span></div>' +
+    '<div id="progAviso" style="min-height:20px;font-size:12px;color:var(--red);font-weight:700;margin-bottom:6px"></div>';
+  p.grupo.forEach((g, gi) => { h += '<div id="pg_' + gi + '">' + progCard_(gi) + '</div>'; });
+  h += '</div>';
+  o.innerHTML = h;
+  progEstado_();
+}
+function progCard_(gi) {
+  const p = _prog, g = p.grupo[gi], mm = p.meses[p.mesIdx];
+  const n = new Date(mm.y, mm.m + 1, 0).getDate();
+  const cols = '150px repeat(' + n + ',minmax(18px,1fr))';
+  let h = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:12px">' +
+    '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:6px"><div><b style="font-size:13.5px;color:var(--text)">' + esc(g.codigo) + '</b> <span style="font-size:11.5px;color:var(--muted)">' + esc((g.direccion || '').slice(0, 60)) + '</span></div>' +
+    '<span style="font-size:11.5px;color:var(--muted)">contrato ' + esc(g.inicio) + ' → ' + esc(g.fin) + '</span></div>';
+  h += '<div style="display:grid;grid-template-columns:' + cols + ';gap:2px;margin-bottom:3px"><div></div>';
+  for (let d = 1; d <= n; d++) { const w = new Date(mm.y, mm.m, d).getDay(); h += '<div style="font-size:11px;text-align:center;color:' + (w === 0 || w === 6 ? 'var(--muted)' : 'var(--text)') + ';opacity:' + (progIso_(mm.y, mm.m, d) === p.hoy ? 1 : .8) + ';font-weight:' + (progIso_(mm.y, mm.m, d) === p.hoy ? 800 : 400) + '">' + d + '</div>'; }
+  h += '</div>';
+  const activos = progNombresActivos_();
+  if (!activos.length) h += '<div style="font-size:12px;color:var(--muted);padding:6px 0">Escribe el nombre de al menos una versión arriba para empezar a programar.</div>';
+  activos.forEach(i => {
+    const v = 'V' + (i + 1), s = p.slots[i];
+    const dias = g.dias[v] || {};
+    let cnt = 0; Object.keys(dias).forEach(d => { if (d >= g.inicio && d <= g.fin) cnt++; });
+    h += '<div style="display:grid;grid-template-columns:' + cols + ';gap:2px;align-items:center;margin-bottom:2px"><div style="font-size:12px;display:flex;align-items:center;gap:6px;min-width:0">' +
+      '<span style="width:10px;height:10px;border-radius:3px;background:' + PROG_COLORES[i] + ';flex-shrink:0"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s.nombre) + '">' + v + ' ' + esc(s.nombre.trim().toUpperCase()) + '</span><span style="color:var(--muted);font-size:10.5px;flex-shrink:0">' + cnt + ' d</span>' +
+      (p.puedeEditar && p.grupo.length > 1 ? '<button data-gi="' + gi + '" data-vi="' + i + '" class="pcp" title="Copiar este calendario a las demás pantallas" style="margin-left:auto;font-size:10.5px;padding:0 6px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;flex-shrink:0">copiar</button>' : '') + '</div>';
+    for (let d = 1; d <= n; d++) {
+      const f = progIso_(mm.y, mm.m, d), dentro = f >= g.inicio && f <= g.fin, bloq = f < p.hoy, on = dias[f] && dentro, w = new Date(mm.y, mm.m, d).getDay();
+      let bg = on ? PROG_COLORES[i] : (!dentro ? 'repeating-linear-gradient(45deg,var(--border) 0 3px,transparent 3px 6px)' : (w === 0 || w === 6 ? 'var(--bg)' : 'var(--surface2)'));
+      const borde = f === p.hoy ? '1.5px solid #E24B4A' : '1px solid var(--border)';
+      const cur = (!dentro || bloq || !p.puedeEditar) ? 'not-allowed' : 'pointer';
+      h += '<div class="pc" data-gi="' + gi + '" data-vi="' + i + '" data-d="' + f + '" style="height:22px;border-radius:3px;background:' + bg + ';border:' + borde + ';cursor:' + cur + ';opacity:' + (bloq && dentro ? .55 : 1) + '" title="' + f + (bloq ? ' · ya salió al aire' : '') + '"></div>';
+    }
+    h += '</div>';
+  });
+  if (activos.length) {
+    h += '<div style="display:grid;grid-template-columns:' + cols + ';gap:2px;align-items:center;margin-top:4px"><div style="font-size:11px;color:var(--muted)">Activas a la vez</div>';
+    for (let d = 1; d <= n; d++) { const f = progIso_(mm.y, mm.m, d), dentro = f >= g.inicio && f <= g.fin, c = dentro ? progActivasEn_(g, f) : ''; h += '<div style="font-size:11px;text-align:center;color:' + (c === p.maxActivas ? 'var(--text)' : 'var(--muted)') + ';font-weight:' + (c === p.maxActivas ? 800 : 400) + '">' + c + '</div>'; }
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+function progEstado_() {
+  const e = document.getElementById('progEstado'); if (!e || !_prog) return;
+  const hay = progHayCambios_();
+  e.textContent = hay ? '● Cambios sin guardar' : (_prog.grupo.some(g => g.guardado) ? '✓ Programación guardada' : 'Sin programar todavía');
+  e.style.color = hay ? 'var(--accent)' : 'var(--muted)';
+}
+function progMes_(delta) { _prog.mesIdx = Math.max(0, Math.min(_prog.meses.length - 1, _prog.mesIdx + delta)); progRender_(); }
+function progSlotInput_(inp) {
+  const s = _prog.slots[+inp.dataset.i], f = inp.dataset.f;
+  s[f] = (f === 'duracion') ? (parseInt(inp.value) || 10) : inp.value;
+  progEstado_();
+}
+function progSlotChange_() {
+  // si se vació el nombre de una versión, se borran sus días futuros; luego se repinta
+  _prog.slots.forEach((s, i) => {
+    if (s.nombre.trim()) return;
+    const v = 'V' + (i + 1);
+    _prog.grupo.forEach(g => { if (g.dias[v]) Object.keys(g.dias[v]).forEach(d => { if (d >= _prog.hoy) delete g.dias[v][d]; }); if (g.dias[v] && !Object.keys(g.dias[v]).length) delete g.dias[v]; });
+  });
+  _prog.grupo.forEach((g, gi) => { const el = document.getElementById('pg_' + gi); if (el) el.innerHTML = progCard_(gi); });
+  progEstado_();
+}
+function progAplicarCelda_(c) {
+  const p = _prog; if (!p || !p.puedeEditar) return;
+  const gi = +c.dataset.gi, vi = +c.dataset.vi, f = c.dataset.d, g = p.grupo[gi], v = 'V' + (vi + 1);
+  if (f < g.inicio || f > g.fin || f < p.hoy) return;
+  g.dias[v] = g.dias[v] || {};
+  const ya = !!g.dias[v][f];
+  if (_progModo === null) _progModo = ya ? 'borrar' : 'pintar';
+  const av = document.getElementById('progAviso');
+  if (_progModo === 'borrar') { if (!ya) return; delete g.dias[v][f]; if (!Object.keys(g.dias[v]).length) delete g.dias[v]; if (av) av.textContent = ''; }
+  else {
+    if (ya) return;
+    if (progActivasEn_(g, f) >= p.maxActivas) { if (av) av.textContent = 'El ' + f + ' ya tiene ' + p.maxActivas + ' versiones activas en ' + g.codigo + ': apaga una antes de encender otra.'; return; }
+    g.dias[v][f] = true; if (av) av.textContent = '';
+  }
+  const el = document.getElementById('pg_' + gi); if (el) el.innerHTML = progCard_(gi);
+  progEstado_();
+}
+function progMouseDown_(e) {
+  const cp = e.target.closest('.pcp');
+  if (cp) { progCopiar_(+cp.dataset.gi, +cp.dataset.vi); return; }
+  const c = e.target.closest('.pc'); if (!c) return;
+  _progDown = true; _progModo = null; progAplicarCelda_(c); e.preventDefault();
+}
+function progMouseOver_(e) { if (!_progDown) return; const c = e.target.closest('.pc'); if (c) progAplicarCelda_(c); }
+function progCopiar_(gi, vi) {
+  const p = _prog, v = 'V' + (vi + 1), src = p.grupo[gi].dias[v] || {};
+  if (!confirm('¿Copiar el calendario de ' + v + ' de ' + p.grupo[gi].codigo + ' a las demás pantallas? (reemplaza lo que tengan en ' + v + ' desde hoy)')) return;
+  p.grupo.forEach((g, k) => {
+    if (k === gi) return;
+    const nuevo = {};
+    Object.keys(g.dias[v] || {}).forEach(d => { if (d < p.hoy) nuevo[d] = true; }); // lo que ya salió al aire se conserva
+    Object.keys(src).forEach(d => { if (d >= p.hoy && d >= g.inicio && d <= g.fin) nuevo[d] = true; });
+    // respetar el máximo de versiones activas por día
+    const rechazados = [];
+    Object.keys(nuevo).forEach(d => { if (d >= p.hoy) { g.dias[v] = g.dias[v] || {}; const ya = !!(g.dias[v] && g.dias[v][d]); const otras = p.slots.reduce((a, s, i) => a + ((i !== vi && s.nombre.trim() && g.dias['V' + (i + 1)] && g.dias['V' + (i + 1)][d]) ? 1 : 0), 0); if (otras >= p.maxActivas) { delete nuevo[d]; rechazados.push(d); } } });
+    if (Object.keys(nuevo).length) g.dias[v] = nuevo; else delete g.dias[v];
+    if (rechazados.length) { const av = document.getElementById('progAviso'); if (av) av.textContent = 'En ' + g.codigo + ' no se copiaron ' + rechazados.length + ' día(s) porque ya tenían ' + p.maxActivas + ' versiones activas.'; }
+  });
+  p.grupo.forEach((g, k) => { const el = document.getElementById('pg_' + k); if (el) el.innerHTML = progCard_(k); });
+  progEstado_();
+}
+function progPayload_() {
+  const p = _prog;
+  const mats = p.slots.filter(s => s.nombre.trim()).map(s => ({ version: s.version, origVersion: s.origVersion || '', nombre: s.nombre.trim(), link: s.link.trim(), duracion: s.duracion }));
+  return p.grupo.map(g => {
+    const tramos = [];
+    Object.keys(g.dias).forEach(v => { if (mats.some(m => m.version === v)) progTramos_(g.dias[v]).forEach(t => tramos.push({ version: v, inicio: t.inicio, fin: t.fin })); });
+    return { id: g.id, materiales: mats, tramos: tramos };
+  });
+}
+async function progGuardar_() {
+  const p = _prog; if (!p) return;
+  if (!progHayCambios_()) { showToast('No hay cambios que guardar', 'info'); return; }
+  const grupo = progPayload_();
+  const totalDias = p.grupo.reduce((a, g) => a + Object.keys(g.dias).reduce((b, v) => b + Object.keys(g.dias[v]).length, 0), 0);
+  const notificar = totalDias > 0;
+  if (notificar && !confirm('Se guardará la programación y se enviará un correo con el Excel a John Menoscal, la ejecutiva, Jorge y Yesenia. ¿Continuar?')) return;
+  const btn = document.getElementById('progBtnGuardar');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando…'; }
+  let json = null;
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledGuardarProgramacion', grupo: grupo, notificar: notificar }) });
+    try { json = await res.json(); }
+    catch (e) {
+      // Respuesta rota: se compara lo guardado con lo que está en pantalla
+      let ok = false;
+      try {
+        const v = await fetchJsonGet(API_URL + '?action=ledGetProgramacion&id=' + encodeURIComponent(p.idRef));
+        if (v.ok) {
+          const snap = v.grupo.map(g => { const d = {}; g.tramos.forEach(t => progDiasEntre_(t.inicio, t.fin).forEach(x => { (d[t.version] = d[t.version] || {})[x] = true; })); return Object.keys(d).sort().map(k => k + ':' + Object.keys(d[k]).sort().join(',')).join('|'); });
+          const loc = p.grupo.map(g => Object.keys(g.dias).sort().map(k => k + ':' + Object.keys(g.dias[k]).sort().join(',')).join('|'));
+          ok = JSON.stringify(snap) === JSON.stringify(loc);
+        }
+      } catch (e2) {}
+      json = ok ? { ok: true, avisoCorreo: 'El servidor tardó en responder: no se pudo confirmar el envío del correo, revisa que haya llegado.' } : { error: 'El servidor no respondió bien y no se pudo confirmar que quedó guardado. Vuelve a abrir la programación para revisar.' };
+    }
+    if (json.error) throw new Error(json.error);
+    if (json.sinCambios) { showToast('No hay cambios respecto a lo ya guardado', 'info'); }
+    else showToast(json.avisoCorreo ? '✅ Programación guardada — ⚠️ ' + json.avisoCorreo : '✅ Programación guardada' + (notificar ? ' — correo con el Excel enviado' : ''), json.avisoCorreo ? 'info' : 'success');
+    _ledData = null;
+    renderLED(document.getElementById('mainContent'), true);
+    await openProgramacionLED(p.idRef); // recarga lo guardado
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar y avisar a John y equipo'; }
+  }
+}
+async function progReenviar_() {
+  const p = _prog; if (!p) return;
+  if (progHayCambios_()) { showToast('Primero guarda los cambios', 'info'); return; }
+  if (!confirm('Se reenviará el Excel vigente a John Menoscal, la ejecutiva, Jorge y Yesenia. ¿Continuar?')) return;
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledReenviarProgramacion', id: p.idRef }) });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast('✅ Excel reenviado', 'success');
+  } catch (e) { showToast('❌ ' + e.message, 'error'); }
 }
 
 // ── Modal: Nuevo Contrato LED ─────────────────────────────────
