@@ -8258,8 +8258,8 @@ function checkContratarForm() {
 
 // ══════════════════════════════════════════════════════════════
 //  RENOVAR CONTRATACIÓN ACTUAL (2026-10-05)
-//  Extiende una contratación vigente cuando hay una pre-reserva del MISMO
-//  cliente y MISMA ejecutiva. Inicio = día siguiente al término actual.
+//  Extiende una contratación vigente. La puede hacer la ejecutiva dueña (o admin),
+//  haya o no pre-reserva (si hay una del mismo cliente/ejecutiva, se consume). Inicio = día siguiente al término actual.
 //  El modal lista todas las vallas elegibles de ese cliente/ejecutiva para
 //  poder renovar varias a la vez (renovación múltiple). El backend vuelve a
 //  validar todo (cliente, ejecutiva, dueña, mínimos, fechas).
@@ -8272,10 +8272,8 @@ function rnPuedeUsuario_(v) {
   return u === 'JORGE' || u === rnNorm_(v.ejecutiva);
 }
 function rnElegible_(v) {
-  return !!v && v.estado === 'CONTRATADA' && !!v.termino && !!v.reserva2_cliente &&
-    rnNorm_(v.reserva2_cliente) === rnNorm_(v.cliente) &&
-    rnNorm_(v.reserva2_ejecutiva) === rnNorm_(v.ejecutiva) &&
-    rnPuedeUsuario_(v);
+  // (2026-10-14) Sin exigir pre-reserva: la ejecutiva que hizo la contratación (o un admin) siempre puede renovar.
+  return !!v && v.estado === 'CONTRATADA' && !!v.termino && !!v.cliente && rnPuedeUsuario_(v);
 }
 function openModalRenovar(codigo) {
   const base = DATA.find(x => x.codigo === codigo);
@@ -8289,6 +8287,7 @@ function openModalRenovar(codigo) {
     <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#34d399">
       El nuevo período empieza el día siguiente al término del contrato actual. Si marcas varias vallas, se renuevan juntas con la misma fecha fin.
     </div>
+    ${hermanas.some(v => v.reserva2_cliente && !(rnNorm_(v.reserva2_cliente) === rnNorm_(v.cliente) && rnNorm_(v.reserva2_ejecutiva) === rnNorm_(v.ejecutiva))) ? '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:8px;padding:9px 14px;margin-bottom:14px;font-size:12px;color:var(--accent)">⚠️ Alguna valla tiene una pre-reserva de OTRO cliente: seguirá en cola y empezará cuando termine esta renovación.</div>' : ''}
     <div id="rn-lista" style="margin-bottom:14px">
       ${hermanas.map(v => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px;flex-wrap:wrap">
         <input type="checkbox" class="rn-chk" data-codigo="${esc(v.codigo)}" ${v.codigo === codigo ? 'checked' : ''} onchange="rnActualizar()">
