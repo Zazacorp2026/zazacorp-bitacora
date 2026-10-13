@@ -1403,9 +1403,32 @@ function updateStats() {
   document.getElementById('st-total').textContent = '● ' + DATA.length + ' TOTAL';
 }
 
+// ── Lectura instantánea desde Firebase (copia sin dinero que mantiene el servidor) ──
+async function fbLeerRapido_(ruta, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms || 4000);
+  try {
+    const res = await fetch(await fbUrl(ruta + '.json'), { cache: 'no-store', signal: ctrl.signal });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return d && typeof d === 'object' ? d : null;
+  } catch (e) { return null; } finally { clearTimeout(t); }
+}
+function fbActivo_(c) { const hoy = new Date().toISOString().split('T')[0]; return (c.fin || '') >= hoy && c.estado !== 'CANCELADO'; }
+async function fbLeerLed_() {
+  const d = await fbLeerRapido_('/led');
+  if (!d || !d.elementosLED) return null;
+  return { ok: true, rapido: true, desdeFirebase: true, elementosLED: d.elementosLED || [],
+    players: [], contratos: (d.contratos || []).map(c => Object.assign({}, c, { activo: fbActivo_(c) })), materiales: d.materiales || [] };
+}
+
 let _ledContratosGlobal = [];
 let _ledCapacidadesGlobal = {};
 async function cargarLedContratosGlobal() {
+  try {
+    const fb = await fbLeerLed_();
+    if (fb && !_ledContratosGlobal.length) { _ledContratosGlobal = fb.contratos; _ledCapacidadesGlobal = {}; fb.elementosLED.forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; }); }
+  } catch (e) {}
   try {
     const json = await fetchJsonGet(API_URL + '?action=getVNNOXData');
     if (json.ok) { _ledContratosGlobal = json.contratos || []; _ledCapacidadesGlobal = {}; (json.elementosLED||[]).forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; }); }
@@ -1427,6 +1450,10 @@ function esLEDtipo_str(tipo) { return (tipo || '').toUpperCase().indexOf('LED') 
 const SCR_CAPACIDAD = 5;
 let _scrContratosGlobal = [];
 async function cargarContratosScrollingGlobal() {
+  try {
+    const fb = await fbLeerRapido_('/scrolling');
+    if (fb && fb.contratos && !_scrContratosGlobal.length) _scrContratosGlobal = fb.contratos.map(c => Object.assign({}, c, { activo: fbActivo_(c) }));
+  } catch (e) {}
   try {
     const json = await fetchJsonGet(API_URL + '?action=getContratosScrolling');
     if (json.ok) _scrContratosGlobal = json.contratos || [];
@@ -9366,17 +9393,26 @@ async function renderLED(container, forzar) {
   } else {
     container.innerHTML = '<div class="empty"><div class="icon" style="animation:spin 1s linear infinite">⏳</div><p>Cargando pantallas...</p></div>';
   }
+  let _llegoServidor = false;
   const aplicar = (json) => {
     _ledData = json;
     _ledContratosGlobal = json.contratos || []; _ledCapacidadesGlobal = {};
     (json.elementosLED || []).forEach(el => { _ledCapacidadesGlobal[el.playerVnnoxId || el.codigo] = el.capacidad || 15; });
   };
+  // Sin copia en este navegador: Firebase suele responder en menos de 1 s y pinta mientras Apps Script se despierta.
+  if (!pintadoDesdeCopia) {
+    fbLeerLed_().then(fb => {
+      if (!fb || _llegoServidor || miSeq !== _ledRenderSeq || state.tab !== 'led' || !document.body.contains(container)) return;
+      aplicar(fb); buildLEDUI(container, fb);
+    });
+  }
   // 1) Carga RÁPIDA: solo lo del sistema (pantallas, contratos, materiales), sin esperar a VNNOX.
   //    Así la pestaña abre aunque VNNOX o la conexión con Apps Script estén lentos.
   try {
     const rapido = await fetchJsonGet(API_URL + '?action=getVNNOXData&rapido=1' + (forzar ? '&forzar=1' : ''));
     if (!rapido.ok) throw new Error(rapido.error || 'Error cargando LED');
     if (miSeq !== _ledRenderSeq) return;
+    _llegoServidor = true;
     aplicar(rapido);
     // Si ya se pintó la copia guardada (con estado en línea), no se pisa con datos "rápidos" sin ese estado.
     if (!pintadoDesdeCopia) buildLEDUI(container, rapido);
@@ -9751,12 +9787,12 @@ async function moverOrdenLED(idA, idB) {
 }
 
 async function cancelarContratoLED(id) {
-  if (!confirm('¿Cancelar este contrato LED?')) return;
+  if (!confirm('¿Cancelar este contrato LED?\n\nSe borrará su programación de materiales y se enviará un correo (John, ejecutiva, Jorge y Yesenia) indicando que hay que APAGAR.')) return;
   try {
     const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'editarContratoLED', id, estado:'CANCELADO', solicitante: _usuarioActual }) });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
-    showToast('✅ Contrato cancelado', 'success');
+    showToast(json.avisado ? '✅ Contrato cancelado · correo de apagado enviado' : '✅ Contrato cancelado (el correo de aviso no pudo enviarse)', json.avisado ? 'success' : 'error');
     renderLED(document.getElementById('mainContent'));
   } catch(e) { showToast('❌ ' + e.message, 'error'); }
 }
