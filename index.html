@@ -10217,17 +10217,48 @@ function progCerrar_() {
   document.body.style.overflow = '';
   _prog = null;
 }
+function progCargandoHTML_(texto, extra) {
+  return '<div style="position:sticky;top:0;display:flex;justify-content:flex-end;padding:12px 20px"><button onclick="progCerrar_()" aria-label="Cerrar" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:8px 14px;cursor:pointer">✕ Cerrar</button></div>' +
+    '<div style="padding:50px 20px;text-align:center;color:var(--muted);font-size:14px"><div id="progCargaMsg">' + texto + '</div><div id="progCargaExtra" style="margin-top:10px;font-size:12px">' + (extra || '') + '</div></div>';
+}
+// Pide los datos con paciencia: hasta 3 intentos de 25 s (Apps Script a veces tarda) y avisa cómo va
+async function progPedirDatos_(idContrato, onEstado) {
+  let ultimo = null;
+  for (let n = 1; n <= 3; n++) {
+    onEstado(n);
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 25000);
+    try {
+      const res = await fetch(API_URL + '?action=ledGetProgramacion&id=' + encodeURIComponent(idContrato), { cache: 'no-store', signal: ctrl.signal });
+      return JSON.parse(await res.text());
+    } catch (e) {
+      ultimo = e;
+      if (n < 3) await new Promise(r => setTimeout(r, 1000 * n));
+    } finally { clearTimeout(t); }
+  }
+  throw new Error('El servidor no respondió a tiempo (' + (ultimo && ultimo.name === 'AbortError' ? 'tardó más de 25 segundos' : 'respuesta no válida') + ').');
+}
 async function openProgramacionLED(idContrato) {
   const o = progOverlay_();
   o.style.display = 'block'; document.body.style.overflow = 'hidden';
-  o.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--muted);font-size:14px">⏳ Cargando la programación…</div>';
+  o.innerHTML = progCargandoHTML_('⏳ Cargando la programación…');
+  const inicio = Date.now();
+  const reloj = setInterval(() => {
+    const x = document.getElementById('progCargaExtra');
+    if (!x) return;
+    const seg = Math.round((Date.now() - inicio) / 1000);
+    x.textContent = seg >= 8 ? 'Google está tardando más de lo normal (' + seg + ' s). Sigue intentando; puedes cerrar y volver a abrir.' : '';
+  }, 1000);
   try {
-    const json = await fetchJsonGet(API_URL + '?action=ledGetProgramacion&id=' + encodeURIComponent(idContrato));
+    const json = await progPedirDatos_(idContrato, n => { const m = document.getElementById('progCargaMsg'); if (m) m.textContent = '⏳ Cargando la programación…' + (n > 1 ? ' (intento ' + n + ' de 3)' : ''); });
     if (!json.ok) throw new Error(json.error || 'No se pudo cargar');
     progIniciar_(json, idContrato);
   } catch (e) {
-    o.innerHTML = '<div style="padding:60px 20px;text-align:center"><div style="color:var(--red);font-size:14px;margin-bottom:14px">❌ ' + esc(e.message) + '</div><button onclick="progCerrar_()" style="padding:9px 18px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">Cerrar</button></div>';
-  }
+    const sinFuncion = /no reconocida|no válida/i.test(e.message) ? ' Si el mensaje persiste, puede que el servidor de Nexus (Code.gs) no tenga la versión nueva: súbela y crea una nueva versión.' : '';
+    o.innerHTML = '<div style="padding:60px 20px;text-align:center"><div style="color:var(--red);font-size:14px;margin-bottom:6px">❌ ' + esc(e.message) + '</div><div style="color:var(--muted);font-size:12px;max-width:520px;margin:0 auto 16px">' + esc(sinFuncion) + '</div>' +
+      '<button onclick="openProgramacionLED(\'' + String(idContrato).replace(/'/g, '') + '\')" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;margin-right:8px">Reintentar</button>' +
+      '<button onclick="progCerrar_()" style="padding:9px 18px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">Cerrar</button></div>';
+  } finally { clearInterval(reloj); }
 }
 function progIniciar_(json, idContrato) {
   const hoy = json.hoy;
