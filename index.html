@@ -1180,6 +1180,45 @@ async function loadData(force = false) {
   await fetchFresh();
 }
 
+// ── Inventario al día sin pulsar "Sincronizar" ──
+// Cada 10 s se pregunta a Firebase SOLO por la marca de hora del inventario (unos bytes). Si cambió
+// (alguien contrató, reservó, liberó…), se baja el inventario y se repinta, siempre que no estés
+// escribiendo ni con una ventana abierta. En LED/Cotizador/Pipeline/Wallet solo se actualiza el dato
+// (esas pestañas manejan su propio repintado).
+let _invTs = null, _invRefrescando = false;
+async function refrescarInventarioSiCambio_() {
+  if (_invRefrescando || !_usuarioActual || document.hidden) return;
+  _invRefrescando = true;
+  try {
+    const r = await fetch(await fbUrl('/inventario/ts.json'), { cache: 'no-store' });
+    if (!r.ok) return;
+    const ts = await r.json();
+    if (!ts || ts === _invTs) return;
+    const res = await fetch(await fbUrl('/inventario.json'), { cache: 'no-store' });
+    if (!res.ok) return;
+    const fb = await res.json();
+    if (!fb || !Array.isArray(fb.data) || !fb.data.length) return;
+    _invTs = fb.ts || ts;
+    // Si los datos son idénticos (p. ej. solo cambió la hora por la sincronización automática), no se toca nada: cero parpadeo.
+    let igual = false;
+    try { igual = JSON.stringify(fb.data) === JSON.stringify(DATA); } catch (e) {}
+    if (igual) return;
+    DATA = fb.data; setCache(DATA);
+    try { updateStats(); } catch (e) {}
+    const a = document.activeElement;
+    const escribiendo = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+    const modalAbierto = document.getElementById('modalOverlay')?.classList.contains('open');
+    const propias = ['led', 'cotizador', 'pipeline', 'comercialgeneral', 'wallet', 'mapa', 'dashboard'];
+    if (!escribiendo && !modalAbierto && !propias.includes(state.tab)) {
+      const y = window.scrollY, c = document.getElementById('mainContent'), yc = c ? c.scrollTop : 0;
+      render();
+      window.scrollTo(0, y); if (c) c.scrollTop = yc; // se queda en el mismo lugar de la lista
+    }
+  } catch (e) { /* sin red: se reintenta en el próximo ciclo */ } finally { _invRefrescando = false; }
+}
+setInterval(refrescarInventarioSiCambio_, 10000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refrescarInventarioSiCambio_(); });
+
 async function fetchFresh(esReintento) {
   // 1. Firebase primero — rápido, sin límite de concurrencia
   try {
@@ -1188,6 +1227,7 @@ async function fetchFresh(esReintento) {
       const fbData = await fbRes.json();
       if (fbData && fbData.data && Array.isArray(fbData.data) && fbData.data.length > 0) {
         DATA = fbData.data;
+        _invTs = fbData.ts || _invTs;
         setCache(DATA);
         document.getElementById('connDot').className = 'conn-dot ok';
         onDataLoaded();
