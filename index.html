@@ -363,8 +363,9 @@
   .cg-exec-summary .cg-summary-icon{font-size:22px;line-height:1;margin-top:2px;}
   .cg-exec-summary h4{margin:0 0 6px;font-size:12px;color:var(--accent);font-weight:900;text-transform:uppercase;letter-spacing:.4px;}
   .cg-exec-summary p{margin:0;color:var(--text);font-size:13px;line-height:1.55;}
-  .cg-insight-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px;}
-  .cg-insight-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;min-height:100px;}
+  .cg-insight-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-bottom:18px;}
+  .cg-insight-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;min-height:100px;}
+  .cg-insight-card.cg-sem-wide{margin-bottom:18px;}
   .cg-insight-card.cg-span-2{grid-column:span 2;}
   .cg-insight-card h4{margin:0 0 10px;font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.4px;}
   .cg-big-number{font-size:20px;font-weight:900;color:var(--text);line-height:1.1;}
@@ -389,15 +390,16 @@
   .cg-table-wrap{max-height:320px;overflow:auto;border-top:1px solid var(--border);}
   .cg-table.compact{font-size:11px;}
   .cg-table.compact td{padding:6px 8px;}
-  .cg-sem-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
-  .cg-sem-card{border-radius:10px;padding:10px;border:1px solid var(--border);background:var(--surface2);}
-  .cg-sem-card .num{font-size:20px;font-weight:900;margin-bottom:2px;}
+  .cg-sem-grid{display:grid;grid-template-columns:.7fr .7fr 2.6fr;gap:14px;}
+  .cg-sem-lista2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px;}
+  .cg-sem-card{border-radius:10px;padding:14px;border:1px solid var(--border);background:var(--surface2);}
+  .cg-sem-card .num{font-size:28px;font-weight:900;margin-bottom:2px;line-height:1.1;}
   .cg-sem-card .lbl{font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;}
   .cg-sem-card.green .num{color:#10b981;}.cg-sem-card.yellow .num{color:#f59e0b;}.cg-sem-card.red .num{color:#ef4444;}
-  .cg-sem-nombre{display:flex;justify-content:space-between;gap:6px;font-size:10.5px;color:var(--text);padding:3px 0;border-top:1px solid var(--border);margin-top:2px;}
-  .cg-sem-empty{font-size:10.5px;color:var(--muted);font-style:italic;margin-top:6px;}
+  .cg-sem-nombre{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--text);padding:7px 0;border-top:1px solid var(--border);margin-top:2px;}
+  .cg-sem-empty{font-size:12px;color:var(--muted);font-style:italic;margin-top:6px;}
 
-  @media (max-width:900px){.cg-kpis{grid-template-columns:1fr;}.cg-kpi-value{font-size:26px;}.cg-charts-grid{grid-template-columns:1fr;}.cg-charts-grid.cg-tipo-split{grid-template-columns:1fr;}.cg-insight-grid{grid-template-columns:1fr;}.cg-insight-card.cg-span-2{grid-column:span 1;}}
+  @media (max-width:900px){.cg-sem-grid{grid-template-columns:1fr;}.cg-sem-lista2{grid-template-columns:1fr;}.cg-kpis{grid-template-columns:1fr;}.cg-kpi-value{font-size:26px;}.cg-charts-grid{grid-template-columns:1fr;}.cg-charts-grid.cg-tipo-split{grid-template-columns:1fr;}.cg-insight-grid{grid-template-columns:1fr;}.cg-insight-card.cg-span-2{grid-column:span 1;}}
 
   .edit-form{background:var(--surface2);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:16px;margin-top:14px;}
   .edit-form h4{font-size:13px;font-weight:600;margin-bottom:14px;color:var(--accent);}
@@ -4850,15 +4852,19 @@ function cgPintarCrecimientoEjecutiva() {
   const tbody = document.getElementById('cgCrecimientoEjBody');
   const sem = document.getElementById('cgSemaforoBody');
   if (!tbody && !sem) return;
-  const rowsAll = cgRowsCrecimientoEjecutiva();
+  // Ex-integrantes del equipo: no se muestran ni en el semáforo ni en el crecimiento por ejecutiva (los totales y demás tablas los siguen contando)
+  const CG_SEM_EXCLUIDAS = [['MIGUEL', 'RODRIGUEZ'], ['CHRISTIAN', 'LUZURIAGA']];
+  const semNorm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const rowsSem = cgRowsCrecimientoEjecutiva().filter(r => { const n = semNorm(r.ejecutiva); return !CG_SEM_EXCLUIDAS.some(par => par.every(w => n.includes(w))); });
+  const rowsAll = rowsSem;
   if (sem) {
     // No solo cuántas caen en cada grupo — el número solo no dice a
     // quién hablarle. Cada tarjeta lista los nombres, ordenados de más
     // a menos extremo, para que el rojo funcione como alerta real de
     // seguimiento y no como una estadística suelta.
-    const verdes = rowsAll.filter(r => r.varPct !== null && r.varPct > 20).sort((a, b) => b.varPct - a.varPct);
-    const estables = rowsAll.filter(r => r.varPct !== null && r.varPct >= -5 && r.varPct <= 5);
-    const rojos = rowsAll.filter(r => r.varPct !== null && r.varPct < -10).sort((a, b) => a.varPct - b.varPct);
+    const verdes = rowsSem.filter(r => r.varPct !== null && r.varPct > 20).sort((a, b) => b.varPct - a.varPct);
+    const estables = rowsSem.filter(r => r.varPct !== null && r.varPct >= -5 && r.varPct <= 5);
+    const rojos = rowsSem.filter(r => r.varPct !== null && r.varPct < -10).sort((a, b) => a.varPct - b.varPct);
     function cgListaSem_(grupo) {
       if (!grupo.length) return '<div class="cg-sem-empty">Ninguna</div>';
       return grupo.map(r => '<div class="cg-sem-nombre"><span>' + esc(r.ejecutiva) + '</span><span>' + cgFmtPct(r.varPct) + '</span></div>').join('');
@@ -4866,7 +4872,7 @@ function cgPintarCrecimientoEjecutiva() {
     sem.innerHTML = '<div class="cg-sem-grid">' +
       '<div class="cg-sem-card green"><div class="num">' + verdes.length + '</div><div class="lbl">Crecen +20%</div>' + cgListaSem_(verdes) + '</div>' +
       '<div class="cg-sem-card yellow"><div class="num">' + estables.length + '</div><div class="lbl">Estables</div>' + cgListaSem_(estables) + '</div>' +
-      '<div class="cg-sem-card red"><div class="num">' + rojos.length + '</div><div class="lbl">Caen -10%</div>' + cgListaSem_(rojos) + '</div>' +
+      '<div class="cg-sem-card red"><div class="num">' + rojos.length + '</div><div class="lbl">Caen -10%</div><div class="cg-sem-lista2">' + cgListaSem_(rojos) + '</div></div>' +
     '</div>';
   }
   if (!tbody) return;
@@ -5574,8 +5580,8 @@ async function renderComercialGeneral(container) {
       '<div class="cg-insight-card"><h4>Pulso comercial</h4><div id="cgPulsoBody" class="cg-pulse-list"></div></div>' +
       '<div class="cg-insight-card"><h4>2026 vs 2025 al mismo corte</h4><div id="cgCorteBody"></div></div>' +
       '<div class="cg-insight-card"><h4>Concentración de clientes</h4><div id="cgConcentracionBody"></div></div>' +
-      '<div class="cg-insight-card"><h4>Semáforo comercial</h4><div id="cgSemaforoBody"></div><div class="cg-card-muted" style="margin-top:8px">Por ejecutiva frente al mismo corte del año anterior.</div></div>' +
     '</div>' +
+    '<div class="cg-insight-card cg-sem-wide"><h4>Semáforo comercial</h4><div class="cg-card-muted" style="margin:-4px 0 12px">Por ejecutiva frente al mismo corte del año anterior.</div><div id="cgSemaforoBody"></div></div>' +
     '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Ranking de ejecutivas · Bruto y Neto <small>(la barra es el Neto · clic en una barra para comparar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartEjecutivas"></canvas></div></div>' +
       '<div class="cg-chart-card"><h4>Tendencia mensual del Neto</h4><div class="cg-chart-wrap"><canvas id="cgChartTendencia"></canvas></div></div>' +
