@@ -6453,8 +6453,10 @@ function openModal(codigo) {
           ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e => '<option>' + e + '</option>').join('') +
         '</select></div></div>' +
       '<div class="form-row">' +
-        '<div class="form-group"><label>Fecha reserva</label><input type="date" id="rf-f" value="' + new Date().toISOString().split('T')[0] + '"></div>' +
-        '<div class="form-group"><label>Observaciones</label><input type="text" id="rf-o" placeholder="Notas opcionales..."></div>' +
+        // Solo el admin ve y puede cambiar la fecha: la reserva (y sus 48 h laborables) empieza ese día
+        ((_usuarioActual || '').toUpperCase() === 'JORGE'
+          ? '<div class="form-group"><label>Fecha reserva (admin)</label><input type="date" id="rf-f" value="' + fechaLocalISO_() + '"><div style="font-size:10px;color:var(--muted);margin-top:3px">La reserva empieza ese día y se cuentan las 48 h laborables desde ahí.</div></div>' : '') +
+        '<div class="form-group' + ((_usuarioActual || '').toUpperCase() === 'JORGE' ? '' : ' full') + '"><label>Observaciones</label><input type="text" id="rf-o" placeholder="Notas opcionales..."></div>' +
       '</div>' +
       '<button class="btn-reservar" id="btnReservar" onclick="hacerReserva(\'' + v.codigo + '\')">✓ Confirmar Reserva</button></div>';
   } else if (v.estado === 'RESERVADA') {
@@ -6615,7 +6617,8 @@ function closeModalOutside(e) { if (e.target === document.getElementById('modalO
 async function hacerReserva(codigo) {
   const c = document.getElementById('rf-c').value.trim();
   const e = document.getElementById('rf-e').value;
-  const f = document.getElementById('rf-f').value;
+  const esAdminRes = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const f = (esAdminRes && document.getElementById('rf-f') ? document.getElementById('rf-f').value : '') || fechaLocalISO_();
   const o = document.getElementById('rf-o').value.trim();
 
   if (!c || !e) { showToast('Completa cliente y ejecutiva', 'info'); return; }
@@ -6631,7 +6634,18 @@ async function hacerReserva(codigo) {
   btn.textContent = 'Registrando...';
 
   try {
-    const expira = calcularExpiraLaboral(BLOCK_HOURS);
+    // Si el admin puso otra fecha, la reserva EMPIEZA ese día (a la hora actual) y las 48 h laborables se cuentan desde ahí
+    let desde = null;
+    if (esAdminRes && f !== fechaLocalISO_()) {
+      const ahora = new Date();
+      desde = new Date(f + 'T' + String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0') + ':00');
+    }
+    const expira = calcularExpiraLaboral(BLOCK_HOURS, desde);
+    if (new Date(expira) <= new Date()) {
+      showToast('Con esa fecha de inicio la reserva ya estaría vencida. Elige una fecha más reciente.', 'error');
+      btn.disabled = false; btn.textContent = '✓ Confirmar Reserva';
+      return;
+    }
     const vd = DATA.find(x => x.codigo === codigo);
 
     // 1. Guardar en Sheet via Apps Script
@@ -9398,8 +9412,10 @@ const BLOCK_HOURS = 48; // horas laborales (sin contar sábado ni domingo)
  * Calcula la fecha de expiración de una reserva sumando N horas laborales
  * (lunes a viernes). Si cae en fin de semana, avanza al lunes.
  */
-function calcularExpiraLaboral(horasLaborales) {
-  let fecha = new Date();
+// 'desde' (opcional): fecha/hora en que EMPIEZA la reserva; si no se da, es ahora.
+function fechaLocalISO_() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function calcularExpiraLaboral(horasLaborales, desde) {
+  let fecha = desde ? new Date(desde) : new Date();
 
   // Si hoy es sábado o domingo, arrancar desde el lunes 08:00
   const diaSemana = fecha.getDay(); // 0=Dom, 1=Lun ... 6=Sáb
