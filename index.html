@@ -345,6 +345,33 @@
   .cg-kpi-value{display:block;font-size:30px;font-weight:900;color:var(--text);letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums;}
   .cg-kpi-sub{display:block;margin-top:6px;font-size:11px;color:var(--muted);min-height:14px;}
   .cg-kpi-sub b{color:var(--kpi,var(--blue));}
+  .cg-ag-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+  .cg-ag-search{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-size:12px;max-width:220px;font-family:inherit;}
+  .cg-ag-leg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin-bottom:12px;}
+  .cg-ag-leg i,.cg-ag-sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;vertical-align:-1px;}
+  .cg-ag-hd,.cg-ag-row,.cg-ag-tot{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,2fr) 100px 100px 20px;gap:14px;align-items:center;}
+  .cg-ag-hd{font-size:11px;color:var(--muted);padding:0 10px 8px;border-bottom:1px solid var(--border);font-weight:700;}
+  .cg-ag-hd span:nth-child(3),.cg-ag-hd span:nth-child(4){text-align:right;}
+  .cg-ag-it{border-bottom:1px solid var(--border);}
+  .cg-ag-it.directa{background:rgba(128,128,128,.05);}
+  .cg-ag-row{padding:12px 10px;cursor:pointer;border-radius:8px;}
+  .cg-ag-row:hover{background:var(--surface2);}
+  .cg-ag-nm{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cg-ag-nm small{display:block;font-weight:400;font-size:11px;color:var(--muted);}
+  .cg-ag-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface2);}
+  .cg-ag-bar b{display:block;height:100%;}
+  .cg-ag-v{text-align:right;font-size:13px;color:var(--text);font-variant-numeric:tabular-nums;}
+  .cg-ag-v.bru{color:var(--muted);}
+  .cg-ag-v.net{font-weight:800;}
+  .cg-ag-ch{font-size:18px;color:var(--muted);transition:transform .15s;text-align:center;}
+  .cg-ag-it.open .cg-ag-ch{transform:rotate(90deg);}
+  .cg-ag-det{display:none;margin:0 10px 12px;background:var(--surface2);border-radius:8px;padding:6px 14px;}
+  .cg-ag-it.open .cg-ag-det{display:block;}
+  .cg-ag-dr{display:grid;grid-template-columns:minmax(0,1.5fr) 100px 100px 60px;gap:12px;padding:8px 0;font-size:12.5px;border-top:1px solid var(--border);align-items:center;color:var(--text);}
+  .cg-ag-dr.cg-ag-dh{border-top:none;font-size:11px;color:var(--muted);font-weight:700;}
+  .cg-ag-dr span:nth-child(n+2){text-align:right;}
+  .cg-ag-tot{padding:12px 10px 2px;font-size:13px;font-weight:800;color:var(--text);}
+  .cg-ag-vacio{padding:20px;text-align:center;color:var(--muted);font-size:12px;}
   .cg-charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
   .cg-charts-grid.cg-tipo-split{grid-template-columns:2fr 1fr;}
   .cg-chart-card{background:var(--surface);border-radius:10px;padding:16px;border:1px solid var(--border);}
@@ -399,6 +426,7 @@
   .cg-sem-nombre{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--text);padding:7px 0;border-top:1px solid var(--border);margin-top:2px;}
   .cg-sem-empty{font-size:12px;color:var(--muted);font-style:italic;margin-top:6px;}
 
+  @media (max-width:760px){.cg-ag-hd,.cg-ag-row,.cg-ag-tot{grid-template-columns:1fr 84px 84px 16px;}.cg-ag-hd span:nth-child(2),.cg-ag-bar,.cg-ag-tot span:nth-child(2){display:none;}.cg-ag-dr{grid-template-columns:1fr 80px 80px 44px;}}
   @media (max-width:900px){.cg-sem-grid{grid-template-columns:1fr;}.cg-sem-lista2{grid-template-columns:1fr;}.cg-kpis{grid-template-columns:1fr;}.cg-kpi-value{font-size:26px;}.cg-charts-grid{grid-template-columns:1fr;}.cg-charts-grid.cg-tipo-split{grid-template-columns:1fr;}.cg-insight-grid{grid-template-columns:1fr;}.cg-insight-card.cg-span-2{grid-column:span 1;}}
 
   .edit-form{background:var(--surface2);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:16px;margin-top:14px;}
@@ -4880,16 +4908,82 @@ function cgPintarCrecimientoEjecutiva() {
   const rows = rowsAll.sort((a, b) => (b.diff - a.diff)).slice(0, 12);
   tbody.innerHTML = rows.map(r => '<tr><td>' + esc(r.ejecutiva) + '</td><td style="text-align:right">' + cgFmtMoney(r.anterior) + '</td><td style="text-align:right">' + cgFmtMoney(r.actual) + '</td><td style="text-align:right" class="' + cgClaseVar(r.varPct) + '">' + cgFmtPct(r.varPct) + '</td><td style="text-align:right">' + cgFmtMoney(r.diff) + '</td></tr>').join('');
 }
+// ── Agencias y quién las trabaja ──
+// Una fila por agencia (nombres de la tabla de agencias del cotizador): barra de colores con el reparto del neto entre
+// ejecutivas, Bruto y Neto; al tocar la fila se abre el detalle por ejecutiva. Lo facturado a clientes que no son
+// agencia va en una fila aparte "Otros clientes (venta directa)". Los ex-integrantes no se muestran.
+const CG_EX_INTEGRANTES = [['MIGUEL', 'RODRIGUEZ'], ['CHRISTIAN', 'LUZURIAGA']];
+function cgEsExIntegrante_(nombre) { const n = cgNormalizarNombre_(nombre); return CG_EX_INTEGRANTES.some(par => par.every(w => n.includes(w))); }
+const CG_EJ_COLORES = ['#378ADD', '#1D9E75', '#BA7517', '#D4537E', '#7F77DD', '#D85A30', '#639922', '#0F6E56', '#993556', '#888780'];
+function cgColorEjecutiva_(nombre) {
+  const todas = [...new Set((cgDataCache || []).map(d => d['Ejecutiva']).filter(e => e && !cgEsExIntegrante_(e)))].sort();
+  const i = todas.indexOf(nombre);
+  return CG_EJ_COLORES[(i < 0 ? todas.length : i) % CG_EJ_COLORES.length];
+}
+let _cgAgOpen = new Set(), _cgAgBusca = '', _cgAgNombres = null, _cgAgCargando = false, _cgAgPlano = [], _cgAgUltimaData = null;
+function cgAgToggle(id) { if (_cgAgOpen.has(id)) _cgAgOpen.delete(id); else _cgAgOpen.add(id); const el = document.getElementById('cgAg_' + id); if (el) el.classList.toggle('open'); }
+function cgAgBuscar(v) { _cgAgBusca = String(v || ''); if (_cgAgUltimaData) cgPintarClientesCompartidos(_cgAgUltimaData); }
 function cgPintarClientesCompartidos(data) {
-  const tbody = document.getElementById('cgClientesCompartidosBody');
-  if (!tbody) return;
-  const rows = cgAgrupar(data, 'Cliente').filter(r => r.ejecutivas.size > 1).sort((a, b) => b.neto - a.neto).slice(0, 12);
-  tbody.innerHTML = rows.map(r => {
-    const porEj = {};
-    data.filter(d => (d['Cliente'] || 'Sin cliente') === r.nombre).forEach(d => { const e = d['Ejecutiva'] || 'Sin asignar'; porEj[e] = (porEj[e] || 0) + cgNum(d, 'Neto (Stotal)'); });
-    const principal = Object.entries(porEj).sort((a, b) => b[1] - a[1])[0];
-    return '<tr><td>' + esc(r.nombre) + '</td><td style="text-align:right">' + r.ejecutivas.size + '</td><td style="text-align:right">' + cgFmtMoney(r.neto) + '</td><td>' + esc(principal ? principal[0] : '—') + '</td></tr>';
-  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">No hay clientes compartidos en este filtro</td></tr>';
+  const box = document.getElementById('cgAgenciasBody');
+  if (!box) return;
+  _cgAgUltimaData = data;
+  // Lista de agencias: la del cotizador si ya está cargada, si no se pide una vez
+  if (!_cgAgNombres) {
+    if (typeof qzAgenciasCache !== 'undefined' && qzAgenciasCache && qzAgenciasCache.length) _cgAgNombres = new Set(qzAgenciasCache.map(cgNormalizarNombre_));
+    else {
+      box.innerHTML = '<div class="cg-ag-vacio">Cargando agencias…</div>';
+      if (!_cgAgCargando) {
+        _cgAgCargando = true;
+        fetchJsonGet(API_URL + '?action=qzListarAgencias').then(j => {
+          const lista = (j && j.ok && j.agencias) ? j.agencias : [];
+          if (lista.length && typeof qzAgenciasCache !== 'undefined' && !qzAgenciasCache) qzAgenciasCache = lista;
+          _cgAgNombres = new Set(lista.map(cgNormalizarNombre_));
+        }).catch(() => { _cgAgNombres = new Set(); }).finally(() => { _cgAgCargando = false; if (_cgAgUltimaData) cgPintarClientesCompartidos(_cgAgUltimaData); });
+      }
+      return;
+    }
+  }
+  const grupos = {};   // clave -> { nombre, bruto, neto, porEj: {ej: {bruto, neto}} }
+  const DIRECTA = '__directa__';
+  (data || []).forEach(d => {
+    const ej = d['Ejecutiva'] || 'Sin asignar';
+    if (cgEsExIntegrante_(ej)) return;
+    const cliente = d['Cliente'] || 'Sin cliente';
+    const esAg = _cgAgNombres.has(cgNormalizarNombre_(cliente));
+    const k = esAg ? cliente : DIRECTA;
+    const g = grupos[k] || (grupos[k] = { nombre: esAg ? cliente : 'Otros clientes (venta directa)', directa: !esAg, bruto: 0, neto: 0, porEj: {} });
+    const b = cgNum(d, 'Bruto (PBase)'), n = cgNum(d, 'Neto (Stotal)');
+    g.bruto += b; g.neto += n;
+    const e = g.porEj[ej] || (g.porEj[ej] = { bruto: 0, neto: 0 });
+    e.bruto += b; e.neto += n;
+  });
+  const q = cgNormalizarNombre_(_cgAgBusca);
+  let ags = Object.values(grupos).filter(g => !g.directa).sort((a, b) => b.neto - a.neto);
+  const directa = grupos[DIRECTA] || null;
+  const visibles = q ? ags.filter(g => cgNormalizarNombre_(g.nombre).includes(q)) : ags;
+  const todos = ags.concat(directa ? [directa] : []);
+  const totBruto = todos.reduce((s, g) => s + g.bruto, 0), totNeto = todos.reduce((s, g) => s + g.neto, 0);
+  const ejsPresentes = [...new Set(todos.flatMap(g => Object.keys(g.porEj)))].sort((a, b) => a.localeCompare(b));
+  _cgAgPlano = [];
+  const fila = (g, id) => {
+    const ejs = Object.entries(g.porEj).sort((a, b) => b[1].neto - a[1].neto);
+    const totalPos = ejs.reduce((s, e) => s + Math.max(e[1].neto, 0), 0) || 1;
+    ejs.forEach(e => _cgAgPlano.push([g.nombre, e[0], cgFmtMoney(e[1].bruto), cgFmtMoney(e[1].neto)]));
+    const barra = ejs.filter(e => e[1].neto > 0).map(e => '<b title="' + esc(e[0]) + ' · ' + cgFmtMoney(e[1].neto) + '" style="width:' + (Math.max(e[1].neto, 0) / totalPos * 100).toFixed(2) + '%;background:' + cgColorEjecutiva_(e[0]) + '"></b>').join('');
+    const det = '<div class="cg-ag-dr cg-ag-dh"><span>Ejecutiva</span><span>Bruto</span><span>Neto</span><span>%</span></div>' + ejs.map(e =>
+      '<div class="cg-ag-dr"><span><i class="cg-ag-sw" style="background:' + cgColorEjecutiva_(e[0]) + '"></i>' + esc(e[0]) + '</span><span>' + cgFmtMoney(e[1].bruto) + '</span><span>' + cgFmtMoney(e[1].neto) + '</span><span>' + Math.round(Math.max(e[1].neto, 0) / totalPos * 100) + '%</span></div>').join('');
+    return '<div class="cg-ag-it' + (_cgAgOpen.has(id) ? ' open' : '') + (g.directa ? ' directa' : '') + '" id="cgAg_' + id + '">' +
+      '<div class="cg-ag-row" onclick="cgAgToggle(\'' + id + '\')"><div class="cg-ag-nm">' + esc(g.nombre) + '<small>' + ejs.length + (ejs.length === 1 ? ' ejecutiva' : ' ejecutivas') + '</small></div>' +
+      '<div class="cg-ag-bar">' + barra + '</div><div class="cg-ag-v bru">' + cgFmtMoney(g.bruto) + '</div><div class="cg-ag-v net">' + cgFmtMoney(g.neto) + '</div><span class="cg-ag-ch">›</span></div>' +
+      '<div class="cg-ag-det">' + det + '</div></div>';
+  };
+  if (!todos.length) { box.innerHTML = '<div class="cg-ag-vacio">Sin datos para los filtros actuales.</div>'; return; }
+  const leyenda = ejsPresentes.map(e => '<span><i style="background:' + cgColorEjecutiva_(e) + '"></i>' + esc(e) + '</span>').join('');
+  box.innerHTML = '<div class="cg-ag-leg">' + leyenda + '</div>' +
+    '<div class="cg-ag-hd"><span>Agencia</span><span>Quién la trabaja (por neto)</span><span>Bruto</span><span>Neto</span><span></span></div>' +
+    (visibles.length ? visibles.map((g, i) => fila(g, 'a' + ags.indexOf(g))).join('') : '<div class="cg-ag-vacio">Ninguna agencia coincide con la búsqueda.</div>') +
+    (directa && !q ? fila(directa, 'directa') : '') +
+    '<div class="cg-ag-tot"><span>Total (agencias + venta directa)</span><span></span><span class="cg-ag-v bru">' + cgFmtMoney(totBruto) + '</span><span class="cg-ag-v">' + cgFmtMoney(totNeto) + '</span><span></span></div>';
 }
 function cgPintarMixProducto(data) {
   const ctx = document.getElementById('cgChartMix');
@@ -5487,7 +5581,7 @@ async function cgExportarPPT() {
     cgAgregarSlideTabla_(pres, 'Resumen por año', cgTablaDesdeDOM_('cgTablaAniosBody'), NAVY, WHITE);
     cgAgregarSlideTabla_(pres, 'Ticket promedio por ejecutiva', cgTablaDesdeDOM_('cgTicketEjBody'), NAVY, WHITE);
     cgAgregarSlideTabla_(pres, 'Crecimiento por ejecutiva', cgTablaDesdeDOM_('cgCrecimientoEjBody'), NAVY, WHITE);
-    cgAgregarSlideTabla_(pres, 'Clientes compartidos entre ejecutivas', cgTablaDesdeDOM_('cgClientesCompartidosBody'), NAVY, WHITE);
+    cgAgregarSlideTabla_(pres, 'Agencias y quién las trabaja', { headers: ['Agencia', 'Ejecutiva', 'Bruto', 'Neto'], rows: _cgAgPlano.slice(0, 40) }, NAVY, WHITE);
 
     const fecha = new Date().toISOString().split('T')[0];
     await pres.writeFile({ fileName: 'Zazacorp_ComercialGeneral_' + fecha + '.pptx' });
@@ -5606,7 +5700,7 @@ async function renderComercialGeneral(container) {
       '<div class="cg-chart-card"><h4>Ticket promedio por ejecutiva</h4><div class="cg-table-wrap"><table class="cg-table compact cg-sticky-head"><thead><tr><th>Ejecutiva</th><th style="text-align:right">Facturas</th><th style="text-align:right">Neto</th><th style="text-align:right">Ticket</th></tr></thead><tbody id="cgTicketEjBody"></tbody></table></div></div>' +
       '<div class="cg-chart-card"><h4>Crecimiento por ejecutiva</h4><div class="cg-table-wrap"><table class="cg-table compact cg-sticky-head"><thead><tr><th>Ejecutiva</th><th style="text-align:right">Año ant.</th><th style="text-align:right">Actual</th><th style="text-align:right">Var.</th><th style="text-align:right">Dif.</th></tr></thead><tbody id="cgCrecimientoEjBody"></tbody></table></div></div>' +
     '</div>' +
-    '<div class="cg-chart-card" style="margin-bottom:16px"><h4>Clientes compartidos entre ejecutivas</h4><div class="cg-table-wrap"><table class="cg-table compact cg-sticky-head"><thead><tr><th>Cliente</th><th style="text-align:right">Ejecutivas</th><th style="text-align:right">Neto</th><th>Ejecutiva principal</th></tr></thead><tbody id="cgClientesCompartidosBody"></tbody></table></div></div>' +
+    '<div class="cg-chart-card" style="margin-bottom:16px"><div class="cg-ag-top"><h4 style="margin:0">Agencias y quién las trabaja <small>(toca una agencia para ver el detalle por ejecutiva)</small></h4><input type="text" class="cg-ag-search" placeholder="Buscar agencia" oninput="cgAgBuscar(this.value)" value="' + esc(_cgAgBusca) + '"></div><div id="cgAgenciasBody"></div></div>' +
     '<div class="cg-chart-card" style="margin-bottom:16px">' +
       '<h4 id="cgDetalleEjTitulo">Detalle por cliente y ejecutiva</h4>' +
       '<div style="max-height:460px;overflow:auto;border-top:1px solid var(--border)"><table class="cg-table cg-sticky-head"><thead><tr><th>Cliente / Marca</th><th>Ejecutiva</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th><th style="text-align:right">% del grupo</th></tr></thead><tbody id="cgTablaDetalleEjBody"></tbody></table></div>' +
@@ -6819,6 +6913,40 @@ function mapUpdateMFBtn(mfId, key) {
   else btn.innerHTML = placeholder.split(' ')[0] + ' <span class="mf-badge">' + st.size + '</span> <span class="mf-arrow">▾</span>';
 }
 
+// Círculo partido en tantos colores como elementos haya en el mismo punto, con el número encima
+function makeGroupMarkerIcon(colores) {
+  const n = colores.length, paso = 360 / n;
+  const grad = colores.map((c, i) => c + ' ' + (i * paso) + 'deg ' + ((i + 1) * paso) + 'deg').join(',');
+  return L.divIcon({
+    className: '',
+    html: '<div style="position:relative;width:24px;height:24px;border-radius:50%;background:conic-gradient(' + grad + ');border:2px solid rgba(255,255,255,0.85);box-shadow:0 0 8px rgba(0,0,0,.5);cursor:pointer;display:flex;align-items:center;justify-content:center;font:800 11px sans-serif;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000">' + n + '</div>',
+    iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -12]
+  });
+}
+// Contenido del globo para UN elemento (compacto si comparte punto con otros)
+function mapPopupItem_(v, compacto, idx) {
+  const bloqueo = isBlocked(v.codigo);
+  const estadoDisplay = bloqueo ? 'BLOQUEADA 48H' : v.estado;
+  const estadoColor = bloqueo ? '#8b5cf6' : (v.estado==='DISPONIBLE'?'#10b981':v.estado==='RESERVADA'?'#f59e0b':'#ef4444');
+  const estadoBg = bloqueo ? 'rgba(139,92,246,.15)' : (v.estado==='DISPONIBLE'?'rgba(16,185,129,.15)':v.estado==='RESERVADA'?'rgba(245,158,11,.15)':'rgba(239,68,68,.12)');
+  const fotoTag = v.foto && String(v.foto).startsWith('http')
+    ? `<img src="${cldOptimizar(v.foto, 350)}" style="width:100%;height:${compacto ? 70 : 100}px;object-fit:cover;border-radius:6px;margin-bottom:6px">` : '';
+  const dir = esc(v.direccion);
+  return `<div style="${compacto ? 'border-top:' + (idx ? '1px solid rgba(128,128,128,.3)' : 'none') + ';padding:' + (idx ? '10px' : '0') + ' 0 4px' : ''}">
+      ${fotoTag}
+      <div class="pop-estado" style="background:${estadoBg};color:${estadoColor}">${estadoDisplay}</div>
+      <h4>${v.codigo}</h4>
+      ${compacto ? '' : `<p>${dir.substring(0,80)}${dir.length>80?'...':''}</p>`}
+      <p><strong>${v.tipo}</strong> ${esc(v.medidas) ? '· '+esc(v.medidas) : ''}</p>
+      ${esc(v.cliente) ? '<p>Cliente: <strong>'+esc(v.cliente)+'</strong></p>' : ''}
+      ${esc(v.ejecutiva) ? '<p>Ejecutiva: '+esc(v.ejecutiva)+'</p>' : ''}
+      ${bloqueo ? '<p style="color:#8b5cf6;font-weight:600">Reservada por '+bloqueo.ejecutiva+' para '+bloqueo.cliente+'</p>' : ''}
+      <button class="pop-btn" style="background:${estadoColor};color:${v.estado==='DISPONIBLE'&&!bloqueo?'#000':'#fff'}" onclick="document.querySelector('.leaflet-popup-close-button').click();setTimeout(()=>openModal('${v.codigo}'),100)">
+        ${v.estado==='DISPONIBLE'&&!bloqueo ? '+ Reservar' : 'Ver detalle'}
+      </button>
+    </div>`;
+}
+
 let _markers = [];
 function updateMapMarkers() {
   if (!_mapInstance) return;
@@ -6848,34 +6976,22 @@ function updateMapMarkers() {
 
   document.getElementById('mapCount').textContent = filtered.length + ' elementos';
 
+  // Elementos con las MISMAS coordenadas (vallas de 2 caras, A y B, etc.) se agrupan en UN solo punto:
+  // el círculo se parte en colores (uno por elemento) con el número de elementos, y el globo lista a todos.
+  const grupos = {};
   filtered.forEach(v => {
     const lat = parseFloat(String(v.lat).replace(' ',''));
     const lon = parseFloat(String(v.lon).replace(' ',''));
-    const color = getMarkerColor(v);
-    const bloqueo = isBlocked(v.codigo);
-    const estadoDisplay = bloqueo ? 'BLOQUEADA 48H' : v.estado;
-    const estadoColor = bloqueo ? '#8b5cf6' : (v.estado==='DISPONIBLE'?'#10b981':v.estado==='RESERVADA'?'#f59e0b':'#ef4444');
-    const estadoBg = bloqueo ? 'rgba(139,92,246,.15)' : (v.estado==='DISPONIBLE'?'rgba(16,185,129,.15)':v.estado==='RESERVADA'?'rgba(245,158,11,.15)':'rgba(239,68,68,.12)');
-
-    const marker = L.marker([lat, lon], { icon: makeMarkerIcon(color) });
-
-    const fotoTag = v.foto && String(v.foto).startsWith('http')
-      ? `<img src="${cldOptimizar(v.foto, 350)}" style="width:100%;height:100px;object-fit:cover;border-radius:6px;margin-bottom:6px">` : '';
-    const popupHtml = `<div class="map-popup">
-      ${fotoTag}
-      <div class="pop-estado" style="background:${estadoBg};color:${estadoColor}">${estadoDisplay}</div>
-      <h4>${v.codigo}</h4>
-      <p>${esc(v.direccion).substring(0,80)}${esc(v.direccion).length>80?'...':''}</p>
-      <p><strong>${v.tipo}</strong> ${esc(v.medidas) ? '· '+esc(v.medidas) : ''}</p>
-      ${esc(v.cliente) ? '<p>Cliente: <strong>'+esc(v.cliente)+'</strong></p>' : ''}
-      ${esc(v.ejecutiva) ? '<p>Ejecutiva: '+esc(v.ejecutiva)+'</p>' : ''}
-      ${bloqueo ? '<p style="color:#8b5cf6;font-weight:600">Reservada por '+bloqueo.ejecutiva+' para '+bloqueo.cliente+'</p>' : ''}
-      <button class="pop-btn" style="background:${estadoColor};color:${v.estado==='DISPONIBLE'&&!bloqueo?'#000':'#fff'}" onclick="document.querySelector('.leaflet-popup-close-button').click();setTimeout(()=>openModal('${v.codigo}'),100)">
-        ${v.estado==='DISPONIBLE'&&!bloqueo ? '+ Reservar' : 'Ver detalle'}
-      </button>
-    </div>`;
-
-    marker.bindPopup(popupHtml, { maxWidth: 240 });
+    const k = lat.toFixed(5) + ',' + lon.toFixed(5);
+    (grupos[k] = grupos[k] || { lat, lon, items: [] }).items.push(v);
+  });
+  Object.values(grupos).forEach(g => {
+    const items = g.items.slice().sort((x, y) => String(x.codigo).localeCompare(String(y.codigo)));
+    const unico = items.length === 1;
+    const marker = L.marker([g.lat, g.lon], { icon: unico ? makeMarkerIcon(getMarkerColor(items[0])) : makeGroupMarkerIcon(items.map(getMarkerColor)) });
+    marker.bindPopup('<div class="map-popup">' +
+      (unico ? '' : '<div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:6px">' + items.length + ' elementos en este punto</div>') +
+      '<div style="' + (unico ? '' : 'max-height:330px;overflow-y:auto;padding-right:2px') + '">' + items.map((v, i) => mapPopupItem_(v, !unico, i)).join('') + '</div></div>', { maxWidth: unico ? 240 : 290 });
     marker.addTo(_mapInstance);
     _markers.push(marker);
   });
