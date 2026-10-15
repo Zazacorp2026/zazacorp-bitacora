@@ -6800,7 +6800,7 @@ function renderMapa(container) {
   // refresco de datos reseteaba el zoom/posición que el usuario ya tenía)
   setTimeout(() => {
     if (_mapInstance) { _mapInstance.remove(); _mapInstance = null; }
-    _mapaYaEncuadrado = false;
+    _mapaYaEncuadrado = false; _mapFirma = ''; _markers = []; _mapPopupKey = null;
     _mapInstance = L.map('mapContainer', { zoomControl: true }).setView([-1.8312, -78.1834], 7);
 
     // Tres capas base — el usuario elige con el selector de capas de Leaflet
@@ -6932,26 +6932,25 @@ function mapPopupItem_(v, compacto, idx) {
   const fotoTag = v.foto && String(v.foto).startsWith('http')
     ? `<img src="${cldOptimizar(v.foto, 350)}" style="width:100%;height:${compacto ? 70 : 100}px;object-fit:cover;border-radius:6px;margin-bottom:6px">` : '';
   const dir = esc(v.direccion);
-  return `<div style="${compacto ? 'border-top:' + (idx ? '1px solid rgba(128,128,128,.3)' : 'none') + ';padding:' + (idx ? '10px' : '0') + ' 0 4px' : ''}">
+  return `<div style="${compacto ? 'display:flex;flex-direction:column;border:1px solid rgba(128,128,128,.28);border-radius:10px;padding:10px' : ''}">
       ${fotoTag}
-      <div class="pop-estado" style="background:${estadoBg};color:${estadoColor}">${estadoDisplay}</div>
+      <div class="pop-estado" style="background:${estadoBg};color:${estadoColor}${compacto ? ';align-self:flex-start' : ''}">${estadoDisplay}</div>
       <h4>${v.codigo}</h4>
       ${compacto ? '' : `<p>${dir.substring(0,80)}${dir.length>80?'...':''}</p>`}
       <p><strong>${v.tipo}</strong> ${esc(v.medidas) ? '· '+esc(v.medidas) : ''}</p>
       ${esc(v.cliente) ? '<p>Cliente: <strong>'+esc(v.cliente)+'</strong></p>' : ''}
       ${esc(v.ejecutiva) ? '<p>Ejecutiva: '+esc(v.ejecutiva)+'</p>' : ''}
       ${bloqueo ? '<p style="color:#8b5cf6;font-weight:600">Reservada por '+bloqueo.ejecutiva+' para '+bloqueo.cliente+'</p>' : ''}
-      <button class="pop-btn" style="background:${estadoColor};color:${v.estado==='DISPONIBLE'&&!bloqueo?'#000':'#fff'}" onclick="document.querySelector('.leaflet-popup-close-button').click();setTimeout(()=>openModal('${v.codigo}'),100)">
+      <button class="pop-btn" style="background:${estadoColor};color:${v.estado==='DISPONIBLE'&&!bloqueo?'#000':'#fff'}${compacto ? ';margin-top:auto' : ''}" onclick="document.querySelector('.leaflet-popup-close-button').click();setTimeout(()=>openModal('${v.codigo}'),100)">
         ${v.estado==='DISPONIBLE'&&!bloqueo ? '+ Reservar' : 'Ver detalle'}
       </button>
     </div>`;
 }
 
 let _markers = [];
+let _mapFirma = '', _mapPopupKey = null;
 function updateMapMarkers() {
   if (!_mapInstance) return;
-  _markers.forEach(m => m.remove());
-  _markers = [];
 
   const search = (document.getElementById('mapSearch')?.value || '').toLowerCase();
   const estadoF = document.getElementById('mapEstadoFilter')?.value || '';
@@ -6976,6 +6975,14 @@ function updateMapMarkers() {
 
   document.getElementById('mapCount').textContent = filtered.length + ' elementos';
 
+  // Si nada de lo que se ve cambió, NO se tocan los marcadores: antes cada refresco de fondo (bloqueos cada 10 s)
+  // los borraba y volvía a crear, y eso cerraba el globo abierto a los pocos segundos.
+  const firma = filtered.map(v => { const b = isBlocked(v.codigo); return [v.codigo, v.estado, v.cliente, v.ejecutiva, v.lat, v.lon, b ? (b.ejecutiva + '|' + b.cliente) : ''].join('~'); }).join('^');
+  if (firma === _mapFirma && _markers.length) return;
+  _mapFirma = firma;
+  _markers.forEach(m => m.remove());
+  _markers = [];
+
   // Elementos con las MISMAS coordenadas (vallas de 2 caras, A y B, etc.) se agrupan en UN solo punto:
   // el círculo se parte en colores (uno por elemento) con el número de elementos, y el globo lista a todos.
   const grupos = {};
@@ -6989,11 +6996,20 @@ function updateMapMarkers() {
     const items = g.items.slice().sort((x, y) => String(x.codigo).localeCompare(String(y.codigo)));
     const unico = items.length === 1;
     const marker = L.marker([g.lat, g.lon], { icon: unico ? makeMarkerIcon(getMarkerColor(items[0])) : makeGroupMarkerIcon(items.map(getMarkerColor)) });
-    marker.bindPopup('<div class="map-popup">' +
-      (unico ? '' : '<div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:6px">' + items.length + ' elementos en este punto</div>') +
-      '<div style="' + (unico ? '' : 'max-height:330px;overflow-y:auto;padding-right:2px') + '">' + items.map((v, i) => mapPopupItem_(v, !unico, i)).join('') + '</div></div>', { maxWidth: unico ? 240 : 290 });
+    if (unico) {
+      marker.bindPopup('<div class="map-popup">' + mapPopupItem_(items[0], false, 0) + '</div>', { maxWidth: 240 });
+    } else {
+      // Varios elementos en el mismo punto: una card por elemento, una junto a la otra (2 por fila)
+      marker.bindPopup('<div class="map-popup" style="width:min(500px,76vw)"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px">' + items.length + ' elementos en este punto</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:12px;max-height:min(460px,60vh);overflow-y:auto;padding:2px">' +
+        items.map(v => mapPopupItem_(v, true, 0)).join('') + '</div></div>', { maxWidth: 520, minWidth: 260 });
+    }
+    const claveGrupo = items.map(v => v.codigo).join('|');
+    marker.on('popupopen', () => { _mapPopupKey = claveGrupo; });
+    marker.on('popupclose', () => { if (_mapPopupKey === claveGrupo) _mapPopupKey = null; });
     marker.addTo(_mapInstance);
     _markers.push(marker);
+    if (_mapPopupKey === claveGrupo) marker.openPopup(); // si los datos sí cambiaron, el globo que estabas viendo se vuelve a abrir
   });
 
   // Auto-fit bounds SOLO la primera vez que se cargan marcadores en este
