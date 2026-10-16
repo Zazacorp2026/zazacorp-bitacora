@@ -8889,7 +8889,14 @@ async function omniExportarInventario() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando...'; }
   try {
     await ledCargarExcelJS_();
-    const precios = await qzCargarPreciosPublicos(true);
+    // Tarifa = columna "NUEVO VALOR MENSUAL" de la bitácora (la misma que usa el cotizador). Si el servidor no
+    // responde bien, NO se genera un Excel con la columna vacía en silencio: se avisa.
+    let precios = await qzCargarPreciosPublicos(true);
+    if (!precios || precios.error || Object.keys(precios).length < 5) { precios = await qzCargarPreciosPublicos(true); }
+    if (!precios || precios.error || Object.keys(precios).length < 5) {
+      showToast('❌ No se pudieron leer las tarifas de la bitácora. Intenta de nuevo en unos segundos.', 'error');
+      return;
+    }
     const idsCuenta = {};
     DATA.forEach(v => { const id = omniLimpiarId_(v.codigo); idsCuenta[id] = (idsCuenta[id] || 0) + 1; });
     const filas = [], revisar = [];
@@ -8917,6 +8924,7 @@ async function omniExportarInventario() {
       const t = precios && precios[cod.toUpperCase()];
       const propietario = String(v.propietario || '').trim();
       if (!propietario) rev(id, cod, 'Sin propietario en la bitácora', 'Se exportó como "Zazacorp"; confirmar.');
+      if (!(t && t.nuevoValorMensual > 0)) rev(id, cod, 'Sin "Nuevo Valor Mensual" en la bitácora', 'Llenar esa columna (AG) en la bitácora; la tarifa salió vacía.');
       if (digital) rev(id, cod, 'Pantalla digital sin resolución', 'Indicar la resolución real (ANCHOxALTO).');
       rev(id, cod, 'Sin audiencia diaria ni cpm', 'Pendiente de definir con Omniooh (ver nota en la hoja).');
       filas.push([id, omniTitulo_(String(v.direccion || v.lugar || '').trim()) || id, omniTitulo_(propietario || 'Zazacorp'), indoor ? 'indoor' : 'outdoor', digital ? 'digital' : 'estatica',
@@ -8938,6 +8946,7 @@ async function omniExportarInventario() {
     // Los pendientes que se repiten en TODAS las filas se resumen arriba, para que la hoja no sea de 1000 líneas
     const gen = revisar.filter(r => /^Sin audiencia|^Pantalla digital sin resolución/.test(r[2]));
     const espec = revisar.filter(r => !/^Sin audiencia|^Pantalla digital sin resolución/.test(r[2]));
+    const sinTarifa = espec.filter(r => /Nuevo Valor Mensual/.test(r[2])).length;
     wr.addRow(['(todas)', '', 'Sin audiencia diaria ni cpm en ' + filas.length + ' elementos', 'Omniooh exige impresiones por día y cpm. Nexus no tiene audiencia: hay que acordar con Omniooh si la estiman ellos (tienen cruces con INEC) o la cargamos nosotros. La columna tarifa_mensual_usd (gris) es el precio de lista mensual, para que ellos puedan calcular el cpm.']);
     wr.addRow(['(todas)', '', 'Pantallas digitales sin resolución: ' + gen.filter(r => /resolución/.test(r[2])).length, 'Indicar ANCHOxALTO real de cada pantalla LED.']);
     espec.forEach(r => wr.addRow(r));
@@ -8950,7 +8959,7 @@ async function omniExportarInventario() {
       'Incluye elementos de terceros (propietario en la columna proveedor).',
       'disponible = libre HOY según Nexus (ya descuenta contratadas, reservadas y bloqueadas; en LED/Scroll cuenta espacios libres).',
       'NO incluye: costos, valor mínimo, comisiones, clientes, ejecutivas, contratos, fechas de término ni cotizaciones.',
-      'La columna gris "tarifa_mensual_usd" NO es parte de su plantilla: es el precio de lista. Bórrala si no quieres enviarla.',
+      'La columna gris "tarifa_mensual_usd" NO es parte de su plantilla: es el "Nuevo Valor Mensual" (columna AG de la bitácora). Bórrala si no quieres enviarla.',
       'Las columnas naranjas (resolucion, cpm, audiencia_diaria) están vacías: Nexus no tiene ese dato.',
       'Elementos con código repetido, sin código o sin coordenadas válidas NO se exportan: están en la hoja "Por revisar".'
     ].forEach(t => wi.addRow([t]));
@@ -8961,7 +8970,7 @@ async function omniExportarInventario() {
     a.download = 'inventario-para-omniooh-' + fechaLocalISO_() + '.xlsx';
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    showToast('✅ Excel para Omniooh listo: ' + filas.length + ' elementos · ' + espec.length + ' puntos por revisar', 'success');
+    showToast('✅ Excel para Omniooh listo: ' + filas.length + ' elementos · ' + (filas.length - sinTarifa) + ' con tarifa · ' + espec.length + ' puntos por revisar', 'success');
   } catch (e) { showToast('❌ ' + e.message, 'error'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = txt0; } }
 }
