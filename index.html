@@ -3938,16 +3938,19 @@ function insAgregarSlidePPT_(pres, r, fotosBase64) {
   const clienteTxt = String(r.cliente || '—').trim();
   const clienteFs = clienteTxt.length <= 28 ? 12 : (clienteTxt.length <= 40 ? 9.5 : 8.5);
   const clienteMostrar = clienteTxt.length > 52 ? clienteTxt.substring(0, 49) + '…' : clienteTxt;
-  const clienteW = 3.95, medidasX = cardX + clienteW + 0.15, medidasW = panelW - clienteW - 0.15;
+  // Columna izquierda angosta (cliente y dirección) y columna de MEDIDAS a su derecha, más alta: así el texto de las
+  // medidas sale COMPLETO (tal cual está en la bitácora), en varias líneas si hace falta, sin pisar la dirección.
+  const clienteW = 3.4, medidasX = cardX + clienteW + 0.15, medidasW = panelW - clienteW - 0.15;
   slide.addText('CLIENTE', { x: cardX, y: footY, w: clienteW, h: 0.2, fontSize: 7, color: LABEL, bold: true, fontFace: 'Arial', charSpacing: 1 });
   slide.addText(clienteMostrar, { x: cardX, y: footY + 0.2, w: clienteW, h: 0.35, fontSize: clienteFs, bold: true, color: NAVY, fontFace: 'Arial', valign: 'top', wrap: true });
   const medidasTxt = String(v.medidas || '').trim() || '—';
+  const medidasFs = medidasTxt.length <= 18 ? 12 : (medidasTxt.length <= 45 ? 10 : 8.5);
   slide.addText('MEDIDAS', { x: medidasX, y: footY, w: medidasW, h: 0.2, fontSize: 7, color: LABEL, bold: true, fontFace: 'Arial', charSpacing: 1 });
-  slide.addText(medidasTxt.length > 14 ? medidasTxt.substring(0, 13) + '…' : medidasTxt, { x: medidasX, y: footY + 0.2, w: medidasW, h: 0.35, fontSize: 12, bold: true, color: NAVY, fontFace: 'Arial', valign: 'top' });
+  slide.addText(medidasTxt, { x: medidasX, y: footY + 0.2, w: medidasW, h: 1.0, fontSize: medidasFs, bold: true, color: NAVY, fontFace: 'Arial', valign: 'top', wrap: true });
 
-  slide.addText('DIRECCIÓN', { x: cardX, y: footY + 0.6, w: panelW, h: 0.2, fontSize: 7, color: LABEL, bold: true, fontFace: 'Arial', charSpacing: 1 });
+  slide.addText('DIRECCIÓN', { x: cardX, y: footY + 0.6, w: clienteW, h: 0.2, fontSize: 7, color: LABEL, bold: true, fontFace: 'Arial', charSpacing: 1 });
   const dir = r.direccion || '—';
-  slide.addText(dir.length > 70 ? dir.substring(0, 67) + '…' : dir, { x: cardX, y: footY + 0.8, w: panelW, h: 0.4, fontSize: 10, color: NAVY, fontFace: 'Arial', wrap: true, valign: 'top' });
+  slide.addText(dir.length > 70 ? dir.substring(0, 67) + '…' : dir, { x: cardX, y: footY + 0.8, w: clienteW, h: 0.4, fontSize: 10, color: NAVY, fontFace: 'Arial', wrap: true, valign: 'top' });
 
   const hasCoords = v.lat && v.lon && String(v.lat).trim();
   slide.addText('COORDENADAS', { x: rx, y: footY, w: panelW, h: 0.2, fontSize: 7, color: LABEL, bold: true, fontFace: 'Arial', charSpacing: 1 });
