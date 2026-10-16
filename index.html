@@ -644,7 +644,6 @@
   <button id="btnInvPPT" onclick="exportarPPTInventario()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
   <button id="btnInvExcel" onclick="exportarExcelInventario()" style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.35);border-radius:8px;color:#4ade80;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(74,222,128,.18)'" onmouseout="this.style.background='rgba(74,222,128,.08)'">⬇ Exportar Excel</button>
   <button id="btnInvOmni" onclick="omniExportarInventario()" style="display:none;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.4);border-radius:8px;color:#38bdf8;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" title="Excel con el formato que pide Omniooh (solo admin)">📤 Para Omniooh</button>
-  <button id="btnScrMigrar" onclick="migrarContratosScrollingUI()" style="display:none;background:rgba(167,139,250,.12);border:1px solid #a78bfa;border-radius:8px;color:#a78bfa;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" title="Pasa cualquier Totem Scroll contratado bajo el modelo antiguo a la nueva estructura de anunciantes">🔄 Migrar Scrolling</button>
   <button id="btnMultiSelectInv" onclick="toggleMultiSelectInv()" style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.35);border-radius:8px;color:#a78bfa;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(139,92,246,.25)'" onmouseout="this.style.background='rgba(139,92,246,.12)'">☐ Seleccionar</button>
       <button id="btnMultiSelect" onclick="toggleMultiSelect()" style="display:none;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;color:#3b82f6;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(59,130,246,.25)'" onmouseout="this.style.background='rgba(59,130,246,.12)'">☐ Selección múltiple</button>
       <button id="btnMultiSelectRes" onclick="toggleMultiSelect()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">☐ Selección para contratar</button>
@@ -1378,8 +1377,6 @@ function onDataLoaded() {
   const msBtn    = document.getElementById('btnMultiSelect');
   if (invPPT)   invPPT.style.display   = t === 'inventario' ? 'block' : 'none';
   if (invExcel) invExcel.style.display = t === 'inventario' ? 'block' : 'none';
-  const scrMigrarBtn0 = document.getElementById('btnScrMigrar');
-  if (scrMigrarBtn0) scrMigrarBtn0.style.display = (t === 'inventario' && (_usuarioActual||'').toUpperCase()==='JORGE') ? 'block' : 'none';
   const omniBtn0 = document.getElementById('btnInvOmni');
   if (omniBtn0) omniBtn0.style.display = (t === 'inventario' && (_usuarioActual||'').toUpperCase()==='JORGE') ? 'block' : 'none';
   if (pptBtn)   pptBtn.style.display   = t === 'disponibles' ? 'block' : 'none';
@@ -1547,28 +1544,6 @@ function espaciosScrollingDisponibles(v) {
   return Math.max(0, SCR_CAPACIDAD - ocupados);
 }
 function esScrollingTipo(v) { return (v.tipo || '').toUpperCase().indexOf('SCROLL') >= 0; }
-
-// Solo Jorge — botón visible únicamente en Inventario. Pasa cualquier
-// Totem Scroll contratado bajo el modelo antiguo (1 fila = 1 cliente en
-// la BITÁCORA) a la nueva estructura de Contratos_Scrolling. Segura de
-// correr más de una vez: el backend nunca migra dos veces el mismo código.
-async function migrarContratosScrollingUI() {
-  if (!confirm('¿Migrar contratos existentes de elementos Scrolling a la nueva estructura de anunciantes?')) return;
-  const btn = document.getElementById('btnScrMigrar');
-  btn.disabled = true; btn.textContent = '⏳ Migrando...';
-  try {
-    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'migrarContratosScrollingExistentes' }) });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'Error al migrar');
-    showToast('✅ ' + json.migrados + ' elemento(s) migrado(s)', 'success');
-    await cargarContratosScrollingGlobal();
-    await fetchFresh();
-  } catch (e) {
-    showToast('❌ ' + e.message, 'error');
-  } finally {
-    btn.disabled = false; btn.textContent = '🔄 Migrar Scrolling';
-  }
-}
 
 // Reservas por vencer (bloqueo de 48h) no generaban ninguna alerta en
 // pantalla — solo llegaba un correo a Jorge y la ejecutiva dueña. Este
@@ -5767,8 +5742,6 @@ function switchTab(t) {
   if (invPPT)   invPPT.style.display   = t === 'inventario' ? 'block' : 'none';
   if (invExcel) invExcel.style.display = t === 'inventario' ? 'block' : 'none';
   if (invSel)   invSel.style.display   = (!isReadOnly() && t === 'inventario') ? 'block' : 'none';
-  const scrMigrarBtn = document.getElementById('btnScrMigrar');
-  if (scrMigrarBtn) scrMigrarBtn.style.display = (t === 'inventario' && (_usuarioActual||'').toUpperCase()==='JORGE') ? 'block' : 'none';
   const omniBtn = document.getElementById('btnInvOmni');
   if (omniBtn) omniBtn.style.display = (t === 'inventario' && (_usuarioActual||'').toUpperCase()==='JORGE') ? 'block' : 'none';
   if (t !== 'inventario') { multiSelectInvMode = false; selectedInv.clear(); }
