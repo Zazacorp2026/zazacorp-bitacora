@@ -3933,8 +3933,17 @@ function insAgregarSlidePPT_(pres, r, fotosBase64) {
   slide.addShape(pres.shapes.LINE, { x: cardX, y: codeY + 0.72, w: panelW * 2 + gap, h: 0.01, line: { color: 'E5E7EB', width: 1 } });
 
   const footY = codeY + 0.9;
-  slide.addText('CLIENTE', { x: cardX, y: footY, w: panelW, h: 0.2, fontSize: 7, color: LABEL, bold: true, fontFace: 'Arial', charSpacing: 1 });
-  slide.addText(r.cliente || '—', { x: cardX, y: footY + 0.2, w: panelW, h: 0.35, fontSize: 12, bold: true, color: NAVY, fontFace: 'Arial' });
+  // Cliente y Medidas comparten la fila: cada uno con su ancho fijo para que nunca se pisen.
+  // Nombre largo: hasta 28 letras tamaño normal, hasta 40 más chico, y más de eso se corta con "…".
+  const clienteTxt = String(r.cliente || '—').trim();
+  const clienteFs = clienteTxt.length <= 28 ? 12 : (clienteTxt.length <= 40 ? 9.5 : 8.5);
+  const clienteMostrar = clienteTxt.length > 52 ? clienteTxt.substring(0, 49) + '…' : clienteTxt;
+  const clienteW = 3.95, medidasX = cardX + clienteW + 0.15, medidasW = panelW - clienteW - 0.15;
+  slide.addText('CLIENTE', { x: cardX, y: footY, w: clienteW, h: 0.2, fontSize: 7, color: LABEL, bold: true, fontFace: 'Arial', charSpacing: 1 });
+  slide.addText(clienteMostrar, { x: cardX, y: footY + 0.2, w: clienteW, h: 0.35, fontSize: clienteFs, bold: true, color: NAVY, fontFace: 'Arial', valign: 'top', wrap: true });
+  const medidasTxt = String(v.medidas || '').trim() || '—';
+  slide.addText('MEDIDAS', { x: medidasX, y: footY, w: medidasW, h: 0.2, fontSize: 7, color: LABEL, bold: true, fontFace: 'Arial', charSpacing: 1 });
+  slide.addText(medidasTxt.length > 14 ? medidasTxt.substring(0, 13) + '…' : medidasTxt, { x: medidasX, y: footY + 0.2, w: medidasW, h: 0.35, fontSize: 12, bold: true, color: NAVY, fontFace: 'Arial', valign: 'top' });
 
   slide.addText('DIRECCIÓN', { x: cardX, y: footY + 0.6, w: panelW, h: 0.2, fontSize: 7, color: LABEL, bold: true, fontFace: 'Arial', charSpacing: 1 });
   const dir = r.direccion || '—';
