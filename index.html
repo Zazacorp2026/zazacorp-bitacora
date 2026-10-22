@@ -635,7 +635,10 @@
   </label>
   <button id="btnExportPPT" onclick="exportarPPT()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
   <div id="filtroMesWrap" style="display:none;align-items:center;gap:8px;background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:10px;padding:6px 10px">
-    <span style="font-size:12px;color:var(--accent);font-weight:700;white-space:nowrap">📅 Disponibles a partir de:</span>
+    <span style="font-size:12px;color:var(--accent);font-weight:700;white-space:nowrap">📅 Disponibles a partir de (día exacto o solo mes):</span>
+    <select id="selDiaDisp" onchange="aplicarFiltroMesSel()" title="Día exacto (opcional)" style="color-scheme:dark;background:var(--surface);border:1px solid var(--accent);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:7px 9px;font-family:'Space Grotesk',sans-serif;cursor:pointer">
+      <option value="">Día...</option>
+    </select>
     <select id="selMesDisp" onchange="aplicarFiltroMesSel()" style="color-scheme:dark;background:var(--surface);border:1px solid var(--accent);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:7px 9px;font-family:'Space Grotesk',sans-serif;cursor:pointer">
       <option value="">Mes...</option>
     </select>
@@ -1183,6 +1186,7 @@ let state = {
   filterEjecutiva: new Set(),
   filterCliente: new Set(),
   filterMesDisp: '', // mes futuro para disponibilidad (YYYY-MM)
+  filterFechaDisp: '', // día exacto (YYYY-MM-DD) si se elige día: disponible a partir de ese día
   // Por defecto en true — mantiene el comportamiento de siempre (las
   // reservadas ya se mostraban junto a las disponibles). El checkbox
   // en la pestaña Disponibles deja a cada ejecutiva desactivarlo si
@@ -1609,6 +1613,24 @@ function toggleMostrarReservadasDisp(checked) {
   render();
 }
 
+// ¿Se libera a tiempo para el filtro de Disponibles? Con día exacto: el contrato termina ANTES de ese día (queda libre a partir de él).
+// Solo con mes: termina en o antes de ese mes (como siempre).
+function liberaParaFiltro_(v) {
+  if (!v.termino) return false;
+  if (state.filterFechaDisp) return String(v.termino).substring(0, 10) < state.filterFechaDisp;
+  return String(v.termino).substring(0, 7) <= state.filterMesDisp;
+}
+// Primer día libre = día siguiente al término del contrato
+function fechaLibreDesde_(termino) {
+  const d = new Date(String(termino).substring(0, 10) + 'T12:00:00'); d.setDate(d.getDate() + 1);
+  return d;
+}
+function fechaLibreDesdeTxt_(termino, corto) {
+  const d = fechaLibreDesde_(termino);
+  return corto ? d.toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase().replace(/\./g, '')
+               : d.toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 function getFiltered() {
   let d = DATA.slice();
   const s = state.search.toLowerCase().trim();
@@ -1621,7 +1643,7 @@ function getFiltered() {
           if (espaciosLEDDisponibles(v) <= 0) return false;
           // Si el registro del LED tiene su propio contrato/estado con fecha, respetar el mes igual que las vallas normales
           if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
-            return v.termino.substring(0, 7) <= state.filterMesDisp;
+            return liberaParaFiltro_(v);
           }
           return true;
         }
@@ -1634,7 +1656,7 @@ function getFiltered() {
         if (esScrollingTipo(v)) return espaciosScrollingDisponibles(v) > 0;
         if (v.estado === 'DISPONIBLE' && !isBlocked(v.codigo)) return true;
         if ((v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino) {
-          return v.termino.substring(0, 7) <= state.filterMesDisp;
+          return liberaParaFiltro_(v);
         }
         return false;
       });
@@ -1845,7 +1867,7 @@ function qzEtiquetaEstado_(v, mes) {
   if (esLEDtipo(v)) return libre ? { txt: 'Espacio LED disponible', color: 'var(--green)', libre: true } : { txt: 'LED sin espacios libres', color: 'var(--red)', libre: false };
   if (esScrollingTipo(v)) return libre ? { txt: 'Espacio disponible (scroll)', color: 'var(--green)', libre: true } : { txt: 'Scroll sin espacios libres', color: 'var(--red)', libre: false };
   if (v.estado === 'DISPONIBLE') return isBlocked(v.codigo) ? { txt: 'Pre-reservada (bloqueada)', color: 'var(--accent)', libre: false } : { txt: 'Disponible', color: 'var(--green)', libre: true };
-  if (libre) return { txt: 'Libre desde ' + (v.termino || '').substring(0, 10), color: 'var(--green)', libre: true };
+  if (libre) return { txt: 'Libre desde ' + (v.termino ? fechaLibreDesdeTxt_(v.termino, true) : ''), color: 'var(--green)', libre: true };
   if (v.estado === 'RESERVADA') return { txt: 'Reservada' + (v.termino ? ' hasta ' + v.termino.substring(0, 10) : ''), color: 'var(--accent)', libre: false };
   return { txt: 'Contratada' + (v.termino ? ' hasta ' + v.termino.substring(0, 10) : ' (sin fecha de término)'), color: 'var(--red)', libre: false };
 }
@@ -5819,6 +5841,8 @@ function poblarSelectoresMes() {
     opt.textContent = m;
     selMes.appendChild(opt);
   });
+  const selDia = document.getElementById('selDiaDisp');
+  if (selDia && selDia.options.length <= 1) for (let d = 1; d <= 31; d++) { const opt = document.createElement('option'); opt.value = String(d).padStart(2, '0'); opt.textContent = String(d); selDia.appendChild(opt); }
   const anioActual = new Date().getFullYear();
   for (let y = anioActual; y <= 2034; y++) {
     const opt = document.createElement('option');
@@ -5831,11 +5855,20 @@ function poblarSelectoresMes() {
 function aplicarFiltroMesSel() {
   const m = document.getElementById('selMesDisp').value;
   const y = document.getElementById('selAnioDisp').value;
+  const selDia = document.getElementById('selDiaDisp');
+  let dia = selDia ? selDia.value : '';
+  if (dia && m && y) {
+    // Si el día no existe en ese mes (ej. 31 de abril), se usa el último día del mes
+    const ultimo = new Date(+y, +m, 0).getDate();
+    if (+dia > ultimo) { dia = String(ultimo).padStart(2, '0'); selDia.value = dia; }
+  }
+  state.filterFechaDisp = (m && y && dia) ? (y + '-' + m + '-' + dia) : '';
   aplicarFiltroMes(m && y ? (y + '-' + m) : '');
 }
 
 function limpiarFiltroMes(silent) {
-  state.filterMesDisp = '';
+  state.filterMesDisp = ''; state.filterFechaDisp = '';
+  const selDia0 = document.getElementById('selDiaDisp'); if (selDia0) selDia0.value = '';
   const selMes = document.getElementById('selMesDisp');
   const selAnio = document.getElementById('selAnioDisp');
   if (selMes) selMes.value = '';
@@ -6021,9 +6054,9 @@ function renderCard(v) {
   const isSelected = selectedVallas.has(v.codigo);
   const isSelectedInv = selectedInv.has(v.codigo);
   // Badge especial para próximas disponibilidades
-  const esProximaDisp = state.tab === 'disponibles' && state.filterMesDisp && (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino && v.termino.substring(0,7) <= state.filterMesDisp;
+  const esProximaDisp = state.tab === 'disponibles' && state.filterMesDisp && (v.estado === 'CONTRATADA' || v.estado === 'RESERVADA') && v.termino && liberaParaFiltro_(v);
   const badgeEstado = esProximaDisp
-    ? '<span class="estado-badge" style="background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.4);font-size:9px">📅 LIBRE EN ' + new Date(v.termino + 'T12:00:00').toLocaleDateString('es', {month:'short',year:'numeric'}).toUpperCase() + '</span>'
+    ? '<span class="estado-badge" style="background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.4);font-size:9px" title="Disponible a partir del ' + fechaLibreDesdeTxt_(v.termino, false) + '">📅 LIBRE DESDE ' + fechaLibreDesdeTxt_(v.termino, true) + '</span>'
     : '<span class="estado-badge ' + ec(v.estado) + '">' + v.estado + '</span>';
   const chk = (multiSelectMode && isDisp) ? '<input type="checkbox" class="card-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();toggleValla(event,\'' + v.codigo + '\')">': '';
   const chkInv = (multiSelectInvMode && state.tab === 'inventario') ? '<input type="checkbox" class="card-checkbox" ' + (isSelectedInv ? 'checked' : '') + ' onclick="event.stopPropagation();toggleInvCard(event,\'' + v.codigo + '\')">': '';
@@ -11192,6 +11225,22 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
   document.getElementById('modalSubtitle').textContent = prePlayerName || 'Selecciona la pantalla';
   document.getElementById('modalBody').innerHTML = `
     <div class="contratar-form">
+      <div style="display:flex;gap:6px;margin-bottom:12px;background:var(--surface2);border-radius:9px;padding:4px">
+        <button type="button" id="led-tipo-pagada" onclick="ledSetTipo('PAGADA')" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:var(--accent);color:#000">Pagada</button>
+        <button type="button" id="led-tipo-bonif" onclick="ledSetTipo('BONIFICADA')" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:transparent;color:var(--muted)">🎁 Bonificada</button>
+      </div>
+      <div id="led-bonif-box" style="display:none;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.07);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div class="form-row">
+          <div class="form-group"><label>Motivo de la bonificación (obligatorio)</label>
+            <select id="led-bonif-motivo" onchange="ledBonifMotivoCambio()">
+              <option value="">Seleccionar...</option><option value="COMPRA OOH">Compra OOH</option><option value="CANJE">Canje</option>
+              <option value="CORTESIA COMERCIAL">Cortesía comercial</option><option value="COMPENSACION">Compensación</option><option value="OTRO">Otro</option>
+            </select></div>
+          <div class="form-group" id="led-bonif-ref-wrap" style="display:none"><label>Compra OOH relacionada (opcional)</label><input type="text" id="led-bonif-ref" placeholder="Ej: 7 vallas TIGO · oct 2026" oninput="checkLEDForm()"></div>
+        </div>
+        <div class="form-group"><label>Detalle (obligatorio)</label><input type="text" id="led-bonif-detalle" placeholder="Ej: Compensación por la falla del 3 al 5 de octubre" oninput="checkLEDForm()"></div>
+        <div id="led-bonif-aviso" style="font-size:11.5px;color:#fbbf24"></div>
+      </div>
       <h4>📺 Pantalla</h4>
       <div class="form-group" style="margin-bottom:10px">
         <label>Pantalla VNNOX</label>
@@ -11214,10 +11263,11 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
         <div class="form-group"><label>Fin</label><input type="date" id="led-fin" oninput="calcLEDTotal()"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Valor mensual (USD)</label><input type="number" id="led-valor" placeholder="Ej: 1200" oninput="calcLEDTotal()"></div>
-        <div class="form-group"><label>Valor total (USD)</label><input type="text" id="led-total" readonly style="background:var(--surface2);color:#4ade80;font-weight:700"></div>
+        <div class="form-group"><label id="led-l-valor">Valor mensual (USD)</label><input type="number" id="led-valor" placeholder="Ej: 1200" oninput="calcLEDTotal()"></div>
+        <div class="form-group"><label id="led-l-total">Valor total (USD)</label><input type="text" id="led-total" readonly style="background:var(--surface2);color:#4ade80;font-weight:700"></div>
       </div>
       <div class="form-group" style="margin-top:6px;display:none"><label>Programa VNNOX (nombre)</label><input type="text" id="led-programa" placeholder="Ej: MALL DEL SOL PANTALLA DIC"></div>
+      <div id="led-agencia-box">
       <h4>💼 Agencia/Comisión/Contratante</h4>
       <div class="form-row">
         <div class="form-group"><label>Agencia contratante</label><input type="text" id="led-agencia" placeholder="Nombre de agencia o 'Cliente directo'" oninput="checkLEDForm()"></div>
@@ -11240,18 +11290,53 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
         </select>
         <input type="text" id="led-contratadopor-manual" placeholder="Especificar" style="display:none;margin-top:6px" oninput="checkLEDForm()">
       </div>
+      </div>
       <div class="pdf-upload-area" id="ledPdfUploadArea" onclick="document.getElementById('ledPdfFileInput').click()">
         📎 <span id="ledPdfFileName">${(_usuarioActual||'').toUpperCase()==='JORGE' ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
       </div>
       <input type="file" id="ledPdfFileInput" accept="application/pdf" style="display:none" onchange="handleLEDPdfFile(event)">
       <button id="btnLEDConfirmar" onclick="confirmarContratoLED()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:not-allowed;opacity:.5">📺 Registrar Contrato LED</button>
     </div>`;
-  _ledPdfBase64 = null; _ledPdfFile = null;
+  _ledPdfBase64 = null; _ledPdfFile = null; _ledTipo = 'PAGADA';
   document.getElementById('modalOverlay').classList.add('open');
   if (prePlayerId) {
     document.getElementById('led-player').value = prePlayerId;
     autoSetEjecutiva('led-ejecutiva');
   }
+  checkLEDForm();
+}
+
+let _ledTipo = 'PAGADA';
+// Pagada | Bonificada (registro individual): en bonificada el valor es solo de REFERENCIA (valor de lista) y se registra por la misma vía
+// que la contratación múltiple (una sola pantalla): por autorizar, o autorizada al instante si quien la registra puede autorizarla.
+function ledSetTipo(t) {
+  _ledTipo = t;
+  const bon = t === 'BONIFICADA';
+  const bP = document.getElementById('led-tipo-pagada'), bB = document.getElementById('led-tipo-bonif');
+  if (bP) { bP.style.background = bon ? 'transparent' : 'var(--accent)'; bP.style.color = bon ? 'var(--muted)' : '#000'; }
+  if (bB) { bB.style.background = bon ? 'var(--accent)' : 'transparent'; bB.style.color = bon ? '#000' : 'var(--muted)'; }
+  const box = document.getElementById('led-bonif-box'); if (box) box.style.display = bon ? 'block' : 'none';
+  const ag = document.getElementById('led-agencia-box'); if (ag) ag.style.display = bon ? 'none' : 'block';
+  const lv = document.getElementById('led-l-valor'); if (lv) lv.textContent = bon ? 'Valor de LISTA mensual (USD, referencia)' : 'Valor mensual (USD)';
+  const lt = document.getElementById('led-l-total'); if (lt) lt.textContent = bon ? 'Valor de lista del período (USD)' : 'Valor total (USD)';
+  const pdfN = document.getElementById('ledPdfFileName');
+  if (pdfN && !_ledPdfFile) pdfN.textContent = bon ? 'Orden o respaldo en PDF (opcional)' : (((_usuarioActual || '').toUpperCase() === 'JORGE') ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)');
+  const btn = document.getElementById('btnLEDConfirmar'); if (btn) btn.textContent = bon ? '🎁 Registrar bonificación' : '📺 Registrar Contrato LED';
+  if (bon) {
+    // Sugerir el valor de lista con la tarifa vigente de la pantalla, si existe
+    const pid = document.getElementById('led-player')?.value;
+    const el = ((_ledData && _ledData.elementosLED) || []).find(e => (e.playerVnnoxId || e.codigo) === pid);
+    const t0 = el && (qzPreciosPublicosCache || {})[String(el.codigo || '').trim().toUpperCase()];
+    const inp = document.getElementById('led-valor');
+    if (inp && !inp.value && t0 && t0.nuevoValorMensual > 0) inp.value = t0.nuevoValorMensual;
+    const av = document.getElementById('led-bonif-aviso');
+    if (av) av.textContent = (_usuarioActual || '').toUpperCase() === 'JORGE' ? 'Como administrador, queda autorizada al instante.' : 'Quedará POR AUTORIZAR: Jorge' + (qzAprobadoresDe_(document.getElementById('led-ejecutiva')?.value || '').length > 1 ? ' o Verónica' : '') + ' recibirán el aviso. La pantalla se reserva mientras tanto.';
+  }
+  calcLEDTotal();
+}
+function ledBonifMotivoCambio() {
+  const m = document.getElementById('led-bonif-motivo')?.value;
+  const w = document.getElementById('led-bonif-ref-wrap'); if (w) w.style.display = m === 'COMPRA OOH' ? 'block' : 'none';
   checkLEDForm();
 }
 
@@ -11312,11 +11397,13 @@ function checkLEDForm() {
              document.getElementById('led-ejecutiva')?.value &&
              document.getElementById('led-inicio')?.value &&
              document.getElementById('led-fin')?.value;
-  const ok = esAdminActual
+  const bonOk = (document.getElementById('led-bonif-motivo')?.value || '') && ((document.getElementById('led-bonif-detalle')?.value || '').trim().length >= 3) && parseFloat(document.getElementById('led-valor')?.value) > 0;
+  const ok = _ledTipo === 'BONIFICADA' ? (camposBasicos && bonOk)
+    : (esAdminActual
     ? camposBasicos
     : camposBasicos &&
       document.getElementById('led-agencia')?.value?.trim() &&
-      getLEDComision() && getLEDContratadoPor() && _ledPdfBase64;
+      getLEDComision() && getLEDContratadoPor() && _ledPdfBase64);
   const btn = document.getElementById('btnLEDConfirmar');
   if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; btn.style.cursor = ok ? 'pointer' : 'not-allowed'; }
 }
@@ -11339,6 +11426,7 @@ async function confirmarContratoLED() {
   const contratadoPor = getLEDContratadoPor();
 
   const esAdminActual = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  if (_ledTipo === 'BONIFICADA') { await confirmarBonificacionLEDIndividual_(playerId, nombrePantalla, cliente, ejecutiva, spots, inicio, fin, valorMensual); return; }
   const faltantes = [];
   if (!playerId) faltantes.push('pantalla');
   if (!cliente) faltantes.push('cliente');
@@ -11380,6 +11468,41 @@ async function confirmarContratoLED() {
   } catch(e) {
     showToast('❌ ' + e.message, 'error');
     btn.disabled = false; btn.textContent = '📺 Registrar Contrato LED';
+  }
+}
+
+async function confirmarBonificacionLEDIndividual_(playerId, nombrePantalla, cliente, ejecutiva, spots, inicio, fin, valorLista) {
+  const motivo = document.getElementById('led-bonif-motivo').value;
+  const detalle = (document.getElementById('led-bonif-detalle').value || '').trim();
+  const falt = [];
+  if (!playerId) falt.push('pantalla'); if (!cliente) falt.push('cliente'); if (!ejecutiva) falt.push('ejecutiva'); if (!inicio) falt.push('fecha inicio'); if (!fin) falt.push('fecha fin');
+  if (!(parseFloat(valorLista) > 0)) falt.push('valor de lista'); if (!motivo) falt.push('motivo'); if (detalle.length < 3) falt.push('detalle');
+  if (falt.length) { showToast('Falta completar: ' + falt.join(', '), 'info'); return; }
+  if (fin <= inicio) { showToast('❌ La fecha fin debe ser posterior a la fecha de inicio', 'error'); return; }
+  const btn = document.getElementById('btnLEDConfirmar');
+  btn.disabled = true; btn.textContent = '⏳ Registrando...';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({
+      action: 'registrarContratoLEDMultiple', tipo: 'BONIFICADA', motivoBonif: motivo, detalleBonif: detalle,
+      refCompra: (document.getElementById('led-bonif-ref')?.value || '').trim(),
+      pantallas: [{ playerId, nombrePantalla, valorMensual: 0, valorLista: parseFloat(valorLista) }],
+      materiales: [], cliente, ejecutiva, inicio, fin, spots,
+      agenciaContratante: '', comisionAgencia: '', contratadoPor: '',
+      pdfBase64: _ledPdfBase64, pdfNombre: _ledPdfFile ? _ledPdfFile.name : 'orden.pdf'
+    }) });
+    let json;
+    try { json = await res.json(); } catch (e) { throw new Error('El servidor no respondió bien. Revisa la pestaña LED antes de reintentar.'); }
+    if (json.error) throw new Error(json.error);
+    showToast(json.pendiente ? '⏳ Bonificación enviada para autorización — la pantalla queda reservada' + (json.avisoCorreo ? ' · ⚠️ ' + json.avisoCorreo : '') : '✅ Bonificación autorizada y registrada' + (json.avisoCorreo ? ' · ⚠️ ' + json.avisoCorreo : ''), json.avisoCorreo ? 'info' : 'success');
+    closeModal();
+    _ledData = null;
+    renderLED(document.getElementById('mainContent'), true);
+    avisosLeer_();
+    if (!json.pendiente && json.ids && json.ids.length) setTimeout(() => openProgramacionLED(json.ids[0]), 700);
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = '🎁 Registrar bonificación';
+    checkLEDForm();
   }
 }
 
