@@ -7594,6 +7594,9 @@ function toggleValla(event, codigo) {
 }
 
 function updateFloatingBtn() {
+  // El botón "Exportar PPT" de Disponibles dice cuántas seleccionadas va a exportar (si hay selección, solo esas)
+  const pptB = document.getElementById('btnExportPPT');
+  if (pptB && !pptB.disabled) pptB.textContent = (multiSelectMode && selectedVallas.size > 0 && state.tab === 'disponibles') ? '⬇ Exportar PPT (' + selectedVallas.size + ' seleccionadas)' : '⬇ Exportar PPT';
   const bar = document.getElementById('floatingBar');
   if (!bar) return;
   if (multiSelectMode && selectedVallas.size > 0) {
@@ -9151,7 +9154,9 @@ async function exportarPPT() {
   }
 
   try {
-    const disponibles = getFiltered();
+    // Si hay elementos seleccionados (Selección múltiple), se exportan SOLO esos, en el orden en que se ven; si no, lo que está filtrado
+    const hayPpt = multiSelectMode && selectedVallas.size > 0;
+    const disponibles = hayPpt ? getFiltered().filter(v => selectedVallas.has(v.codigo)).concat(DATA.filter(v => selectedVallas.has(v.codigo) && !getFiltered().includes(v))) : getFiltered();
     if (!disponibles.length) { showToast('No hay disponibles con los filtros actuales', 'info'); return; }
 
     const pres = new PptxGenJS();
@@ -9281,7 +9286,7 @@ async function exportarPPT() {
     showToast('❌ Error: ' + err.message, 'error');
     console.error(err);
   } finally {
-    btn.textContent = '⬇ Exportar PPT';
+    btn.textContent = (multiSelectMode && selectedVallas.size > 0) ? '⬇ Exportar PPT (' + selectedVallas.size + ' seleccionadas)' : '⬇ Exportar PPT';
     btn.disabled = false;
   }
 }
