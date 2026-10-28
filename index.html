@@ -6058,11 +6058,13 @@ function renderCard(v) {
   const badgeEstado = esProximaDisp
     ? '<span class="estado-badge" style="background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.4);font-size:9px" title="Disponible a partir del ' + fechaLibreDesdeTxt_(v.termino, false) + '">📅 LIBRE DESDE ' + fechaLibreDesdeTxt_(v.termino, true) + '</span>'
     : '<span class="estado-badge ' + ec(v.estado) + '">' + v.estado + '</span>';
-  const chk = (multiSelectMode && isDisp) ? '<input type="checkbox" class="card-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();toggleValla(event,\'' + v.codigo + '\')">': '';
+  // En Disponibles también se pueden marcar las que aún están contratadas pero se liberan en el mes/día elegido (para armar propuestas y exportar el PPT)
+  const seleccionable = isDisp || !!esProximaDisp;
+  const chk = (multiSelectMode && seleccionable) ? '<input type="checkbox" class="card-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();toggleValla(event,\'' + v.codigo + '\')">': '';
   const chkInv = (multiSelectInvMode && state.tab === 'inventario') ? '<input type="checkbox" class="card-checkbox" ' + (isSelectedInv ? 'checked' : '') + ' onclick="event.stopPropagation();toggleInvCard(event,\'' + v.codigo + '\')">': '';
   const selClass = isSelected ? ' selected-card' : (isSelectedInv ? ' selected-card-inv' : '');
-  const onclk = (multiSelectMode && isDisp) ? 'toggleValla(event,\'' + v.codigo + '\')' : 'openModal(\'' + v.codigo + '\')';
-  const cardOnClick = multiSelectInvMode && state.tab === 'inventario' ? 'toggleInvCard(event,\'' + v.codigo + '\')' : ((multiSelectMode && isDisp) ? 'selValla(event,this)' : 'openModal(\'' + v.codigo + '\')');
+  const onclk = (multiSelectMode && seleccionable) ? 'toggleValla(event,\'' + v.codigo + '\')' : 'openModal(\'' + v.codigo + '\')';
+  const cardOnClick = multiSelectInvMode && state.tab === 'inventario' ? 'toggleInvCard(event,\'' + v.codigo + '\')' : ((multiSelectMode && seleccionable) ? 'selValla(event,this)' : 'openModal(\'' + v.codigo + '\')');
   return '<div class="card' + selClass + '" data-codigo="' + v.codigo + '" onclick="' + cardOnClick + '">' +
     (chkInv || chk) +
     '<div class="card-photo">' + fHtml + '</div>' +
@@ -7189,6 +7191,7 @@ async function buscarLugaresCercanos() {
 
 // ── RESERVA MÚLTIPLE ──────────────────────────────────────────
 function openModalMultiReservar() {
+  if (ledNoLibresSel_('reservar')) return;
   if (selectedVallas.size === 0) return;
   const vallas = [...selectedVallas].map(c => DATA.find(v => v.codigo === c)).filter(Boolean);
 
@@ -7583,6 +7586,13 @@ function selValla(event, el) {
   toggleValla(event, codigo);
 }
 
+// Las que aún están contratadas (se liberan más adelante) se pueden marcar para el PPT, pero no se pueden reservar ni contratar todavía
+function ledNoLibresSel_(accion) {
+  const noLibres = [...selectedVallas].filter(c => { const v = DATA.find(x => x.codigo === c); return v && v.estado === 'CONTRATADA'; });
+  if (!noLibres.length) return false;
+  showToast('Para ' + accion + ', quita las que aún están contratadas (' + noLibres.slice(0, 3).join(', ') + (noLibres.length > 3 ? '…' : '') + '). Esas sí las puedes exportar al PPT.', 'info');
+  return true;
+}
 function toggleValla(event, codigo) {
   event.stopPropagation();
   if (selectedVallas.has(codigo)) selectedVallas.delete(codigo);
@@ -7622,6 +7632,7 @@ function updateFloatingBtn() {
 }
 
 function openModalMultiContratar() {
+  if (ledNoLibresSel_('contratar')) return;
   if (selectedVallas.size === 0) return;
   const vallas = [...selectedVallas].map(c => DATA.find(v => v.codigo === c)).filter(Boolean);
   _multiPdfFile = null; _multiPdfBase64 = null;
