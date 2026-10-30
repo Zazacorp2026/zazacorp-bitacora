@@ -11230,13 +11230,23 @@ async function progReenviar_() {
 
 // ── Modal: Nuevo Contrato LED ─────────────────────────────────
 function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
-  const players = (_ledData && _ledData.players) || [];
+  // Las pantallas salen de la Bitácora (las mismas de la grilla LED), no de la lista de VNNOX:
+  // así también aparecen las LED externas sin Player VNNOX ID, que se contratan con su código.
+  const elementos = ((_ledData && _ledData.elementosLED) || []).slice().sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
+  const contratosLed = (_ledData && _ledData.contratos) || [];
   const today   = new Date().toISOString().split('T')[0];
   const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA']
     .map(e => '<option>' + e + '</option>').join('');
-  const playerOpts = players.map(p =>
-    '<option value="' + p.playerId + '"' + (p.playerId === prePlayerId ? ' selected' : '') + '>' + p.name + ' — ' + p.playerId + '</option>'
-  ).join('');
+  let playerOpts = elementos.map(el => {
+    const pid = el.playerVnnoxId || el.codigo;
+    const llena = pid !== prePlayerId && contratosLed.filter(c => c.playerId === pid && c.activo).length >= (el.capacidad || 15);
+    return '<option value="' + esc(pid) + '" data-nombre="' + esc(el.codigo + ' — ' + pid) + '"' + (pid === prePlayerId ? ' selected' : '') + (llena ? ' disabled' : '') + '>' +
+      esc(el.codigo + (el.direccion ? ' — ' + String(el.direccion).substring(0, 40) : '') + (llena ? ' · sin espacios' : '')) + '</option>';
+  }).join('');
+  // Respaldo: si la pantalla elegida en la grilla no está en la lista, se agrega igual (el selector nunca queda en blanco)
+  if (prePlayerId && !elementos.some(el => (el.playerVnnoxId || el.codigo) === prePlayerId)) {
+    playerOpts = '<option value="' + esc(prePlayerId) + '" data-nombre="' + esc((prePlayerName || prePlayerId) + ' — ' + prePlayerId) + '" selected>' + esc(prePlayerName || prePlayerId) + '</option>' + playerOpts;
+  }
 
   document.getElementById('modalTitle').textContent = '⚡ Nuevo Contrato LED';
   document.getElementById('modalSubtitle').textContent = prePlayerName || 'Selecciona la pantalla';
@@ -11428,7 +11438,10 @@ function checkLEDForm() {
 async function confirmarContratoLED() {
   const sel     = document.getElementById('led-player');
   const playerId     = sel.value;
-  const nombrePantalla = sel.options[sel.selectedIndex]?.text || '';
+  const optSel = sel.options[sel.selectedIndex];
+  const nombrePantalla = (optSel && (optSel.dataset.nombre || optSel.text)) || '';
+  const elSel = ((_ledData && _ledData.elementosLED) || []).find(e => (e.playerVnnoxId || e.codigo) === playerId);
+  const ciudad = (elSel && elSel.ciudad) || '';
   const cliente  = document.getElementById('led-cliente').value.trim().toUpperCase();
   const ejecutiva= document.getElementById('led-ejecutiva').value;
   const spots    = document.getElementById('led-spots').value;
@@ -11471,7 +11484,7 @@ async function confirmarContratoLED() {
 
   try {
     const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({
-      action:'registrarContratoLED', playerId, nombrePantalla, cliente, ejecutiva,
+      action:'registrarContratoLED', playerId, nombrePantalla, ciudad, cliente, ejecutiva,
       spots, periodo, inicio, fin, valorMensual, valorTotal, programaVNNOX,
       agenciaContratante, comisionAgencia, contratadoPor, valor15, valor7, valor1,
       pdfBase64: _ledPdfBase64, pdfNombre: _ledPdfFile ? _ledPdfFile.name : 'orden.pdf',
