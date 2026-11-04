@@ -9939,6 +9939,7 @@ function buildLEDUI(container, data) {
     esExterno: el.esExterno,
     sn: el.sn, account: el.account,
     capacidad: el.capacidad,
+    bloqueada: !!el.bloqueada,
     _tipo: detectLEDTipo(el.tipo)
   }));
 
@@ -9978,6 +9979,10 @@ function buildLEDUI(container, data) {
       // offline. Los elementos externos (sin VNNOX) no tienen esa señal,
       // así que siempre se pueden contratar.
       const bloqueadoOffline = !player.esExterno && player.isOnline === false;
+      // (2026-11-04) Jorge puede bloquear las nuevas contrataciones de una pantalla (si se satura).
+      // Para él sigue habilitada; para las ejecutivas no.
+      const bloqueadaAdmin = !!player.bloqueada;
+      const noContratable = bloqueadaAdmin && !esAdmin;
 
       let estadoTag;
       if (player.esExterno) {
@@ -9992,10 +9997,10 @@ function buildLEDUI(container, data) {
       if (ledMultiMode) {
         // Contratación múltiple: casilla para elegir esta pantalla (no si está llena o fuera de línea)
         const llena = playerContratos.length >= capacidad;
-        const noSeleccionable = llena || bloqueadoOffline;
+        const noSeleccionable = llena || bloqueadoOffline || noContratable;
         htmlGrupos += '<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:800;border-bottom:1px solid var(--border);cursor:' + (noSeleccionable ? 'not-allowed' : 'pointer') + ';color:' + (noSeleccionable ? 'var(--muted)' : '#818cf8') + '">' +
           '<input type="checkbox" ' + (noSeleccionable ? 'disabled' : '') + ' ' + (ledMultiSel.has(player.playerId) ? 'checked' : '') + ' data-pid="' + esc(player.playerId) + '" onchange="ledMultiToggle(this.dataset.pid, this.checked)"> ' +
-          (llena ? 'Sin espacios libres' : (bloqueadoOffline ? 'Fuera de línea' : 'Incluir en la contratación múltiple')) + '</label>';
+          (noContratable ? '🔒 Contrataciones bloqueadas' : llena ? 'Sin espacios libres' : (bloqueadoOffline ? 'Fuera de línea' : 'Incluir en la contratación múltiple')) + '</label>';
       }
       htmlGrupos += '<div class="led-banner">' +
         (player.foto ? '<img src="'+cldOptimizar(player.foto, 400)+'" loading="lazy">' : '') +
@@ -10010,6 +10015,9 @@ function buildLEDUI(container, data) {
           (player.account ? ' <span style="font-size:9px;color:var(--muted);background:var(--surface2);border-radius:4px;padding:1px 5px">' + player.account + '</span>' : '') +
         '</div>' +
         (bloqueadoOffline ? '<div style="font-size:10px;color:#f87171;margin:2px 0">Pantalla offline: no se pueden agregar nuevas contrataciones hasta que vuelva a línea</div>' : '') +
+        (bloqueadaAdmin ? '<div style="font-size:10.5px;font-weight:700;color:#f87171;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);border-radius:6px;padding:4px 8px;margin:4px 0">🔒 Nuevas contrataciones bloqueadas' + (esAdmin ? ' para las ejecutivas (tú sí puedes contratar)' : ' por el administrador') + '</div>' : '') +
+        (esAdmin ? '<button data-pid="' + esc(player.playerId) + '" data-nombre="' + esc(player.name || '') + '" onclick="event.stopPropagation();toggleBloqueoLED(this.dataset.pid, ' + (bloqueadaAdmin ? 'false' : 'true') + ', this.dataset.nombre)" style="margin:4px 0;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;' +
+          (bloqueadaAdmin ? 'background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.45);color:#4ade80">🔓 Permitir nuevas contrataciones' : 'background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.4);color:#f87171">🔒 Bloquear nuevas contrataciones') + '</button>' : '') +
         '<div style="font-size:11px;color:var(--muted);margin:4px 0">' +
           playerContratos.length + ' de ' + capacidad + ' ocupados · <span style="color:var(--accent);font-weight:700">' + (capacidad-playerContratos.length) + ' disponibles</span>' +
           '' +
@@ -10055,7 +10063,9 @@ function buildLEDUI(container, data) {
         htmlGrupos += '<div class="led-slot-empty" style="border-color:#60a5fa;color:#60a5fa" onclick="agregarEspaciosLED(\'' + player.playerId + '\',' + capacidad + ')">+ Agregar más espacios</div>';
       }
       for (let s = playerContratos.length; s < capacidad; s++) {
-        htmlGrupos += '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">Ingresar nueva contratación</div>';
+        htmlGrupos += noContratable
+          ? '<div class="led-slot-empty" style="cursor:not-allowed;opacity:.55;border-color:rgba(248,113,113,.4);color:#f87171">🔒 Bloqueado</div>'
+          : '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">Ingresar nueva contratación</div>';
       }
       htmlGrupos += '</div>'; // led-slots-grid
       htmlGrupos += '</div>'; // led-player-card
@@ -10209,6 +10219,20 @@ async function confirmarAgregarEspaciosLED(playerId, capacidadActual) {
     showToast('✅ Ahora tiene ' + nuevaCapacidad + ' espacios', 'success');
     closeModal();
     renderLED(document.getElementById('mainContent'));
+  } catch(e) { showToast('❌ ' + e.message, 'error'); }
+}
+
+async function toggleBloqueoLED(playerId, bloquear, nombre) {
+  const txt = bloquear
+    ? '¿Bloquear las NUEVAS contrataciones en ' + (nombre || playerId) + '?\n\nLas ejecutivas ya no podrán ingresar contratos nuevos en esta pantalla (ni en contratación múltiple). Los contratos actuales siguen igual y tú sí puedes seguir contratando.'
+    : '¿Volver a permitir nuevas contrataciones en ' + (nombre || playerId) + '?';
+  if (!confirm(txt)) return;
+  try {
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'setBloqueoLED', playerId, bloquear: !!bloquear }) });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast(bloquear ? '🔒 Pantalla bloqueada para nuevas contrataciones' : '🔓 Pantalla habilitada otra vez', 'success');
+    renderLED(document.getElementById('mainContent'), true);
   } catch(e) { showToast('❌ ' + e.message, 'error'); }
 }
 
@@ -10842,7 +10866,7 @@ async function bonifDecidir(i, decision) {
     let json;
     try { json = await res.json(); } catch (e) { throw new Error('El servidor no respondió bien. Revisa la pestaña LED antes de reintentar.'); }
     if (json.error) throw new Error(json.error);
-    showToast(decision === 'AUTORIZAR' ? '✅ Bonificación autorizada' + (json.avisoCorreo ? ' · ⚠️ ' + json.avisoCorreo : '') : '❌ Bonificación rechazada: se avisó a la ejecutiva', json.avisoCorreo ? 'info' : 'success');
+    showToast(decision === 'AUTORIZAR' ? '✅ Bonificación autorizada' + (json.avisoCorreo ? ' · ⚠️ ' + json.avisoCorreo : '') : '❌ Bonificación rechazada: la ejecutiva lo verá en su campana de avisos', json.avisoCorreo ? 'info' : 'success');
     closeModal();
     _ledData = null;
     if (state.tab === 'led') renderLED(document.getElementById('mainContent'), true);
@@ -10916,7 +10940,7 @@ function bonifReporteRender_() {
 //  día por día de cuál versión está al aire (toca un día para encender, vuelve a tocarlo para apagar).
 //  Máximo 2 versiones a la vez; los días anteriores a hoy ya salieron al aire y no se pueden cambiar.
 //  Al guardar, el servidor manda un correo con el Excel (Pasos para VNNOX, Resumen, Cambios, Calendario)
-//  a John Menoscal, la ejecutiva, Jorge y Yesenia.
+//  a John Menoscal, la ejecutiva y Jorge.
 // ══════════════════════════════════════════════════════════════
 const PROG_COLORES = ['#7F77DD', '#1D9E75', '#BA7517', '#D4537E', '#378ADD', '#639922'];
 const PROG_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -11185,7 +11209,7 @@ async function progGuardar_() {
   const grupo = progPayload_();
   const totalDias = p.grupo.reduce((a, g) => a + Object.keys(g.dias).reduce((b, v) => b + Object.keys(g.dias[v]).length, 0), 0);
   const notificar = totalDias > 0;
-  if (notificar && !confirm('Se guardará la programación y se enviará un correo con el Excel a John Menoscal, la ejecutiva, Jorge y Yesenia. ¿Continuar?')) return;
+  if (notificar && !confirm('Se guardará la programación y se enviará un correo con el Excel a John Menoscal, la ejecutiva y Jorge. ¿Continuar?')) return;
   const btn = document.getElementById('progBtnGuardar');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando…'; }
   let json = null;
@@ -11219,7 +11243,7 @@ async function progGuardar_() {
 async function progReenviar_() {
   const p = _prog; if (!p) return;
   if (progHayCambios_()) { showToast('Primero guarda los cambios', 'info'); return; }
-  if (!confirm('Se reenviará el Excel vigente a John Menoscal, la ejecutiva, Jorge y Yesenia. ¿Continuar?')) return;
+  if (!confirm('Se reenviará el Excel vigente a John Menoscal, la ejecutiva y Jorge. ¿Continuar?')) return;
   try {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledReenviarProgramacion', id: p.idRef }) });
     const json = await res.json();
@@ -11240,8 +11264,9 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
   let playerOpts = elementos.map(el => {
     const pid = el.playerVnnoxId || el.codigo;
     const llena = pid !== prePlayerId && contratosLed.filter(c => c.playerId === pid && c.activo).length >= (el.capacidad || 15);
-    return '<option value="' + esc(pid) + '" data-nombre="' + esc(el.codigo + ' — ' + pid) + '"' + (pid === prePlayerId ? ' selected' : '') + (llena ? ' disabled' : '') + '>' +
-      esc(el.codigo + (el.direccion ? ' — ' + String(el.direccion).substring(0, 40) : '') + (llena ? ' · sin espacios' : '')) + '</option>';
+    const bloq = !!el.bloqueada && (_usuarioActual || '').toUpperCase() !== 'JORGE';
+    return '<option value="' + esc(pid) + '" data-nombre="' + esc(el.codigo + ' — ' + pid) + '"' + (pid === prePlayerId && !bloq ? ' selected' : '') + (llena || bloq ? ' disabled' : '') + '>' +
+      esc(el.codigo + (el.direccion ? ' — ' + String(el.direccion).substring(0, 40) : '') + (bloq ? ' · 🔒 bloqueada' : llena ? ' · sin espacios' : '')) + '</option>';
   }).join('');
   // Respaldo: si la pantalla elegida en la grilla no está en la lista, se agrega igual (el selector nunca queda en blanco)
   if (prePlayerId && !elementos.some(el => (el.playerVnnoxId || el.codigo) === prePlayerId)) {
