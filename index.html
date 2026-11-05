@@ -9891,8 +9891,25 @@ function detectLEDTipo(nombre) {
   return 'Pantalla';
 }
 
+// (2026-11-05) Filtro propio del módulo LED: cliente con contratos ACTIVOS → solo sus pantallas + resumen de dónde está
+let _ledFiltroClienteActivo = '';
+function ledFiltrarClienteActivo_(v) {
+  _ledFiltroClienteActivo = v || '';
+  if (_ledData && _ledContenedorActual) buildLEDUI(_ledContenedorActual, _ledData);
+}
 function buildLEDUI(container, data) {
-  const { elementosLED: elementosLEDsinFiltrar, contratos, materiales, vnnoxError } = data;
+  const { elementosLED: elementosLEDsinFiltrar0, contratos, materiales, vnnoxError } = data;
+  // Clientes con contratos activos → pantallas donde están
+  const clientesActivos = {};
+  (contratos || []).filter(c => c.activo && c.cliente).forEach(c => {
+    const k = String(c.cliente).trim().toUpperCase();
+    (clientesActivos[k] = clientesActivos[k] || []).push(c);
+  });
+  if (_ledFiltroClienteActivo && !clientesActivos[_ledFiltroClienteActivo]) _ledFiltroClienteActivo = '';
+  const contratosFiltro = _ledFiltroClienteActivo ? clientesActivos[_ledFiltroClienteActivo] : null;
+  const elementosLEDsinFiltrar = contratosFiltro
+    ? elementosLEDsinFiltrar0.filter(el => contratosFiltro.some(c => c.playerId === (el.playerVnnoxId || el.codigo)))
+    : elementosLEDsinFiltrar0;
 
   // Filtros de la barra global: ciudad y tipo se aplican directo sobre
   // el elemento; cliente se aplica sobre sus contratos activos, ya que
@@ -9923,6 +9940,27 @@ function buildLEDUI(container, data) {
     '<div class="led-stat"><b>' + activos + '</b>Contratos activos</div>' +
     '<div class="led-stat"><b>' + totalSpotsSold.toLocaleString() + '</b>Spots/día vendidos</div>' +
     '</div>';
+
+  // Filtro por cliente activo + resumen de dónde está activo
+  const nombresCli = Object.keys(clientesActivos).sort();
+  html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
+    '<label for="ledFiltroCli" style="font-size:12px;font-weight:700;color:var(--muted)">🔎 Cliente activo:</label>' +
+    '<select id="ledFiltroCli" onchange="ledFiltrarClienteActivo_(this.value)" style="min-width:220px;max-width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-size:12.5px">' +
+      '<option value="">Todos (' + nombresCli.length + ' clientes activos)</option>' +
+      nombresCli.map(n => { const np = new Set(clientesActivos[n].map(c => c.playerId)).size; return '<option value="' + esc(n) + '"' + (n === _ledFiltroClienteActivo ? ' selected' : '') + '>' + esc(n) + ' · ' + np + (np === 1 ? ' pantalla' : ' pantallas') + '</option>'; }).join('') +
+    '</select>' +
+    (_ledFiltroClienteActivo ? '<button onclick="ledFiltrarClienteActivo_(\'\')" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;padding:6px 10px;cursor:pointer">✕ Quitar filtro</button>' : '') +
+    '</div>';
+  if (contratosFiltro) {
+    const elMap = {}; elementosLEDsinFiltrar0.forEach(el => { elMap[el.playerVnnoxId || el.codigo] = el; });
+    const filas = contratosFiltro.slice().sort((a, b) => String(a.fin).localeCompare(String(b.fin)));
+    html += '<div style="margin-bottom:14px;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.06);border-radius:10px;padding:10px 14px;font-size:12.5px">' +
+      '<div style="font-weight:800;margin-bottom:6px">📍 ' + esc(_ledFiltroClienteActivo) + ' está activo en ' + new Set(filas.map(c => c.playerId)).size + ' pantalla(s)</div>' +
+      filas.map(c => { const el = elMap[c.playerId] || {}; return '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:5px 0;border-top:1px solid rgba(255,255,255,.07)">' +
+        '<span><b>' + esc(el.codigo || c.nombrePantalla || c.playerId) + '</b> <span style="color:var(--muted)">' + esc(String(el.direccion || '').slice(0, 50)) + (el.ciudad ? ' · ' + esc(el.ciudad) : '') + '</span></span>' +
+        '<span style="color:var(--muted)">' + esc(c.inicio) + ' → ' + esc(c.fin) + ' · ' + (c.spots || 0) + ' spots/día · ' + esc(c.ejecutiva || '') + (c.tipo && c.tipo !== 'PAGADA' ? ' · ' + esc(c.tipo) : '') + '</span></div>'; }).join('') +
+      '</div>';
+  }
 
   html += '<div style="display:flex;justify-content:flex-end;margin-bottom:12px">' +
     (qzEsAdmin() ? '<button onclick="openModalCargaMasivaLED()" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.4);border-radius:8px;color:var(--blue);font-size:12px;font-weight:700;padding:8px 16px;cursor:pointer;margin-right:8px">📥 Carga masiva</button>' : '') +
