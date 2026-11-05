@@ -904,7 +904,13 @@ function aplicarPermisoDashboard() {
 // y Pamela — cada una ve/gestiona solo sus propias cotizaciones (el
 // backend, QZ_USUARIOS_AUTORIZADOS en Code.gs, ya lo exige de su lado,
 // esto solo decide si la pestaña se muestra).
-const USUARIOS_COTIZADOR_AUTORIZADOS = ['JORGE', 'RICARDO', 'SHAYRA', 'SASKYA', 'LORENA', 'VERONICA TERAN', 'ZULIA', 'VERONICA TRIVINO', 'PAMELA LARA'];
+const USUARIOS_COTIZADOR_AUTORIZADOS = ['JORGE', 'RICARDO', 'SHAYRA', 'SASKYA', 'LORENA', 'VERONICA TERAN', 'ZULIA', 'VERONICA TRIVINO', 'PAMELA LARA', 'SASKYA YEPEZ'];
+// (2026-11-05) Ejecutivas que ven y gestionan lo de otra como si fuera suyo. Debe coincidir con NX_GESTIONA_TAMBIEN del Code.gs.
+const NX_GESTIONA_TAMBIEN = { 'SASKYA YEPEZ': ['LORENA'] };
+function nxActuaComo_(duena) {
+  const u = String(_usuarioActual || '').trim().toUpperCase(), d = String(duena || '').trim().toUpperCase();
+  return !!u && !!d && (u === d || (NX_GESTIONA_TAMBIEN[u] || []).indexOf(d) !== -1);
+}
 const USUARIOS_COMERCIAL_GENERAL_AUTORIZADOS = ['JORGE', 'RICARDO', 'VERONICA TERAN'];
 
 function aplicarPermisoCotizador() {
@@ -2768,7 +2774,7 @@ function qzRenderTarjetaCotizacion(c) {
   // valida eso). El servidor vuelve a revisar esto por su cuenta en
   // cada acción (qzMoverEtapaPipeline), así que esto es solo para
   // decidir qué botones mostrar, no la seguridad real.
-  const esDuenaOAdmin = qzPuedeAprobarEsta_(c) || ((c.creadoPor || '').toUpperCase() === (_usuarioActual || '').toUpperCase());
+  const esDuenaOAdmin = qzPuedeAprobarEsta_(c) || nxActuaComo_(c.creadoPor) || nxActuaComo_(c.ejecutiva);
   const puedeMover = esDuenaOAdmin && siguiente && (siguiente !== 'CERTIFICADO' || qzEsAdmin());
   // Se puede marcar como perdida desde cualquier etapa activa del
   // flujo normal — no aplica si ya está Cobrada o ya está Perdida.
@@ -10014,6 +10020,7 @@ function buildLEDUI(container, data) {
         '<div style="margin:6px 0">' + estadoTag +
           (player.account ? ' <span style="font-size:9px;color:var(--muted);background:var(--surface2);border-radius:4px;padding:1px 5px">' + player.account + '</span>' : '') +
         '</div>' +
+        (ledTarifaCanje_(ledCodigoDePlayer_(player.playerId)) ? '<div style="font-size:10.5px;font-weight:700;color:#a5b4fc;margin:2px 0">🔄 En canje ALACC · extra $' + ledTarifaCanje_(ledCodigoDePlayer_(player.playerId)).toLocaleString('en-US') + ' + IVA</div>' : '') +
         (bloqueadoOffline ? '<div style="font-size:10px;color:#f87171;margin:2px 0">Pantalla offline: no se pueden agregar nuevas contrataciones hasta que vuelva a línea</div>' : '') +
         (bloqueadaAdmin ? '<div style="font-size:10.5px;font-weight:700;color:#f87171;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);border-radius:6px;padding:4px 8px;margin:4px 0">🔒 Nuevas contrataciones bloqueadas' + (esAdmin ? ' para las ejecutivas (tú sí puedes contratar)' : ' por el administrador') + '</div>' : '') +
         (esAdmin ? '<button data-pid="' + esc(player.playerId) + '" data-nombre="' + esc(player.name || '') + '" onclick="event.stopPropagation();toggleBloqueoLED(this.dataset.pid, ' + (bloqueadaAdmin ? 'false' : 'true') + ', this.dataset.nombre)" style="margin:4px 0;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;' +
@@ -10046,7 +10053,7 @@ function buildLEDUI(container, data) {
             '">' + c.contratadoPor + '</span></div>' : '');
         // Materiales (hasta 6 versiones) y botón para programarlos día por día
         const bonifPendiente = !!(c.bonificada && c.estadoAuth === 'PENDIENTE');
-        const puedeProg = !bonifPendiente && (esAdmin || String(c.ejecutiva || '').toUpperCase() === String(_usuarioActual || '').toUpperCase());
+        const puedeProg = !bonifPendiente && (esAdmin || nxActuaComo_(c.ejecutiva));
         htmlGrupos += '<div style="font-size:10px;color:var(--muted);margin-top:4px" onclick="event.stopPropagation()">' +
           (mats.length ? mats.slice().sort((x, y) => String(x.version).localeCompare(String(y.version))).map(m => '<div>' + esc(m.version) + ': ' + esc(m.nombre) + '</div>').join('') : '<div>Sin materiales cargados</div>') +
           (bonifPendiente ? '<div style="margin-top:4px;font-size:10.5px;color:#fbbf24;font-weight:700">⏳ Esperando autorización: la programación se habilita al autorizarla</div>' : '') +
@@ -10080,7 +10087,7 @@ function buildLEDUI(container, data) {
         '<button id="ledMultiBtn" onclick="openModalMultiContratoLED()" style="background:#6366f1;border:none;border-radius:8px;color:#fff;font-weight:800;font-size:13px;padding:10px 18px;cursor:pointer">📺 Contratar</button>' +
       '</div>'
     : '';
-  container.innerHTML = html.replace('<div class="led-grid"></div>', '') + htmlGrupos + barraMulti;
+  container.innerHTML = html.replace('<div class="led-grid"></div>', '') + ledBarraCanje_() + htmlGrupos + barraMulti;
   _ledContenedorActual = container;
   if (ledMultiMode) ledMultiActualizarBarra_();
 }
@@ -10475,6 +10482,34 @@ async function ledMasivoEnviar_(modo) {
 //  se aplican a todas las pantallas elegidas.
 // ══════════════════════════════════════════════════════════════
 let ledMultiMode = false;
+// ── CANJE ALACC (2026-11-05) — debe coincidir con LED_CANJE_ALACC del Code.gs ──
+const LED_CANJE_ALACC = {
+  desde: '2026-03-01', hasta: '2026-12-31', cupoMes: 2,
+  pantallas: { 'LGYQ-O-013': 600, 'LGYQ-O-002': 600, 'LGYQ-O-006': 600, 'LGYQ-O-001': 600, 'LGYQ-O-009': 600, 'LGYQ-O-016': 3000, 'LGYQ-O-024': 2000 }
+};
+const LED_MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function ledCodigoBase_(c) { const m = String(c || '').trim().toUpperCase().match(/^[A-Z]+-[A-Z]+-\d+/); return m ? m[0] : String(c || '').trim().toUpperCase(); }
+function ledCodigoDePlayer_(pid) {
+  const el = ((_ledData && _ledData.elementosLED) || []).find(e => (e.playerVnnoxId || e.codigo) === pid);
+  return el ? el.codigo : pid;
+}
+function ledTarifaCanje_(codigo) { return LED_CANJE_ALACC.pantallas[ledCodigoBase_(codigo)] || 0; }
+function ledCanjeDelMes_(mes) {
+  return ((_ledData && _ledData.contratos) || []).filter(c => c.tipo === 'CANJE' && c.estado !== 'CANCELADO' && String(c.inicio || '').slice(0, 7) === mes);
+}
+function ledMesTexto_(mes) { return LED_MESES_ES[parseInt(mes.slice(5, 7), 10) - 1] + ' ' + mes.slice(0, 4); }
+function ledBarraCanje_() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  if (hoy < LED_CANJE_ALACC.desde || hoy > LED_CANJE_ALACC.hasta) return '';
+  const mes = hoy.slice(0, 7), usados = ledCanjeDelMes_(mes);
+  const lleno = usados.length >= LED_CANJE_ALACC.cupoMes;
+  return '<div style="margin:0 0 14px;padding:10px 14px;border-radius:10px;border:1px solid ' + (lleno ? 'rgba(251,146,60,.5)' : 'rgba(129,140,248,.5)') + ';background:' + (lleno ? 'rgba(251,146,60,.08)' : 'rgba(129,140,248,.08)') + ';font-size:12.5px">' +
+    '<b>🔄 Canje ALACC · ' + ledMesTexto_(mes) + ':</b> ' + usados.length + ' de ' + LED_CANJE_ALACC.cupoMes + ' espacios usados' +
+    (lleno ? ' <span style="color:#fb923c;font-weight:700">· los siguientes de este mes se cobran ($600 / BIESS $2.000 / en L $3.000 + IVA)</span>' : '') +
+    (usados.length ? '<div style="color:var(--muted);font-size:11.5px;margin-top:3px">' + usados.map(c => esc(ledCodigoDePlayer_(c.playerId)) + ' · ' + esc(c.cliente) + ' (' + c.inicio.slice(8) + '–' + c.fin.slice(8) + ')').join(' · ') + '</div>' : '') +
+    '<div style="color:var(--muted);font-size:11px;margin-top:3px">Convenio vigente hasta el 31-dic-2026 · 7 pantallas · no acumulable</div></div>';
+}
+
 let ledMultiSel = new Set();
 let _ledContenedorActual = null;
 let _ledMultiPdfBase64 = null, _ledMultiPdfFile = null;
@@ -10512,6 +10547,11 @@ function openModalMultiContratoLED() {
       <div style="display:flex;gap:6px;margin-bottom:12px;background:var(--surface2);border-radius:9px;padding:4px">
         <button type="button" id="lm-tipo-pagada" onclick="lmSetTipo('PAGADA')" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:var(--accent);color:#000">Pagada</button>
         <button type="button" id="lm-tipo-bonif" onclick="lmSetTipo('BONIFICADA')" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:transparent;color:var(--muted)">🎁 Bonificada</button>
+        <button type="button" id="lm-tipo-canje" onclick="lmSetTipo('CANJE')" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:transparent;color:var(--muted)">🔄 Canje ALACC</button>
+      </div>
+      <div id="lm-canje-box" style="display:none;border:1px solid rgba(129,140,248,.45);background:rgba(129,140,248,.07);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Contrato ALACC: 2 espacios por mes calendario en total, no acumulables. Desde el 3ro del mes se cobra la tarifa del contrato (+ IVA). Las fechas deben quedar dentro del mismo mes.</div>
+        <div id="lm-canje-detalle" style="font-size:12.5px"></div>
       </div>
       <div id="lm-bonif-box" style="display:none;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.07);border-radius:10px;padding:12px;margin-bottom:12px">
         <div class="form-row">
@@ -10525,6 +10565,7 @@ function openModalMultiContratoLED() {
         <div class="form-group"><label>Detalle (obligatorio)</label><input type="text" id="lm-bonif-detalle" placeholder="Ej: Compensación por la falla del 3 al 5 de octubre" oninput="checkLEDMultiForm()"></div>
         <div id="lm-bonif-aviso" style="font-size:11.5px;color:#fbbf24"></div>
       </div>
+      <div id="lm-valores-box">
       <h4 id="lm-h-valor">📺 Valor mensual de cada pantalla (USD)</h4>
       <div style="margin-bottom:10px">
         ${items.map(x => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px">
@@ -10533,6 +10574,7 @@ function openModalMultiContratoLED() {
         </div>`).join('')}
         <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px"><span id="lm-l-suma">Suma mensual</span><b id="lm-suma">$0.00</b></div>
         <div style="display:flex;justify-content:space-between;font-size:13px;color:#4ade80"><span id="lm-l-total">Total del contrato (todas las pantallas)</span><b id="lm-total">$0.00</b></div>
+      </div>
       </div>
       <h4>👤 Contratación</h4>
       <div class="form-row">
@@ -10547,6 +10589,7 @@ function openModalMultiContratoLED() {
         <div class="form-group"><label>Spots por día</label><input type="number" id="lm-spots" value="360" min="1" max="${SPOTS_DIA_CLIENT}"></div>
         <div class="form-group"><label>Período</label><input type="text" id="lm-periodo" readonly placeholder="Se calcula automático" style="background:var(--surface2)"></div>
       </div>
+      <div id="lm-agencia-box">
       <h4>💼 Agencia/Comisión/Contratante</h4>
       <div class="form-row">
         <div class="form-group"><label>Agencia contratante</label><input type="text" id="lm-agencia" placeholder="Nombre de agencia o 'Cliente directo'" oninput="checkLEDMultiForm()"></div>
@@ -10588,13 +10631,22 @@ let _lmTipo = 'PAGADA';
 // la contratación queda por autorizar (o autorizada al instante si quien la registra puede autorizarla).
 function lmSetTipo(t) {
   _lmTipo = t;
-  const bon = t === 'BONIFICADA';
-  const bP = document.getElementById('lm-tipo-pagada'), bB = document.getElementById('lm-tipo-bonif');
-  if (bP) { bP.style.background = bon ? 'transparent' : 'var(--accent)'; bP.style.color = bon ? 'var(--muted)' : '#000'; }
-  if (bB) { bB.style.background = bon ? 'var(--accent)' : 'transparent'; bB.style.color = bon ? '#000' : 'var(--muted)'; }
+  const bon = t === 'BONIFICADA', canje = t === 'CANJE';
+  [['lm-tipo-pagada', 'PAGADA'], ['lm-tipo-bonif', 'BONIFICADA'], ['lm-tipo-canje', 'CANJE']].forEach(([id, v]) => {
+    const b = document.getElementById(id); if (b) { b.style.background = t === v ? 'var(--accent)' : 'transparent'; b.style.color = t === v ? '#000' : 'var(--muted)'; }
+  });
   const set = (id, v, prop) => { const e = document.getElementById(id); if (e) { if (prop === 'display') e.style.display = v; else e.textContent = v; } };
   set('lm-bonif-box', bon ? 'block' : 'none', 'display');
-  set('lm-agencia-box', bon ? 'none' : 'block', 'display');
+  set('lm-canje-box', canje ? 'block' : 'none', 'display');
+  set('lm-valores-box', canje ? 'none' : 'block', 'display');
+  set('lm-agencia-box', bon || canje ? 'none' : 'block', 'display');
+  if (canje) {
+    const cl = document.getElementById('lm-cliente'); if (cl && !cl.value.trim()) cl.value = 'ALACC';
+    const pdfN0 = document.getElementById('lmPdfNombre'); if (pdfN0 && !_ledMultiPdfFile) pdfN0.textContent = 'Orden o respaldo en PDF (opcional)';
+    const btn0 = document.getElementById('btnLEDMultiConfirmar'); if (btn0) btn0.textContent = '🔄 Registrar canje ALACC';
+    calcLEDMultiTotales();
+    return;
+  }
   set('lm-h-valor', bon ? '🎁 Valor de LISTA de cada pantalla (referencia, USD)' : '📺 Valor mensual de cada pantalla (USD)');
   set('lm-l-suma', bon ? 'Valor de lista mensual' : 'Suma mensual');
   set('lm-l-total', bon ? 'Valor de lista que se bonifica (período completo)' : 'Total del contrato (todas las pantallas)');
@@ -10614,6 +10666,32 @@ function lmSetTipo(t) {
     set('lm-bonif-aviso', aprob);
   }
   calcLEDMultiTotales();
+}
+// Vista previa del canje: qué pantallas entran como canje ($0) y cuáles como excedente pagado. Devuelve el error (o '').
+function lmCanjeActualizar_() {
+  const box = document.getElementById('lm-canje-detalle'); if (!box) return '';
+  const ini = document.getElementById('lm-inicio')?.value || '', fin = document.getElementById('lm-fin')?.value || '';
+  const items = ledMultiElementos_();
+  let error = '';
+  if (ini && fin && ini.slice(0, 7) !== fin.slice(0, 7)) error = 'El canje debe empezar y terminar dentro del mismo mes (no es acumulable).';
+  else if (ini && (ini < LED_CANJE_ALACC.desde || fin > LED_CANJE_ALACC.hasta)) error = 'El convenio solo está vigente del 01-mar-2026 al 31-dic-2026.';
+  const fuera = items.filter(x => !ledTarifaCanje_(x.el.codigo));
+  if (!error && fuera.length) error = 'No están en el convenio: ' + fuera.map(x => x.el.codigo).join(', ') + '. Quítalas de la selección.';
+  const mes = (ini || new Date().toISOString()).slice(0, 7);
+  let libres = Math.max(0, LED_CANJE_ALACC.cupoMes - ledCanjeDelMes_(mes).length);
+  const usados0 = LED_CANJE_ALACC.cupoMes - libres;
+  let pagar = 0;
+  const filas = items.map(x => {
+    const tar = ledTarifaCanje_(x.el.codigo);
+    if (!tar) return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08);color:var(--muted)"><span>' + esc(x.el.codigo) + '</span><span>No está en el convenio</span></div>';
+    const enCanje = libres > 0; if (enCanje) libres--; else pagar += tar;
+    return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)"><span><b>' + esc(x.el.codigo) + '</b> <span style="color:var(--muted);font-size:11px">' + esc(String(x.el.direccion || '').slice(0, 34)) + '</span></span>' +
+      (enCanje ? '<span style="color:#4ade80;font-weight:700">Canje · $0</span>' : '<span style="color:#fb923c;font-weight:700">Pagada · $' + tar.toLocaleString('en-US') + ' + IVA</span>') + '</div>';
+  }).join('');
+  box.innerHTML = '<div style="margin-bottom:6px"><b>' + ledMesTexto_(mes) + ':</b> ' + usados0 + ' de ' + LED_CANJE_ALACC.cupoMes + ' espacios de canje ya usados</div>' + filas +
+    (pagar ? '<div style="margin-top:8px;color:#fb923c;font-weight:700">Excedente a facturar a ALACC: $' + pagar.toLocaleString('en-US') + ' + IVA</div>' : '') +
+    (error ? '<div style="margin-top:8px;color:#f87171;font-weight:700">⚠️ ' + esc(error) + '</div>' : '');
+  return error;
 }
 function lmBonifMotivoCambio() {
   const m = document.getElementById('lm-bonif-motivo')?.value;
@@ -10636,6 +10714,7 @@ function ledMultiMeses_() {
   return { meses: m, texto: (m % 1 === 0 ? m.toString() : m.toFixed(1)) + (m === 1 ? ' MES' : ' MESES') };
 }
 function calcLEDMultiTotales() {
+  if (_lmTipo === 'CANJE') { const p = document.getElementById('lm-periodo'), m0 = ledMultiMeses_(); if (p) p.value = m0 ? m0.texto : ''; lmCanjeActualizar_(); checkLEDMultiForm(); return; }
   const m = ledMultiMeses_();
   const suma = [...document.querySelectorAll('.lm-valor')].reduce((a, i) => a + (parseFloat(i.value) || 0), 0);
   const fmt = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -10659,7 +10738,10 @@ function checkLEDMultiForm() {
   const basicos = document.getElementById('lm-cliente')?.value.trim() && document.getElementById('lm-ejecutiva')?.value &&
     document.getElementById('lm-inicio')?.value && document.getElementById('lm-fin')?.value && ledMultiMeses_() && todosConValor;
   const bonOk = (document.getElementById('lm-bonif-motivo')?.value || '') && ((document.getElementById('lm-bonif-detalle')?.value || '').trim().length >= 3);
-  const ok = _lmTipo === 'BONIFICADA' ? (basicos && bonOk)
+  const basicosCanje = document.getElementById('lm-cliente')?.value.trim() && document.getElementById('lm-ejecutiva')?.value &&
+    document.getElementById('lm-inicio')?.value && document.getElementById('lm-fin')?.value && ledMultiMeses_();
+  const ok = _lmTipo === 'CANJE' ? (basicosCanje && !lmCanjeActualizar_())
+    : _lmTipo === 'BONIFICADA' ? (basicos && bonOk)
     : (esAdmin ? basicos : (basicos && document.getElementById('lm-agencia')?.value.trim() && ledMultiComision_() && ledMultiContratadoPor_() && _ledMultiPdfBase64));
   btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; btn.style.cursor = ok ? 'pointer' : 'not-allowed';
 }
@@ -10674,7 +10756,8 @@ async function confirmarContratoLEDMulti() {
     const val = parseFloat(v && v.value) || 0;
     return { playerId: x.playerId, nombrePantalla: x.el.codigo + ' — ' + x.playerId, valorMensual: _lmTipo === 'BONIFICADA' ? 0 : val, valorLista: _lmTipo === 'BONIFICADA' ? val : 0 };
   });
-  const esBon = _lmTipo === 'BONIFICADA';
+  const esBon = _lmTipo === 'BONIFICADA', esCanje = _lmTipo === 'CANJE';
+  if (esCanje) { const errC = lmCanjeActualizar_(); if (errC) { showToast('❌ ' + errC, 'error'); return; } pantallas.forEach(p => { p.valorMensual = 0; p.valorLista = 0; }); }
   const materiales = [1, 2].map(n => ({
     nombre: (document.querySelector('.lm-mat-nombre[data-n="' + n + '"]')?.value || '').trim(),
     version: document.querySelector('.lm-mat-version[data-n="' + n + '"]')?.value || '',
@@ -10688,10 +10771,10 @@ async function confirmarContratoLEDMulti() {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({
       action: 'registrarContratoLEDMultiple', pantallas, materiales, cliente, ejecutiva, inicio, fin,
       spots: document.getElementById('lm-spots').value,
-      tipo: esBon ? 'BONIFICADA' : 'PAGADA',
+      tipo: esCanje ? 'CANJE' : (esBon ? 'BONIFICADA' : 'PAGADA'),
       motivoBonif: esBon ? document.getElementById('lm-bonif-motivo').value : '', detalleBonif: esBon ? document.getElementById('lm-bonif-detalle').value.trim() : '',
       refCompra: esBon ? (document.getElementById('lm-bonif-ref')?.value || '').trim() : '',
-      agenciaContratante: esBon ? '' : document.getElementById('lm-agencia').value.trim(), comisionAgencia: esBon ? '' : ledMultiComision_(), contratadoPor: esBon ? '' : ledMultiContratadoPor_(),
+      agenciaContratante: esBon || esCanje ? '' : document.getElementById('lm-agencia').value.trim(), comisionAgencia: esBon || esCanje ? '' : ledMultiComision_(), contratadoPor: esBon || esCanje ? '' : ledMultiContratadoPor_(),
       pdfBase64: _ledMultiPdfBase64, pdfNombre: _ledMultiPdfFile ? _ledMultiPdfFile.name : 'orden.pdf'
     }) });
     try { json = await res.json(); }
@@ -10716,7 +10799,8 @@ async function confirmarContratoLEDMulti() {
       if (!json.pendiente && json.ids && json.ids.length) setTimeout(() => openProgramacionLED(json.ids[0]), 700);
       return;
     }
-    showToast(json.avisoCorreo ? '✅ ' + pantallas.length + ' contratos LED creados — ⚠️ ' + json.avisoCorreo : '✅ ' + pantallas.length + ' contratos LED creados — correo enviado', json.avisoCorreo ? 'info' : 'success');
+    if (esCanje) showToast('🔄 Canje ALACC registrado: ' + (json.canje || 0) + ' en canje' + (json.excedentes ? ' · ' + json.excedentes + ' como excedente pagado' : '') + (json.avisoCorreo ? ' · ⚠️ ' + json.avisoCorreo : ''), json.avisoCorreo ? 'info' : 'success');
+    else showToast(json.avisoCorreo ? '✅ ' + pantallas.length + ' contratos LED creados — ⚠️ ' + json.avisoCorreo : '✅ ' + pantallas.length + ' contratos LED creados — correo enviado', json.avisoCorreo ? 'info' : 'success');
     mostrarCelebracionZaza('contratacion-multi', '¡Contratación múltiple LED lista!', json.avisoCorreo ? 'Se guardó bien, pero el correo de confirmación falló.' : 'Se envió un solo correo con la orden.', [
       { label: 'Pantallas', value: pantallas.length }, { label: 'Cliente', value: cliente }
     ]);
@@ -11067,8 +11151,9 @@ function progRender_() {
     '<div style="flex:1;min-width:240px"><div style="font-size:16px;font-weight:800;color:var(--text)">📅 Programar materiales LED</div>' +
     '<div style="font-size:12px;color:var(--muted)">' + esc(g0.cliente) + ' · contrato ' + esc(g0.inicio) + ' → ' + esc(g0.fin) + ' · ' + p.grupo.length + (p.grupo.length === 1 ? ' pantalla' : ' pantallas') + ' · ejecutiva ' + esc(g0.ejecutiva) + '</div></div>' +
     '<span id="progEstado" style="font-size:12px;font-weight:700"></span>' +
+    (ed && p.grupo.some(g => g.guardado) ? '<button onclick="progDescargarExcel_(this)" style="background:transparent;border:1px solid rgba(74,222,128,.5);border-radius:8px;color:#4ade80;font-size:12px;font-weight:700;padding:9px 14px;cursor:pointer">⬇ Descargar Excel</button>' : '') +
     (ed && p.grupo.some(g => g.guardado) ? '<button onclick="progReenviar_()" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;padding:9px 14px;cursor:pointer">Reenviar Excel vigente</button>' : '') +
-    (ed ? '<button onclick="progGuardar_()" id="progBtnGuardar" style="background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:800;font-size:13px;padding:10px 18px;cursor:pointer">Guardar y avisar a John y equipo</button>' : '<span style="font-size:12px;color:' + (p.pendienteAut ? '#fbbf24' : 'var(--muted)') + '">' + (p.pendienteAut ? '⏳ Bonificación por autorizar: podrás programar al autorizarse' : 'Solo lectura') + '</span>') +
+    (ed ? '<button onclick="progGuardar_()" id="progBtnGuardar" style="background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:800;font-size:13px;padding:10px 18px;cursor:pointer">GUARDAR E INFORMAR AL EQUIPO DE PROGRAMACIÓN</button>' : '<span style="font-size:12px;color:' + (p.pendienteAut ? '#fbbf24' : 'var(--muted)') + '">' + (p.pendienteAut ? '⏳ Bonificación por autorizar: podrás programar al autorizarse' : 'Solo lectura') + '</span>') +
     '<button onclick="progCerrar_()" aria-label="Cerrar" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:8px 14px;cursor:pointer">✕</button></div>';
   h += '<div style="padding:16px 20px;max-width:1500px;margin:0 auto">';
   if (p.diferentes) h += '<div style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--accent);margin-bottom:12px">Estas pantallas tenían materiales distintos entre sí. Al guardar se unifican con los que ves aquí.</div>';
@@ -11237,8 +11322,27 @@ async function progGuardar_() {
     await openProgramacionLED(p.idRef); // recarga lo guardado
   } catch (e) {
     showToast('❌ ' + e.message, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = 'Guardar y avisar a John y equipo'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'GUARDAR E INFORMAR AL EQUIPO DE PROGRAMACIÓN'; }
   }
+}
+async function progDescargarExcel_(btn) {
+  const p = _prog; if (!p) return;
+  if (progHayCambios_() && !confirm('Tienes cambios sin guardar. Se descargará la programación GUARDADA (sin esos cambios). ¿Continuar?')) return;
+  const txt = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Generando…'; }
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledDescargarProgramacion', id: p.idRef }) });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    const bin = atob(json.base64), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const a = document.createElement('a'); a.href = url; a.download = json.nombre || 'Programacion_LED.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('✅ Excel descargado', 'success');
+  } catch (e) { showToast('❌ ' + e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = txt; } }
 }
 async function progReenviar_() {
   const p = _prog; if (!p) return;
@@ -11280,6 +11384,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
       <div style="display:flex;gap:6px;margin-bottom:12px;background:var(--surface2);border-radius:9px;padding:4px">
         <button type="button" id="led-tipo-pagada" onclick="ledSetTipo('PAGADA')" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:var(--accent);color:#000">Pagada</button>
         <button type="button" id="led-tipo-bonif" onclick="ledSetTipo('BONIFICADA')" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:transparent;color:var(--muted)">🎁 Bonificada</button>
+        <button type="button" onclick="ledIrACanje_()" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:transparent;color:var(--muted)">🔄 Canje ALACC</button>
       </div>
       <div id="led-bonif-box" style="display:none;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.07);border-radius:10px;padding:12px;margin-bottom:12px">
         <div class="form-row">
@@ -11358,6 +11463,16 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
   checkLEDForm();
 }
 
+// Canje ALACC desde el registro individual: se pasa al formulario múltiple con esa pantalla (allí están las reglas del canje)
+function ledIrACanje_() {
+  const pid = document.getElementById('led-player')?.value;
+  if (!pid) { showToast('Primero elige la pantalla', 'info'); return; }
+  if (!ledTarifaCanje_(ledCodigoDePlayer_(pid))) { showToast('Esta pantalla no está en el convenio de canje ALACC', 'error'); return; }
+  closeModal();
+  ledMultiSel = new Set([pid]);
+  openModalMultiContratoLED();
+  lmSetTipo('CANJE');
+}
 let _ledTipo = 'PAGADA';
 // Pagada | Bonificada (registro individual): en bonificada el valor es solo de REFERENCIA (valor de lista) y se registra por la misma vía
 // que la contratación múltiple (una sola pantalla): por autorizar, o autorizada al instante si quien la registra puede autorizarla.
