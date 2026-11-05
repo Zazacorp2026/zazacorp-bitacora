@@ -10027,6 +10027,8 @@ function buildLEDUI(container, data) {
       // offline. Los elementos externos (sin VNNOX) no tienen esa señal,
       // así que siempre se pueden contratar.
       const bloqueadoOffline = !player.esExterno && player.isOnline === false;
+      // (2026-11-05) Offline bloquea de verdad a las ejecutivas (recuadros, múltiple, modal y servidor); Jorge sí puede
+      const offlineNoAdmin = bloqueadoOffline && (_usuarioActual || '').toUpperCase() !== 'JORGE';
       // (2026-11-04) Jorge puede bloquear las nuevas contrataciones de una pantalla (si se satura).
       // Para él sigue habilitada; para las ejecutivas no.
       const bloqueadaAdmin = !!player.bloqueada;
@@ -10045,10 +10047,10 @@ function buildLEDUI(container, data) {
       if (ledMultiMode) {
         // Contratación múltiple: casilla para elegir esta pantalla (no si está llena o fuera de línea)
         const llena = playerContratos.length >= capacidad;
-        const noSeleccionable = llena || bloqueadoOffline || noContratable;
+        const noSeleccionable = llena || offlineNoAdmin || noContratable;
         htmlGrupos += '<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:800;border-bottom:1px solid var(--border);cursor:' + (noSeleccionable ? 'not-allowed' : 'pointer') + ';color:' + (noSeleccionable ? 'var(--muted)' : '#818cf8') + '">' +
           '<input type="checkbox" ' + (noSeleccionable ? 'disabled' : '') + ' ' + (ledMultiSel.has(player.playerId) ? 'checked' : '') + ' data-pid="' + esc(player.playerId) + '" onchange="ledMultiToggle(this.dataset.pid, this.checked)"> ' +
-          (noContratable ? '🔒 Contrataciones bloqueadas' : llena ? 'Sin espacios libres' : (bloqueadoOffline ? 'Fuera de línea' : 'Incluir en la contratación múltiple')) + '</label>';
+          (noContratable ? '🔒 Contrataciones bloqueadas' : llena ? 'Sin espacios libres' : (offlineNoAdmin ? 'Fuera de línea' : 'Incluir en la contratación múltiple')) + '</label>';
       }
       htmlGrupos += '<div class="led-banner">' +
         (player.foto ? '<img src="'+cldOptimizar(player.foto, 400)+'" loading="lazy">' : '') +
@@ -10063,7 +10065,7 @@ function buildLEDUI(container, data) {
           (player.account ? ' <span style="font-size:9px;color:var(--muted);background:var(--surface2);border-radius:4px;padding:1px 5px">' + player.account + '</span>' : '') +
         '</div>' +
         (ledTarifaCanje_(ledCodigoDePlayer_(player.playerId)) ? '<div style="font-size:10.5px;font-weight:700;color:#a5b4fc;margin:2px 0">🔄 En canje ALACC · extra $' + ledTarifaCanje_(ledCodigoDePlayer_(player.playerId)).toLocaleString('en-US') + ' + IVA</div>' : '') +
-        (bloqueadoOffline ? '<div style="font-size:10px;color:#f87171;margin:2px 0">Pantalla offline: no se pueden agregar nuevas contrataciones hasta que vuelva a línea</div>' : '') +
+        (bloqueadoOffline ? '<div style="font-size:10px;color:#f87171;margin:2px 0">Pantalla offline: no se pueden agregar nuevas contrataciones hasta que vuelva a línea' + (offlineNoAdmin ? '' : ' (tú sí puedes, como administrador)') + '</div>' : '') +
         (bloqueadaAdmin ? '<div style="font-size:10.5px;font-weight:700;color:#f87171;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);border-radius:6px;padding:4px 8px;margin:4px 0">🔒 Nuevas contrataciones bloqueadas' + (esAdmin ? ' para las ejecutivas (tú sí puedes contratar)' : ' por el administrador') + '</div>' : '') +
         (esAdmin ? '<button data-pid="' + esc(player.playerId) + '" data-nombre="' + esc(player.name || '') + '" onclick="event.stopPropagation();toggleBloqueoLED(this.dataset.pid, ' + (bloqueadaAdmin ? 'false' : 'true') + ', this.dataset.nombre)" style="margin:4px 0;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;' +
           (bloqueadaAdmin ? 'background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.45);color:#4ade80">🔓 Permitir nuevas contrataciones' : 'background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.4);color:#f87171">🔒 Bloquear nuevas contrataciones') + '</button>' : '') +
@@ -10114,6 +10116,8 @@ function buildLEDUI(container, data) {
       for (let s = playerContratos.length; s < capacidad; s++) {
         htmlGrupos += noContratable
           ? '<div class="led-slot-empty" style="cursor:not-allowed;opacity:.55;border-color:rgba(248,113,113,.4);color:#f87171">🔒 Bloqueado</div>'
+          : offlineNoAdmin
+          ? '<div class="led-slot-empty" style="cursor:not-allowed;opacity:.55;border-color:rgba(248,113,113,.4);color:#f87171">📴 Offline · no disponible</div>'
           : '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">Ingresar nueva contratación</div>';
       }
       htmlGrupos += '</div>'; // led-slots-grid
@@ -11421,9 +11425,9 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
   let playerOpts = elementos.map(el => {
     const pid = el.playerVnnoxId || el.codigo;
     const llena = pid !== prePlayerId && contratosLed.filter(c => c.playerId === pid && c.activo).length >= (el.capacidad || 15);
-    const bloq = !!el.bloqueada && (_usuarioActual || '').toUpperCase() !== 'JORGE';
+    const bloq = (!!el.bloqueada || (!!el.playerVnnoxId && el.isOnline === false)) && (_usuarioActual || '').toUpperCase() !== 'JORGE';
     return '<option value="' + esc(pid) + '" data-nombre="' + esc(el.codigo + ' — ' + pid) + '"' + (pid === prePlayerId && !bloq ? ' selected' : '') + (llena || bloq ? ' disabled' : '') + '>' +
-      esc(el.codigo + (el.direccion ? ' — ' + String(el.direccion).substring(0, 40) : '') + (bloq ? ' · 🔒 bloqueada' : llena ? ' · sin espacios' : '')) + '</option>';
+      esc(el.codigo + (el.direccion ? ' — ' + String(el.direccion).substring(0, 40) : '') + (bloq ? (el.bloqueada ? ' · 🔒 bloqueada' : ' · 📴 offline') : llena ? ' · sin espacios' : '')) + '</option>';
   }).join('');
   // Respaldo: si la pantalla elegida en la grilla no está en la lista, se agrega igual (el selector nunca queda en blanco)
   if (prePlayerId && !elementos.some(el => (el.playerVnnoxId || el.codigo) === prePlayerId)) {
