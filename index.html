@@ -10608,6 +10608,7 @@ function openModalMultiContratoLED() {
       </div>
       <div id="lm-canje-box" style="display:none;border:1px solid rgba(129,140,248,.45);background:rgba(129,140,248,.07);border-radius:10px;padding:12px;margin-bottom:12px">
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Contrato ALACC: 2 espacios por mes calendario en total, no acumulables. Desde el 3ro del mes se cobra la tarifa del contrato (+ IVA). Las fechas deben quedar dentro del mismo mes.</div>
+        <div class="form-group" style="margin-bottom:10px"><label>Marca que pauta ALACC (obligatorio)</label><input type="text" id="lm-canje-marca" placeholder="Ej: SUPERMAXI, ETAFASHION" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();checkLEDMultiForm()"></div>
         <div id="lm-canje-detalle" style="font-size:12.5px"></div>
       </div>
       <div id="lm-bonif-box" style="display:none;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.07);border-radius:10px;padding:12px;margin-bottom:12px">
@@ -10697,8 +10698,13 @@ function lmSetTipo(t) {
   set('lm-canje-box', canje ? 'block' : 'none', 'display');
   set('lm-valores-box', canje ? 'none' : 'block', 'display');
   set('lm-agencia-box', bon || canje ? 'none' : 'block', 'display');
+  // En canje el cliente es siempre ALACC (fijo); la marca va aparte y se guarda como "ALACC · MARCA"
+  const clFix = document.getElementById('lm-cliente');
+  if (clFix) {
+    if (canje) { if (!clFix.dataset.antes) clFix.dataset.antes = clFix.value; clFix.value = 'ALACC'; clFix.readOnly = true; clFix.style.opacity = '.6'; }
+    else if (clFix.readOnly) { clFix.readOnly = false; clFix.style.opacity = ''; clFix.value = clFix.dataset.antes || ''; delete clFix.dataset.antes; }
+  }
   if (canje) {
-    const cl = document.getElementById('lm-cliente'); if (cl && !cl.value.trim()) cl.value = 'ALACC';
     const pdfN0 = document.getElementById('lmPdfNombre'); if (pdfN0 && !_ledMultiPdfFile) pdfN0.textContent = 'Orden o respaldo en PDF (opcional)';
     const btn0 = document.getElementById('btnLEDMultiConfirmar'); if (btn0) btn0.textContent = '🔄 Registrar canje ALACC';
     calcLEDMultiTotales();
@@ -10797,14 +10803,16 @@ function checkLEDMultiForm() {
   const bonOk = (document.getElementById('lm-bonif-motivo')?.value || '') && ((document.getElementById('lm-bonif-detalle')?.value || '').trim().length >= 3);
   const basicosCanje = document.getElementById('lm-cliente')?.value.trim() && document.getElementById('lm-ejecutiva')?.value &&
     document.getElementById('lm-inicio')?.value && document.getElementById('lm-fin')?.value && ledMultiMeses_();
-  const ok = _lmTipo === 'CANJE' ? (basicosCanje && !lmCanjeActualizar_())
+  const ok = _lmTipo === 'CANJE' ? (basicosCanje && (document.getElementById('lm-canje-marca')?.value || '').trim() && !lmCanjeActualizar_())
     : _lmTipo === 'BONIFICADA' ? (basicos && bonOk)
     : (esAdmin ? basicos : (basicos && document.getElementById('lm-agencia')?.value.trim() && ledMultiComision_() && ledMultiContratadoPor_() && _ledMultiPdfBase64));
   btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; btn.style.cursor = ok ? 'pointer' : 'not-allowed';
 }
 async function confirmarContratoLEDMulti() {
   const items = ledMultiElementos_();
-  const cliente = document.getElementById('lm-cliente').value.trim().toUpperCase();
+  const cliente = _lmTipo === 'CANJE'
+    ? 'ALACC · ' + (document.getElementById('lm-canje-marca')?.value || '').trim().toUpperCase()
+    : document.getElementById('lm-cliente').value.trim().toUpperCase();
   const ejecutiva = document.getElementById('lm-ejecutiva').value;
   const inicio = document.getElementById('lm-inicio').value, fin = document.getElementById('lm-fin').value;
   if (fin <= inicio) { showToast('❌ La fecha fin debe ser posterior a la fecha de inicio', 'error'); return; }
@@ -10829,6 +10837,7 @@ async function confirmarContratoLEDMulti() {
       action: 'registrarContratoLEDMultiple', pantallas, materiales, cliente, ejecutiva, inicio, fin,
       spots: document.getElementById('lm-spots').value,
       tipo: esCanje ? 'CANJE' : (esBon ? 'BONIFICADA' : 'PAGADA'),
+      marca: esCanje ? (document.getElementById('lm-canje-marca')?.value || '').trim().toUpperCase() : '',
       motivoBonif: esBon ? document.getElementById('lm-bonif-motivo').value : '', detalleBonif: esBon ? document.getElementById('lm-bonif-detalle').value.trim() : '',
       refCompra: esBon ? (document.getElementById('lm-bonif-ref')?.value || '').trim() : '',
       agenciaContratante: esBon || esCanje ? '' : document.getElementById('lm-agencia').value.trim(), comisionAgencia: esBon || esCanje ? '' : ledMultiComision_(), contratadoPor: esBon || esCanje ? '' : ledMultiContratadoPor_(),
