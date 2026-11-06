@@ -648,7 +648,7 @@
     <input type="checkbox" id="chkMostrarPrereservadas" checked onchange="toggleMostrarPrereservadasDisp(this.checked)" style="cursor:pointer">
     Mostrar pre-reservadas
   </label>
-  <button id="btnExportPPT" onclick="toggleMenuExportDisp(event)" title="Exportar en PowerPoint, PDF o Excel" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar ▾</button>
+  <button id="btnExportPPT" onclick="toggleMenuExport(event,'disp')" title="Exportar en PowerPoint, PDF o Excel" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar ▾</button>
   <div id="filtroMesWrap" style="display:none;align-items:center;gap:8px;background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:10px;padding:6px 10px">
     <span style="font-size:12px;color:var(--accent);font-weight:700;white-space:nowrap">📅 Disponibles a partir de (día exacto o solo mes):</span>
     <select id="selDiaDisp" onchange="aplicarFiltroMesSel()" title="Día exacto (opcional)" style="color-scheme:dark;background:var(--surface);border:1px solid var(--accent);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:7px 9px;font-family:'Space Grotesk',sans-serif;cursor:pointer">
@@ -662,8 +662,7 @@
     </select>
     <button id="btnClearMes" onclick="limpiarFiltroMes()" style="display:none;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;padding:6px 9px;cursor:pointer">✕ Quitar</button>
   </div>
-  <button id="btnInvPPT" onclick="exportarPPTInventario()" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
-  <button id="btnInvExcel" onclick="exportarExcelInventario()" style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.35);border-radius:8px;color:#4ade80;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(74,222,128,.18)'" onmouseout="this.style.background='rgba(74,222,128,.08)'">⬇ Exportar Excel</button>
+  <button id="btnInvPPT" onclick="toggleMenuExport(event,'inv')" title="Exportar en PowerPoint, PDF o Excel" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar ▾</button>
   <button id="btnInvOmni" onclick="omniExportarInventario()" style="display:none;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.4);border-radius:8px;color:#38bdf8;font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" title="Excel con el formato que pide Omniooh (solo admin)">📤 Para Omniooh</button>
   <button id="btnMultiSelectInv" onclick="toggleMultiSelectInv()" style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.35);border-radius:8px;color:#a78bfa;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(139,92,246,.25)'" onmouseout="this.style.background='rgba(139,92,246,.12)'">☐ Seleccionar</button>
       <button id="btnMultiSelect" onclick="toggleMultiSelect()" style="display:none;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;color:#3b82f6;font-size:11px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(59,130,246,.25)'" onmouseout="this.style.background='rgba(59,130,246,.12)'">☐ Selección múltiple</button>
@@ -8515,8 +8514,7 @@ function updateInvExportBtns() {
   const n    = selectedInv.size;
   const ppt  = document.getElementById('btnInvPPT');
   const exc  = document.getElementById('btnInvExcel');
-  if (ppt)  ppt.textContent  = n > 0 ? '⬇ Exportar PPT (' + n + ')' : '⬇ Exportar PPT';
-  if (exc)  exc.textContent  = n > 0 ? '⬇ Exportar Excel (' + n + ')' : '⬇ Exportar Excel';
+  if (ppt && !ppt.disabled) ppt.textContent = txtBtnExportInv_();
 }
 
 // ── Visor de foto con zoom y arrastre ────────────────────────
@@ -8936,7 +8934,9 @@ async function exportarPPTInventario() {
       'CONTRATADA': { bg:'FEE2E2', border:'EF4444', text:'CONTRATADA', color:'B91C1C' },
     };
 
-    for (const v of vallas) {
+    for (const grupoCiudad of pptAgruparPorCiudad_(vallas)) {
+    pptLaminaCiudad_(pres, grupoCiudad.ciudad, grupoCiudad.items.length);
+    for (const v of grupoCiudad.items) {
       const slide = pres.addSlide();
       slide.background = { color: WHITE };
 
@@ -9013,6 +9013,7 @@ async function exportarPPTInventario() {
       }
       slide.addImage({ data: LOGO_ZAZACORP_LIMPIO, x:11.6,y:6.9,w:1.5,h:0.48 });
     }
+    } // fin grupo por ciudad
 
     const fecha = new Date().toISOString().split('T')[0];
     await pres.writeFile({ fileName: 'ZAZANEXUS_Inventario_' + fecha + '.pptx' });
@@ -9021,7 +9022,7 @@ async function exportarPPTInventario() {
     showToast('❌ Error: ' + e.message, 'error');
     console.error(e);
   } finally {
-    btn.textContent = '⬇ Exportar PPT'; btn.disabled = false;
+    btn.textContent = txtBtnExportInv_(); btn.disabled = false;
   }
 }
 
@@ -9131,7 +9132,7 @@ async function omniExportarInventario() {
 
 // ── Exportar Excel Inventario ────────────────────────────────
 async function exportarExcelInventario() {
-  const btn = document.getElementById('btnInvExcel');
+  const btn = document.getElementById('btnInvPPT');
   btn.textContent = '⏳ Generando Excel...'; btn.disabled = true;
 
   try {
@@ -9201,7 +9202,7 @@ async function exportarExcelInventario() {
     showToast('❌ Error: ' + e.message, 'error');
     console.error(e);
   } finally {
-    btn.textContent = '⬇ Exportar Excel'; btn.disabled = false;
+    btn.textContent = txtBtnExportInv_(); btn.disabled = false;
   }
 }
 
@@ -9381,25 +9382,43 @@ function disponiblesParaExportar_() {
 function txtBtnExportDisp_() {
   return '⬇ Exportar' + ((multiSelectMode && selectedVallas.size > 0 && state.tab === 'disponibles') ? ' (' + selectedVallas.size + ' seleccionadas)' : '') + ' ▾';
 }
-function toggleMenuExportDisp(ev) {
+function txtBtnExportInv_() { const n = selectedInv.size; return '⬇ Exportar' + (n > 0 ? ' (' + n + ')' : '') + ' ▾'; }
+function inventarioParaExportar_() { return selectedInv.size > 0 ? DATA.filter(v => selectedInv.has(v.codigo)) : getFiltered(); }
+// (2026-11-06) Menú "Exportar" estilo mosaico (opción C elegida por Jorge): 3 tarjetas PPT / PDF / Excel.
+// ctx = 'disp' (Disponibles) o 'inv' (Inventario).
+const EXPORT_CTX_ = {
+  disp: { btn: 'btnExportPPT', lista: () => disponiblesParaExportar_(), ppt: 'exportarPPT', pdf: 'exportarPDFDisp', xls: 'exportarExcelDisp' },
+  inv:  { btn: 'btnInvPPT',    lista: () => inventarioParaExportar_(),  ppt: 'exportarPPTInventario', pdf: 'exportarPDFInv', xls: 'exportarExcelInventario' }
+};
+function toggleMenuExport(ev, ctx) {
   if (ev) ev.stopPropagation();
   let m = document.getElementById('menuExportDisp');
-  if (m) { m.remove(); return; }
-  const btn = document.getElementById('btnExportPPT');
+  if (m) { const mismo = m.dataset.ctx === ctx; m.remove(); if (mismo) return; }
+  const cfg = EXPORT_CTX_[ctx];
+  const btn = document.getElementById(cfg.btn);
   if (!btn || btn.disabled) return;
   const r = btn.getBoundingClientRect();
+  const W = 360;
+  const n = cfg.lista().length;
   m = document.createElement('div');
-  m.id = 'menuExportDisp';
-  m.style.cssText = 'position:fixed;z-index:9999;top:' + (r.bottom + 6) + 'px;left:' + Math.max(8, Math.min(r.left, window.innerWidth - 230)) + 'px;width:220px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:6px;font-family:\'Space Grotesk\',sans-serif';
-  const op = (ico, t, sub, fn) => '<button onclick="document.getElementById(\'menuExportDisp\').remove();' + fn + '()" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:none;border-radius:7px;padding:9px 10px;color:var(--text);cursor:pointer;font-family:inherit" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'"><span style="font-size:17px">' + ico + '</span><span><span style="display:block;font-size:12.5px;font-weight:700">' + t + '</span><span style="display:block;font-size:10.5px;color:var(--muted)">' + sub + '</span></span></button>';
-  m.innerHTML = op('📊', 'PowerPoint (.pptx)', 'Una lámina por elemento', 'exportarPPT') +
-                op('📄', 'PDF', 'Mismo diseño que el PPT', 'exportarPDFDisp') +
-                op('📗', 'Excel (.xlsx)', 'Listado con links a mapa y foto', 'exportarExcelDisp');
+  m.id = 'menuExportDisp'; m.dataset.ctx = ctx;
+  m.style.cssText = 'position:fixed;z-index:9999;top:' + (r.bottom + 8) + 'px;left:' + Math.max(8, Math.min(r.left, window.innerWidth - W - 8)) + 'px;width:' + W + 'px;max-width:calc(100vw - 16px);box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:12px;font-family:\'Space Grotesk\',sans-serif';
+  const tile = (svg, t, sub, fn, col) => '<button onclick="document.getElementById(\'menuExportDisp\').remove();' + fn + '()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:transparent;border:1px solid var(--border);border-radius:10px;padding:14px 6px 12px;cursor:pointer;font-family:inherit;color:var(--text);transition:border-color .15s,background .15s" onmouseover="this.style.borderColor=\'' + col + '\';this.style.background=\'var(--surface2)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'transparent\'">' + svg + '<span style="font-size:13px;font-weight:700">' + t + '</span><span style="font-size:10.5px;color:var(--muted)">' + sub + '</span></button>';
+  const ico = (col, extra) => '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="' + col + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + extra + '</svg>';
+  const icPPT = ico('#fb923c', '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8M7 12l3-3 2 2 4-4"/>');
+  const icPDF = ico('#f87171', '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h1.5a1.5 1.5 0 0 1 0 3H9v-5M15 11v5"/>');
+  const icXLS = ico('#34d399', '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8 11h8M8 15h8M12 11v8"/>');
+  m.innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' +
+      tile(icPPT, 'PPT', 'Láminas', cfg.ppt, '#fb923c') +
+      tile(icPDF, 'PDF', 'Para enviar', cfg.pdf, '#f87171') +
+      tile(icXLS, 'Excel', 'Listado', cfg.xls, '#34d399') +
+    '</div><div style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">' + n + (n === 1 ? ' elemento' : ' elementos') + ' · agrupados por ciudad</div>';
   document.body.appendChild(m);
   setTimeout(() => document.addEventListener('click', function cerrar(e) { const mm = document.getElementById('menuExportDisp'); if (mm && !mm.contains(e.target)) mm.remove(); document.removeEventListener('click', cerrar); }), 0);
 }
-function exportDispInicio_(txt) { const b = document.getElementById('btnExportPPT'); if (b) { b.textContent = txt; b.disabled = true; } return b; }
-function exportDispFin_() { const b = document.getElementById('btnExportPPT'); if (b) { b.disabled = false; b.textContent = txtBtnExportDisp_(); } }
+
+function exportDispInicio_(txt, id) { const b = document.getElementById(id || 'btnExportPPT'); if (b) { b.textContent = txt; b.disabled = true; } return b; }
+function exportDispFin_(id) { const b = document.getElementById(id || 'btnExportPPT'); if (b) { b.disabled = false; b.textContent = (id === 'btnInvPPT') ? txtBtnExportInv_() : txtBtnExportDisp_(); } }
 function cargarScript_(urls) {
   return urls.reduce((p, u) => p.catch(() => new Promise((res, rej) => { const s = document.createElement('script'); s.src = u; s.onload = res; s.onerror = rej; document.head.appendChild(s); })), Promise.reject());
 }
@@ -9423,10 +9442,12 @@ async function fotoCoverDataURL_(src, w, h) {
 function fotoDeValla_(v) { return cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 1600); }
 function coordsOK_(v) { return v.lat && v.lon && String(v.lat).trim() && Math.abs(parseFloat(v.lat)) < 10; }
 
-async function exportarPDFDisp() {
-  const lista = disponiblesParaExportar_();
-  if (!lista.length) { showToast('No hay disponibles con los filtros actuales', 'info'); return; }
-  exportDispInicio_('⏳ Generando PDF…');
+function exportarPDFDisp() { return exportarPDF_(disponiblesParaExportar_(), 'btnExportPPT', false, 'Zazacorp_Disponibles_'); }
+function exportarPDFInv() { return exportarPDF_(inventarioParaExportar_(), 'btnInvPPT', true, 'ZAZANEXUS_Inventario_'); }
+// modoInv: el recuadro muestra el estado real (DISPONIBLE / RESERVADA / CONTRATADA), como el PPT de Inventario.
+async function exportarPDF_(lista, btnId, modoInv, prefijo) {
+  if (!lista.length) { showToast('No hay elementos con los filtros actuales', 'info'); return; }
+  exportDispInicio_('⏳ Generando PDF…', btnId);
   try {
     if (!(window.jspdf && window.jspdf.jsPDF)) await cargarScript_(['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js']);
     const W = 13.333, H = 7.5;
@@ -9448,7 +9469,7 @@ async function exportarPDFDisp() {
       doc.text(g.items.length + (g.items.length === 1 ? ' elemento' : ' elementos'), W / 2, 4.9, { align: 'center' });
       for (const v of g.items) {
         n++;
-        const b = document.getElementById('btnExportPPT'); if (b) b.textContent = '⏳ PDF ' + n + '/' + lista.length + '…';
+        const b = document.getElementById(btnId); if (b) b.textContent = '⏳ PDF ' + n + '/' + lista.length + '…';
         doc.addPage([W, H], 'landscape');
         fill(ORANGE); doc.rect(0, 0, 7.3, H, 'F'); fill('FFFFFF'); doc.rect(0, 0, 0.35, H, 'F');
         const src = fotoDeValla_(v);
@@ -9457,9 +9478,11 @@ async function exportarPDFDisp() {
         else { fill('D96A10'); doc.rect(0.5, 1.4, 6.3, 4.7, 'F'); doc.setFont('helvetica', 'normal'); doc.setFontSize(13); color('FFFFFF'); doc.text('Foto próximamente', 3.65, 3.8, { align: 'center' }); }
         const rx = 7.55;
         const esRes = v.estado === 'RESERVADA';
-        const bt = pptBadgeTipo_(v, esRes ? 'RESERVADA' : 'DISPONIBLE');
-        fill(esRes ? 'FEF3C7' : 'E8F5EE'); stroke(esRes ? 'B45309' : GREEN); doc.setLineWidth(0.01); doc.rect(rx, 0.35, bt.w, 0.35, 'FD');
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(8); color(esRes ? 'B45309' : GREEN); doc.text(bt.txt, rx + bt.w / 2, 0.575, { align: 'center' });
+        const est = modoInv && v.estado === 'CONTRATADA' ? 'CONTRATADA' : (esRes ? 'RESERVADA' : 'DISPONIBLE');
+        const bc = { DISPONIBLE: ['E8F5EE', GREEN, GREEN], RESERVADA: ['FEF3C7', 'F59E0B', 'B45309'], CONTRATADA: ['FEE2E2', 'EF4444', 'B91C1C'] }[est];
+        const bt = pptBadgeTipo_(v, est);
+        fill(bc[0]); stroke(bc[1]); doc.setLineWidth(0.01); doc.rect(rx, 0.35, bt.w, 0.35, 'FD');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8); color(bc[2]); doc.text(bt.txt, rx + bt.w / 2, 0.575, { align: 'center' });
         doc.setFontSize(34); color(DARK); doc.text(String(v.codigo || ''), rx, 1.45);
         stroke('E5E7EB'); doc.line(rx, 1.78, rx + 5.5, 1.78);
         [['LUGAR', v.lugar], ['TIPO', v.tipo], ['MEDIDAS', v.medidas]].forEach((d, i) => {
@@ -9490,10 +9513,10 @@ async function exportarPDFDisp() {
         try { doc.addImage('data:' + LOGO_ZAZACORP_LIMPIO, 'PNG', 11.6, 6.9, 1.5, 0.48); } catch (e) {}
       }
     }
-    descargarBlob_(doc.output('blob'), 'Zazacorp_Disponibles_' + fechaLocalISO_() + '.pdf');
+    descargarBlob_(doc.output('blob'), prefijo + fechaLocalISO_() + '.pdf');
     showToast('✓ PDF descargado con ' + lista.length + (lista.length === 1 ? ' elemento' : ' elementos'), 'success');
   } catch (e) { console.error(e); showToast('❌ Error al generar el PDF: ' + e.message, 'error'); }
-  finally { exportDispFin_(); }
+  finally { exportDispFin_(btnId); }
 }
 
 async function exportarExcelDisp() {
