@@ -11312,7 +11312,7 @@ function progIniciar_(json, idContrato) {
   for (let y = +ini.slice(0, 4), m = +ini.slice(5, 7) - 1; (y < +fin.slice(0, 4)) || (y === +fin.slice(0, 4) && m <= +fin.slice(5, 7) - 1); m++) { if (m > 11) { m = 0; y++; } meses.push({ y: y, m: m }); if (meses.length > 24) break; }
   let mesIdx = meses.findIndex(x => x.y === +hoy.slice(0, 4) && x.m === +hoy.slice(5, 7) - 1);
   if (mesIdx < 0) mesIdx = hoy < ini ? 0 : meses.length - 1;
-  _prog = { hoy: hoy, maxActivas: json.maxActivas, grupo: grupo, slots: slots, aireadas: aireadas, meses: meses, mesIdx: mesIdx, puedeEditar: json.puedeEditar && !json.pendienteAutorizacion, pendienteAut: !!json.pendienteAutorizacion, diferentes: diferentes, idRef: idContrato, base: '', aviso: '' };
+  _prog = { hoy: hoy, maxActivas: json.maxActivas, grupo: grupo, slots: slots, aireadas: aireadas, meses: meses, mesIdx: mesIdx, puedeEditar: json.puedeEditar && !json.pendienteAutorizacion, pendienteAut: !!json.pendienteAutorizacion, corrimiento: json.corrimiento || null, diferentes: diferentes, idRef: idContrato, base: '', aviso: '' };
   _prog.base = progSnapshot_();
   progRender_();
 }
@@ -11332,6 +11332,8 @@ function progRender_() {
     (ed ? '<button onclick="progGuardar_()" id="progBtnGuardar" style="background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:800;font-size:13px;padding:10px 18px;cursor:pointer">GUARDAR E INFORMAR AL EQUIPO DE PROGRAMACIÓN</button>' : '<span style="font-size:12px;color:' + (p.pendienteAut ? '#fbbf24' : 'var(--muted)') + '">' + (p.pendienteAut ? '⏳ Bonificación por autorizar: podrás programar al autorizarse' : 'Solo lectura') + '</span>') +
     '<button onclick="progCerrar_()" aria-label="Cerrar" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:8px 14px;cursor:pointer">✕</button></div>';
   h += '<div style="padding:16px 20px;max-width:1500px;margin:0 auto">';
+  // (2026-11-06) contrato sin material ni programación con el inicio ya pasado: se corre desde hoy
+  if (p.corrimiento) { const k = p.corrimiento; h += '<div style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.55;color:var(--text);margin-bottom:12px">📆 <b>Este contrato se correrá al guardar.</b> Se registró del ' + esc(k.inicioOriginal) + ' al ' + esc(k.finOriginal) + ' pero no tuvo material ni programación. Para que el cliente cumpla su período completo, al guardar quedará del <b>' + esc(k.inicio) + ' al ' + esc(k.fin) + '</b> (' + k.dias + (k.dias === 1 ? ' día' : ' días') + ' más). Ya puedes programar hasta el ' + esc(k.fin) + '.</div>'; }
   if (p.diferentes) h += '<div style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--accent);margin-bottom:12px">Estas pantallas tenían materiales distintos entre sí. Al guardar se unifican con los que ves aquí.</div>';
   h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
     '<div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:8px">Materiales (hasta 6 versiones — se aplican a todas las pantallas de esta contratación)</div>' +
@@ -11492,7 +11494,7 @@ async function progGuardar_() {
     }
     if (json.error) throw new Error(json.error);
     if (json.sinCambios) { showToast('No hay cambios respecto a lo ya guardado', 'info'); }
-    else showToast(json.avisoCorreo ? '✅ Programación guardada — ⚠️ ' + json.avisoCorreo : '✅ Programación guardada' + (notificar ? ' — correo con el Excel enviado' : ''), json.avisoCorreo ? 'info' : 'success');
+    else showToast((json.avisoCorreo ? '✅ Programación guardada — ⚠️ ' + json.avisoCorreo : '✅ Programación guardada' + (notificar ? ' — correo con el Excel enviado' : '')) + (json.corrimiento ? ' · 📆 Contrato corrido: ahora va del ' + json.corrimiento.inicio + ' al ' + json.corrimiento.fin : ''), json.avisoCorreo ? 'info' : 'success');
     _ledData = null;
     renderLED(document.getElementById('mainContent'), true);
     await openProgramacionLED(p.idRef); // recarga lo guardado
