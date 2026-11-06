@@ -1010,7 +1010,7 @@ function cfgPintar_() {
   let h = '<div style="max-width:1100px;margin:0 auto;padding:16px 18px 80px;text-align:left;box-sizing:border-box">' +
     '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px">' +
       '<div style="flex:1;min-width:200px"><div style="font-size:18px;font-weight:800;color:var(--text)">⚙️ Configuración</div><div style="font-size:12px;color:var(--muted)">Solo tú ves esta pestaña · cada cambio pide tu PIN y queda en el historial</div></div>' +
-      subBtn('correos', 'Correos', '✉️') + subBtn('seguridad', 'Seguridad', '🔒') + subBtn('historial', 'Historial', '🕘') + prox('👤 Usuarios') + prox('🔑 Permisos') +
+      subBtn('correos', 'Correos', '✉️') + subBtn('seguridad', 'Seguridad', '🔒') + subBtn('usuarios', 'Usuarios', '👤') + subBtn('permisos', 'Permisos', '🔑') + subBtn('historial', 'Historial', '🕘') +
     '</div>';
   if (!d.tienePin) {
     h += '<div style="background:rgba(245,158,11,.1);border:1px solid var(--accent);border-radius:12px;padding:16px;margin-bottom:16px">' +
@@ -1020,13 +1020,17 @@ function cfgPintar_() {
   }
   if (p.sub === 'correos') h += cfgPintarCorreos_();
   else if (p.sub === 'seguridad') h += cfgPintarSeguridad_();
+  else if (p.sub === 'usuarios') h += cfgPintarUsuarios_();
+  else if (p.sub === 'permisos') h += cfgPintarPermisos_();
   else h += cfgPintarHistorial_();
   h += '</div>';
-  if (p.sub === 'correos' && cfgHayCambios_()) {
-    h += '<div style="position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:12px 18px;display:flex;justify-content:flex-end;align-items:center;gap:10px;z-index:5">' +
+  const esUsr = p.sub === 'usuarios' || p.sub === 'permisos';
+  if (p.sub === 'correos' || esUsr) {
+    const hay = esUsr ? cfgUsrHayCambios_() : cfgHayCambios_();
+    h += '<div id="cfgBarraGuardar" style="position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:12px 18px;display:' + (hay ? 'flex' : 'none') + ';justify-content:flex-end;align-items:center;gap:10px;z-index:5">' +
       '<span style="font-size:12px;color:var(--accent);margin-right:auto">Tienes cambios sin guardar</span>' +
-      '<button onclick="_cfg.draft=cfgCopia_(_cfg.data.correos);cfgPintar_()" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit">Descartar</button>' +
-      '<button onclick="cfgGuardarCorreos_()" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">Guardar cambios</button></div>';
+      '<button onclick="' + (esUsr ? '_cfg.usr.draft=cfgCopia_(_cfg.usr.lista)' : '_cfg.draft=cfgCopia_(_cfg.data.correos)') + ';cfgPintar_()" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit">Descartar</button>' +
+      '<button onclick="' + (esUsr ? 'cfgGuardarUsuarios_()' : 'cfgGuardarCorreos_()') + '" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">Guardar cambios</button></div>';
   }
   board.innerHTML = h;
 }
@@ -1195,14 +1199,155 @@ function cfgPintarHistorial_() {
     return '<div style="display:flex;gap:12px;align-items:flex-start;padding:11px 14px;' + (i ? 'border-top:1px solid var(--border);' : '') + '">' +
       '<div style="min-width:140px;font-size:11.5px;color:var(--muted)">' + esc(ft) + '<div style="color:var(--accent);font-weight:700">' + esc(x.seccion) + '</div></div>' +
       '<div style="flex:1;font-size:12.5px;color:var(--text);line-height:1.5">' + esc(x.detalle) + '</div>' +
-      (x.seccion === 'Correos' ? '<button onclick="cfgDeshacer_(' + x.fila + ')" style="font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap">↺ Deshacer</button>' : '') + '</div>';
+      ((x.seccion === 'Correos' || x.seccion === 'Usuarios') ? '<button onclick="cfgDeshacer_(' + x.fila + ')" style="font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap">↺ Deshacer</button>' : '') + '</div>';
   }).join('') + '</div>';
 }
 async function cfgDeshacer_(fila) {
   const pin = await cfgPedirPin_('Deshacer este cambio');
   if (!pin) return;
-  try { await cfgPost_({ action: 'cfgDeshacer', pin: pin, fila: fila }); showToast('✅ Cambio deshecho', 'success'); renderConfig(document.getElementById('mainContent')); }
+  try { await cfgPost_({ action: 'cfgDeshacer', pin: pin, fila: fila }); showToast('✅ Cambio deshecho', 'success'); if (_cfg) _cfg.usr = null; nxCargarCfgPublica_(); renderConfig(document.getElementById('mainContent')); }
   catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
+
+// ── (2026-11-06) Usuarios y permisos que vienen de Configuración ──
+// Sin configuración guardada, todo queda como siempre (las listas escritas en este archivo).
+const NX_EJECUTIVAS_DEFECTO = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'];
+let NX_EJECUTIVAS_CFG = null;
+function nxEjecutivas_() { return (NX_EJECUTIVAS_CFG && NX_EJECUTIVAS_CFG.length) ? NX_EJECUTIVAS_CFG.slice() : NX_EJECUTIVAS_DEFECTO.slice(); }
+function nxAplicarCfgPublica_(c) {
+  if (!c || !Array.isArray(c.usuarios) || !c.usuarios.length) return;
+  try {
+    USUARIOS_NOMBRES.length = 0; c.usuarios.forEach(u => USUARIOS_NOMBRES.push(u.nombre));
+    USUARIOS_COTIZADOR_AUTORIZADOS.length = 0; (c.cotizador || []).forEach(n => USUARIOS_COTIZADOR_AUTORIZADOS.push(n));
+    Object.keys(NX_GESTIONA_TAMBIEN).forEach(k => delete NX_GESTIONA_TAMBIEN[k]); Object.assign(NX_GESTIONA_TAMBIEN, c.gestiona || {});
+    IA_USUARIOS_AUTORIZADOS.clear(); (c.ia || []).forEach(n => IA_USUARIOS_AUTORIZADOS.add(n));
+    Object.keys(QZ_APROBADORES_RESTRINGIDOS_FRONT).forEach(k => delete QZ_APROBADORES_RESTRINGIDOS_FRONT[k]); Object.assign(QZ_APROBADORES_RESTRINGIDOS_FRONT, c.aprobadores || {});
+    c.usuarios.forEach(u => { if (u.ciudad) CG_CIUDAD_POR_EJECUTIVA[u.nombre] = u.ciudad; });
+    CG_CLAVES_CIUDAD_ORDENADAS.length = 0; Object.keys(CG_CIUDAD_POR_EJECUTIVA).sort((a, b) => b.length - a.length).forEach(k => CG_CLAVES_CIUDAD_ORDENADAS.push(k));
+    NX_EJECUTIVAS_CFG = (c.ejecutivas || []).slice();
+  } catch (e) { console.warn('nxAplicarCfgPublica_', e); }
+}
+function nxCfgPublicaCache_() { try { return JSON.parse(localStorage.getItem('zz_cfg_pub') || 'null'); } catch (e) { return null; } }
+async function nxCargarCfgPublica_() {
+  try {
+    const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'cfgPublica' }) });
+    const c = await r.json();
+    if (!c || !c.ok) return;
+    try { localStorage.setItem('zz_cfg_pub', JSON.stringify(c)); } catch (e) {}
+    nxAplicarCfgPublica_(c);
+    if (typeof aplicarPermisoCotizador === 'function') aplicarPermisoCotizador();
+    if (typeof aplicarPermisoAsistente === 'function') aplicarPermisoAsistente();
+    if (typeof aplicarPermisoComercialGeneral === 'function') aplicarPermisoComercialGeneral();
+  } catch (e) { console.warn('cfgPublica', e); }
+}
+
+// ── Pestañas Usuarios y Permisos del módulo Configuración ──
+async function cfgCargarUsuarios_() {
+  if (!_cfg) return;
+  _cfg.usrCargando = true;
+  try {
+    const r = await cfgPost_({ action: 'cfgObtenerUsuarios' });
+    _cfg.usr = { lista: r.lista, draft: cfgCopia_(r.lista) };
+    _cfg.usrError = '';
+  } catch (e) { _cfg.usrError = e.message; }
+  _cfg.usrCargando = false;
+  cfgPintar_();
+}
+function cfgUsrHayCambios_() { return !!(_cfg && _cfg.usr && JSON.stringify(_cfg.usr.draft) !== JSON.stringify(_cfg.usr.lista)); }
+function cfgUsrSet_(i, campo, valor, repintar) {
+  const u = _cfg.usr.draft[i]; if (!u) return;
+  u[campo] = valor;
+  if (campo === 'soloLectura' && valor) { u.cotizador = false; u.apruebaA = []; u.actuaComo = []; }
+  if (repintar) cfgPintar_(); else cfgPintarBarra_();
+}
+function cfgUsrNuevo_() {
+  _cfg.usr.draft.push({ nombre: '', email: '', emailAlterno: '', ciudad: '', activo: true, ejecutiva: true, soloLectura: false, cotizador: true, ia: false, apruebaA: [], actuaComo: [], _nuevo: true });
+  cfgPintar_();
+  setTimeout(() => { const ins = document.querySelectorAll('.cfg-usr-nombre'); if (ins.length) ins[ins.length - 1].focus(); }, 30);
+}
+function cfgUsrQuitarNuevo_(i) { _cfg.usr.draft.splice(i, 1); cfgPintar_(); }
+function cfgUsrCargandoHTML_() {
+  if (_cfg.usrError) return '<div style="padding:30px;text-align:center;color:var(--red)">❌ ' + esc(_cfg.usrError) + ' <button onclick="cfgCargarUsuarios_()" style="margin-left:8px;padding:6px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer">Reintentar</button></div>';
+  if (!_cfg.usrCargando) setTimeout(cfgCargarUsuarios_, 0);
+  return '<div style="padding:30px;text-align:center;color:var(--muted)">⏳ Cargando usuarios…</div>';
+}
+const CFG_INP = 'background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;width:100%;box-sizing:border-box';
+function cfgSwitch_(on, onchange, disabled) {
+  return '<label style="position:relative;display:inline-block;width:34px;height:19px;cursor:' + (disabled ? 'not-allowed' : 'pointer') + ';opacity:' + (disabled ? '.5' : '1') + '"><input type="checkbox" ' + (on ? 'checked' : '') + (disabled ? ' disabled' : '') + ' onchange="' + onchange + '" style="opacity:0;width:0;height:0"><span style="position:absolute;inset:0;border-radius:19px;background:' + (on ? 'var(--accent)' : '#374151') + '"></span><span style="position:absolute;top:2px;left:' + (on ? '17px' : '2px') + ';width:15px;height:15px;border-radius:50%;background:#fff"></span></label>';
+}
+function cfgChk_(on, onchange, disabled) {
+  return '<input type="checkbox" ' + (on ? 'checked' : '') + (disabled ? ' disabled' : '') + ' onchange="' + onchange + '" style="width:16px;height:16px;accent-color:#f59e0b;cursor:' + (disabled ? 'not-allowed' : 'pointer') + '">';
+}
+function cfgPintarUsuarios_() {
+  if (!_cfg.usr) return cfgUsrCargandoHTML_();
+  const L = _cfg.usr.draft;
+  let h = '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px"><div style="flex:1;min-width:240px;font-size:12px;color:var(--muted);line-height:1.5">El <b>correo</b> debe ser la cuenta de Google con la que la persona entra. <b>Desactivar</b> la saca de Nexus al instante y deja de recibir avisos; sus contratos e historial se conservan. <b>Ejecutiva comercial</b> = aparece en las listas de ejecutiva y cuenta en Wallet / Comercial General.</div>' +
+    '<button onclick="cfgUsrNuevo_()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">+ Nuevo usuario</button></div>' +
+    '<datalist id="cfgCiudades"><option>Guayaquil</option><option>Quito</option><option>Manta</option><option>Cuenca</option></datalist>' +
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto"><table style="width:100%;min-width:860px;border-collapse:collapse;font-size:12px">' +
+    '<thead><tr style="color:var(--muted);text-align:left">' + ['Activo', 'Usuario', 'Correo (Google)', 'Correo alterno', 'Ciudad', 'Ejecutiva comercial', 'Solo lectura'].map(t => '<th style="padding:9px 8px;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">' + t + '</th>').join('') + '</tr></thead><tbody>';
+  L.forEach((u, i) => {
+    const esJ = u.nombre === 'JORGE';
+    const td = x => '<td style="padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle">' + x + '</td>';
+    h += '<tr style="' + (u.activo ? '' : 'opacity:.5') + '">' +
+      td(cfgSwitch_(u.activo, 'cfgUsrSet_(' + i + ',\'activo\',this.checked,true)', esJ)) +
+      td(u._nuevo
+        ? '<div style="display:flex;gap:4px"><input class="cfg-usr-nombre" value="' + esc(u.nombre) + '" placeholder="NOMBRE APELLIDO" oninput="this.value=this.value.toUpperCase();cfgUsrSet_(' + i + ',\'nombre\',this.value)" style="' + CFG_INP + ';text-transform:uppercase;min-width:140px"><button onclick="cfgUsrQuitarNuevo_(' + i + ')" title="Quitar" style="background:none;border:none;color:var(--muted);cursor:pointer">✕</button></div>'
+        : '<b style="color:var(--text)">' + esc(cfgTitulo_(u.nombre)) + '</b>' + (esJ ? ' <span style="font-size:10.5px;color:var(--accent)">admin</span>' : '')) +
+      td('<input value="' + esc(u.email) + '" placeholder="nombre@zazacorp.com.ec" oninput="cfgUsrSet_(' + i + ',\'email\',this.value.trim().toLowerCase())" style="' + CFG_INP + ';min-width:190px">') +
+      td('<input value="' + esc(u.emailAlterno || '') + '" placeholder="(opcional)" oninput="cfgUsrSet_(' + i + ',\'emailAlterno\',this.value.trim().toLowerCase())" style="' + CFG_INP + ';min-width:160px">') +
+      td('<input value="' + esc(u.ciudad || '') + '" list="cfgCiudades" oninput="cfgUsrSet_(' + i + ',\'ciudad\',this.value)" style="' + CFG_INP + ';min-width:100px">') +
+      td('<div style="text-align:center">' + cfgChk_(u.ejecutiva, 'cfgUsrSet_(' + i + ',\'ejecutiva\',this.checked)') + '</div>') +
+      td('<div style="text-align:center">' + cfgChk_(u.soloLectura, 'cfgUsrSet_(' + i + ',\'soloLectura\',this.checked,true)', esJ) + '</div>') +
+      '</tr>';
+  });
+  return h + '</tbody></table></div>';
+}
+function cfgPintarPermisos_() {
+  if (!_cfg.usr) return cfgUsrCargandoHTML_();
+  const L = _cfg.usr.draft;
+  const nombres = L.filter(u => u.activo && u.nombre).map(u => u.nombre);
+  const chips = (i, campo, arr, dis) => (arr || []).map(n => '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 7px;margin:2px 4px 2px 0">' + esc(cfgTitulo_(n)) + (dis ? '' : ' <button onclick="cfgPermQuitar_(' + i + ',\'' + campo + '\',\'' + n + '\')" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;font-size:11px">✕</button>') + '</span>').join('') +
+    (dis ? '' : '<select onchange="cfgPermAgregar_(' + i + ',\'' + campo + '\',this.value)" style="font-size:11.5px;background:transparent;border:1px dashed var(--accent);color:var(--accent);border-radius:6px;padding:2px 4px;font-family:inherit;cursor:pointer"><option value="">+ agregar</option>' + nombres.filter(n => n !== L[i].nombre && n !== 'JORGE' && !(arr || []).includes(n)).map(n => '<option value="' + esc(n) + '">' + esc(cfgTitulo_(n)) + '</option>').join('') + '</select>');
+  let h = '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5"><b>Cotizador y Pipeline</b>: puede entrar a esos módulos (cada una ve lo suyo). <b>Aprueba descuentos de</b>: puede aprobar sin tu PIN las cotizaciones con margen bajo de esas personas. <b>Actúa también como</b>: ve y gestiona lo de esa persona como si fuera suyo (cotizaciones, instalaciones, reservas, renovaciones y programación LED). Tú (Jorge) siempre tienes todo.</div>' +
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto"><table style="width:100%;min-width:820px;border-collapse:collapse;font-size:12px">' +
+    '<thead><tr style="color:var(--muted);text-align:left">' + ['Usuario', 'Cotizador y Pipeline', 'Asistente IA', 'Aprueba descuentos de', 'Actúa también como'].map(t => '<th style="padding:9px 8px;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">' + t + '</th>').join('') + '</tr></thead><tbody>';
+  L.forEach((u, i) => {
+    if (!u.activo || !u.nombre) return;
+    const esJ = u.nombre === 'JORGE', ro = !!u.soloLectura;
+    const td = x => '<td style="padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle">' + x + '</td>';
+    h += '<tr>' + td('<b style="color:var(--text)">' + esc(cfgTitulo_(u.nombre)) + '</b>' + (ro ? ' <span style="font-size:10.5px;color:var(--muted)">solo lectura</span>' : '')) +
+      td('<div style="text-align:center">' + cfgChk_(esJ || u.cotizador, 'cfgUsrSet_(' + i + ',\'cotizador\',this.checked)', esJ || ro) + '</div>') +
+      td('<div style="text-align:center">' + cfgChk_(esJ || u.ia, 'cfgUsrSet_(' + i + ',\'ia\',this.checked)', esJ) + '</div>') +
+      td(esJ ? '<span style="color:var(--muted)">Todas</span>' : chips(i, 'apruebaA', u.apruebaA, ro)) +
+      td(chips(i, 'actuaComo', u.actuaComo, ro)) + '</tr>';
+  });
+  return h + '</tbody></table></div>';
+}
+function cfgPermAgregar_(i, campo, n) { if (!n) return; const u = _cfg.usr.draft[i]; u[campo] = (u[campo] || []).concat([n]); cfgPintar_(); }
+function cfgPermQuitar_(i, campo, n) { const u = _cfg.usr.draft[i]; u[campo] = (u[campo] || []).filter(x => x !== n); cfgPintar_(); }
+async function cfgGuardarUsuarios_() {
+  if (!_cfg.data.tienePin) { showToast('Primero crea tu PIN de Configuración', 'info'); return; }
+  const L = _cfg.usr.draft;
+  const sinNombre = L.find(u => u._nuevo && !String(u.nombre).trim());
+  if (sinNombre) { showToast('Al usuario nuevo le falta el nombre', 'error'); return; }
+  const pin = await cfgPedirPin_('Guardar usuarios y permisos');
+  if (!pin) return;
+  try {
+    const lista = L.map(u => { const o = Object.assign({}, u); delete o._nuevo; return o; });
+    const r = await cfgPost_({ action: 'cfgGuardarUsuarios', pin: pin, lista: lista });
+    showToast('✅ Guardado' + (r.cambios ? ' · ' + r.cambios + (r.cambios === 1 ? ' cambio' : ' cambios') : ''), 'success');
+    _cfg.usr = null;
+    nxCargarCfgPublica_();
+    renderConfig(document.getElementById('mainContent'));
+  } catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
+// Barra de guardar (se repinta sola sin redibujar la tabla, para no perder lo que estás escribiendo)
+function cfgPintarBarra_() {
+  const b = document.getElementById('cfgBarraGuardar'); if (!b) return;
+  const usr = (_cfg.sub === 'usuarios' || _cfg.sub === 'permisos');
+  const hay = usr ? cfgUsrHayCambios_() : (_cfg.sub === 'correos' && cfgHayCambios_());
+  b.style.display = hay ? 'flex' : 'none';
 }
 
 function aplicarPermisoWallet() {
@@ -1239,6 +1384,7 @@ function aplicarPermisoAsistente() {
 }
 
 function checkLogin() {
+  nxAplicarCfgPublica_(nxCfgPublicaCache_());
   const saved = sessionStorage.getItem('zz_usuario');
   if (saved && USUARIOS_NOMBRES.includes(saved) && !sesionExpirada()) {
     _usuarioActual = saved;
@@ -1250,6 +1396,7 @@ function checkLogin() {
     aplicarPermisoWallet();
     aplicarPermisoInstalaciones();
     aplicarPermisoAsistente();
+    nxCargarCfgPublica_();
     return true;
   }
   if (saved) forzarLogoutPorExpiracion();
@@ -1298,6 +1445,7 @@ function completarLoginExitoso(user, data) {
   aplicarPermisoComercialGeneral();
   aplicarPermisoWallet();
   aplicarPermisoAsistente();
+  nxCargarCfgPublica_();
   // init() es lo único que de verdad estás esperando ver (tu inventario)
   // — antes se disparaba al mismo tiempo que el registro de acceso y la
   // precarga de precios del Cotizador, y las 3 llamadas competían por el
@@ -6604,7 +6752,7 @@ let _scrPdfBase64 = null, _scrPdfFile = null;
 function abrirFormularioAnuncianteScrolling(codigo) {
   const v = DATA.find(x => String(x.codigo).trim() === String(codigo).trim());
   const today = new Date().toISOString().split('T')[0];
-  const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA']
+  const execOpts = nxEjecutivas_()
     .map(e => '<option>' + e + '</option>').join('');
   document.getElementById('modalTitle').textContent = '🔄 Nuevo anunciante';
   document.getElementById('modalSubtitle').textContent = codigo + (v ? ' · ' + esc(v.direccion).substring(0,50) : '');
@@ -6802,7 +6950,7 @@ function openModal(codigo) {
       '<div class="form-row">' +
         '<div class="form-group"><label>Cliente</label><input type="text" id="rf-c" placeholder="Nombre del cliente"></div>' +
         '<div class="form-group"><label>Ejecutiva</label><select id="rf-e"><option value="">Seleccionar...</option>' +
-          ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e => '<option>' + e + '</option>').join('') +
+          nxEjecutivas_().map(e => '<option>' + e + '</option>').join('') +
         '</select></div></div>' +
       '<div class="form-row">' +
         // Solo el admin ve y puede cambiar la fecha: la reserva (y sus 48 h laborables) empieza ese día
@@ -7503,7 +7651,7 @@ function openModalMultiReservar() {
       '<div class="form-group"><label>Cliente</label><input type="text" id="mr-cliente" class="modal-input" placeholder="Nombre del cliente"></div>' +
       '<div class="form-group"><label>Ejecutiva</label><select id="mr-ejecutiva" class="modal-input">' +
       '<option value="">Seleccionar...</option>' +
-      ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(function(e){ return '<option>' + e + '</option>'; }).join('') +
+      nxEjecutivas_().map(function(e){ return '<option>' + e + '</option>'; }).join('') +
       '</select></div>' +
     '</div>' +
     '<button class="btn-contratar-confirm" style="background:var(--accent);color:#000;margin-top:12px" onclick="confirmarMultiReserva()">🔒 Confirmar Reserva Múltiple</button>';
@@ -7578,7 +7726,7 @@ function openModalSegundaReserva(codigo) {
       '<div class="form-group"><label>Cliente</label><input id="s2-cliente" class="modal-input" placeholder="Nombre del cliente"></div>' +
       '<div class="form-group" style="margin-top:10px"><label>Ejecutiva</label><select id="s2-ejecutiva" class="modal-input">' +
       '<option value="">Seleccionar...</option>' +
-      ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e=>'<option>'+e+'</option>').join('') +
+      nxEjecutivas_().map(e=>'<option>'+e+'</option>').join('') +
       '</select></div>' +
       '<div class="form-group" style="margin-top:10px"><label>Observaciones (opcional)</label><input id="s2-obs" class="modal-input" placeholder="Notas adicionales..."></div>' +
       '<button class="btn-contratar-confirm" style="margin-top:14px" onclick="confirmarSegundaReserva(\'' + codigo + '\')">🔔 Registrar segunda reserva</button>';
@@ -7619,7 +7767,7 @@ function openModalPreReserva(codigo) {
   const v = DATA.find(x => x.codigo === codigo);
   if (!v) return;
   const esSegundaCola = !!v.reserva2_cliente; // ya hay 1ª pre-reserva → esta será la 2ª en cola
-  const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA']
+  const execOpts = nxEjecutivas_()
     .map(e => '<option>' + e + '</option>').join('');
   document.getElementById('modalBody').innerHTML =
     '<h3 style="margin:0 0 6px;font-size:16px">🔄 ' + (esSegundaCola ? 'Agregar 2ª pre-reserva' : 'Pre-reservar cuando termine') + '</h3>' +
@@ -7712,7 +7860,7 @@ async function toggleEditForm(codigo) {
   if (!v) return;
 
   const ESTADOS = ['DISPONIBLE','CONTRATADA','RESERVADA','NO UTILIZAR'];
-  const EJECUTIVAS = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'];
+  const EJECUTIVAS = nxEjecutivas_();
   const TIPOS = ['Valla Fija','Valla LED','Pantalla','Túnel','Mural','Icónico','Paso Peatonal con Caja de luz','Paso Peatonal LED','Paso Vehicular LED','Paradero LED','Paradero Vinil','Paradero Backlight','Paradero','Cenefa','Caja de Luz','Cercha'];
 
   const estadoOpts = ESTADOS.map(e => '<option value="'+e+'"'+(v.estado===e?' selected':'')+'>'+e+'</option>').join('');
@@ -7956,7 +8104,7 @@ function openModalMultiContratar() {
           <label>Ejecutiva</label>
           <select id="mct-ejecutiva" onchange="checkMultiForm()">
             <option value="">Seleccionar...</option>
-            ${['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e=>'<option>'+e+'</option>').join('')}
+            ${nxEjecutivas_().map(e=>'<option>'+e+'</option>').join('')}
           </select>
         </div>
       </div>
@@ -8623,7 +8771,7 @@ function openModalContratar(codigo) {
           <label>Ejecutiva</label>
           <select id="ct-ejecutiva" onchange="checkContratarForm()">
             <option value="">Seleccionar...</option>
-            ${['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e=>'<option>'+e+'</option>').join('')}
+            ${nxEjecutivas_().map(e=>'<option>'+e+'</option>').join('')}
           </select>
         </div>
       </div>
@@ -10962,7 +11110,7 @@ async function ledDescargarPlantilla() {
     wp.getRow(1).font = { bold: true };
     pantallas.forEach(el => wp.addRow([el.codigo, el.direccion || '', el.ciudad || '', el.playerVnnoxId || '']));
     const ult = Math.max(2, pantallas.length + 1);
-    const ejecutivas = 'JORGE,LORENA,RICARDO,SASKYA,SHAYRA,VERONICA TERAN,VERONICA TRIVINO,YESENIA,ZULIA';
+    const ejecutivas = nxEjecutivas_().join(',');
     for (let r = 2; r <= 301; r++) {
       ws.getCell('A' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['Pantallas!$A$2:$A$' + ult], showErrorMessage: true, errorTitle: 'Pantalla', error: 'Elige una pantalla de la lista' };
       // Dirección de la pantalla elegida, solo para que quien llena confirme que es la correcta
@@ -11202,7 +11350,7 @@ function openModalMultiContratoLED() {
   if (!ledMultiSel.size) return;
   const items = ledMultiElementos_();
   const today = new Date().toISOString().split('T')[0];
-  const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e => '<option>' + e + '</option>').join('');
+  const execOpts = nxEjecutivas_().map(e => '<option>' + e + '</option>').join('');
   _ledMultiPdfBase64 = null; _ledMultiPdfFile = null; _lmTipo = 'PAGADA'; _lmDesdeIndividual = null;
   document.getElementById('modalTitle').textContent = '📺 Contratación múltiple LED';
   document.getElementById('modalSubtitle').textContent = items.length + (items.length === 1 ? ' pantalla' : ' pantallas') + ' · mismo cliente, fechas y orden';
@@ -12047,7 +12195,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
   const elementos = ((_ledData && _ledData.elementosLED) || []).slice().sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
   const contratosLed = (_ledData && _ledData.contratos) || [];
   const today   = new Date().toISOString().split('T')[0];
-  const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA']
+  const execOpts = nxEjecutivas_()
     .map(e => '<option>' + e + '</option>').join('');
   let playerOpts = elementos.map(el => {
     const pid = el.playerVnnoxId || el.codigo;
