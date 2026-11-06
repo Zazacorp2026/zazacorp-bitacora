@@ -1010,7 +1010,7 @@ function cfgPintar_() {
   let h = '<div style="max-width:1100px;margin:0 auto;padding:16px 18px 80px;text-align:left;box-sizing:border-box">' +
     '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px">' +
       '<div style="flex:1;min-width:200px"><div style="font-size:18px;font-weight:800;color:var(--text)">⚙️ Configuración</div><div style="font-size:12px;color:var(--muted)">Solo tú ves esta pestaña · cada cambio pide tu PIN y queda en el historial</div></div>' +
-      subBtn('correos', 'Correos', '✉️') + subBtn('seguridad', 'Seguridad', '🔒') + subBtn('usuarios', 'Usuarios', '👤') + subBtn('permisos', 'Permisos', '🔑') + subBtn('historial', 'Historial', '🕘') +
+      subBtn('correos', 'Correos', '✉️') + subBtn('seguridad', 'Seguridad', '🔒') + subBtn('usuarios', 'Usuarios', '👤') + subBtn('permisos', 'Permisos', '🔑') + subBtn('reglas', 'Reglas', '📏') + subBtn('historial', 'Historial', '🕘') +
     '</div>';
   if (!d.tienePin) {
     h += '<div style="background:rgba(245,158,11,.1);border:1px solid var(--accent);border-radius:12px;padding:16px;margin-bottom:16px">' +
@@ -1022,15 +1022,16 @@ function cfgPintar_() {
   else if (p.sub === 'seguridad') h += cfgPintarSeguridad_();
   else if (p.sub === 'usuarios') h += cfgPintarUsuarios_();
   else if (p.sub === 'permisos') h += cfgPintarPermisos_();
+  else if (p.sub === 'reglas') h += cfgPintarReglas_();
   else h += cfgPintarHistorial_();
   h += '</div>';
-  const esUsr = p.sub === 'usuarios' || p.sub === 'permisos';
-  if (p.sub === 'correos' || esUsr) {
-    const hay = esUsr ? cfgUsrHayCambios_() : cfgHayCambios_();
+  const esUsr = p.sub === 'usuarios' || p.sub === 'permisos', esReg = p.sub === 'reglas';
+  if (p.sub === 'correos' || esUsr || esReg) {
+    const hay = esReg ? cfgRegHayCambios_() : esUsr ? cfgUsrHayCambios_() : cfgHayCambios_();
     h += '<div id="cfgBarraGuardar" style="position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:12px 18px;display:' + (hay ? 'flex' : 'none') + ';justify-content:flex-end;align-items:center;gap:10px;z-index:5">' +
       '<span style="font-size:12px;color:var(--accent);margin-right:auto">Tienes cambios sin guardar</span>' +
-      '<button onclick="' + (esUsr ? '_cfg.usr.draft=cfgCopia_(_cfg.usr.lista)' : '_cfg.draft=cfgCopia_(_cfg.data.correos)') + ';cfgPintar_()" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit">Descartar</button>' +
-      '<button onclick="' + (esUsr ? 'cfgGuardarUsuarios_()' : 'cfgGuardarCorreos_()') + '" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">Guardar cambios</button></div>';
+      '<button onclick="' + (esReg ? '_cfg.reg.draft=cfgCopia_(_cfg.reg.base)' : esUsr ? '_cfg.usr.draft=cfgCopia_(_cfg.usr.lista)' : '_cfg.draft=cfgCopia_(_cfg.data.correos)') + ';cfgPintar_()" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit">Descartar</button>' +
+      '<button onclick="' + (esReg ? 'cfgGuardarReglas_()' : esUsr ? 'cfgGuardarUsuarios_()' : 'cfgGuardarCorreos_()') + '" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">Guardar cambios</button></div>';
   }
   board.innerHTML = h;
 }
@@ -1199,13 +1200,13 @@ function cfgPintarHistorial_() {
     return '<div style="display:flex;gap:12px;align-items:flex-start;padding:11px 14px;' + (i ? 'border-top:1px solid var(--border);' : '') + '">' +
       '<div style="min-width:140px;font-size:11.5px;color:var(--muted)">' + esc(ft) + '<div style="color:var(--accent);font-weight:700">' + esc(x.seccion) + '</div></div>' +
       '<div style="flex:1;font-size:12.5px;color:var(--text);line-height:1.5">' + esc(x.detalle) + '</div>' +
-      ((x.seccion === 'Correos' || x.seccion === 'Usuarios') ? '<button onclick="cfgDeshacer_(' + x.fila + ')" style="font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap">↺ Deshacer</button>' : '') + '</div>';
+      ((x.seccion === 'Correos' || x.seccion === 'Usuarios' || x.seccion === 'Reglas') ? '<button onclick="cfgDeshacer_(' + x.fila + ')" style="font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap">↺ Deshacer</button>' : '') + '</div>';
   }).join('') + '</div>';
 }
 async function cfgDeshacer_(fila) {
   const pin = await cfgPedirPin_('Deshacer este cambio');
   if (!pin) return;
-  try { await cfgPost_({ action: 'cfgDeshacer', pin: pin, fila: fila }); showToast('✅ Cambio deshecho', 'success'); if (_cfg) _cfg.usr = null; nxCargarCfgPublica_(); renderConfig(document.getElementById('mainContent')); }
+  try { await cfgPost_({ action: 'cfgDeshacer', pin: pin, fila: fila }); showToast('✅ Cambio deshecho', 'success'); if (_cfg) { _cfg.usr = null; _cfg.reg = null; } nxCargarCfgPublica_(); renderConfig(document.getElementById('mainContent')); }
   catch (e) { showToast('❌ ' + e.message, 'error'); }
 }
 
@@ -1215,6 +1216,15 @@ const NX_EJECUTIVAS_DEFECTO = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VER
 let NX_EJECUTIVAS_CFG = null;
 function nxEjecutivas_() { return (NX_EJECUTIVAS_CFG && NX_EJECUTIVAS_CFG.length) ? NX_EJECUTIVAS_CFG.slice() : NX_EJECUTIVAS_DEFECTO.slice(); }
 function nxAplicarCfgPublica_(c) {
+  try {
+    if (c && c.reglas) { window.NX_REGLAS_PUB = c.reglas; try { BLOCK_HOURS = c.reglas.reservaHoras || 48; } catch (e) {} }
+    if (c && c.canje && c.canje.pantallas) {
+      try {
+        LED_CANJE_ALACC.desde = c.canje.desde; LED_CANJE_ALACC.hasta = c.canje.hasta; LED_CANJE_ALACC.cupoMes = c.canje.cupoMes;
+        Object.keys(LED_CANJE_ALACC.pantallas).forEach(k => delete LED_CANJE_ALACC.pantallas[k]); Object.assign(LED_CANJE_ALACC.pantallas, c.canje.pantallas);
+      } catch (e) { window.NX_CANJE_PUB = c.canje; }
+    }
+  } catch (e) { console.warn('reglas', e); }
   if (!c || !Array.isArray(c.usuarios) || !c.usuarios.length) return;
   try {
     USUARIOS_NOMBRES.length = 0; c.usuarios.forEach(u => USUARIOS_NOMBRES.push(u.nombre));
@@ -1342,11 +1352,88 @@ async function cfgGuardarUsuarios_() {
     renderConfig(document.getElementById('mainContent'));
   } catch (e) { showToast('❌ ' + e.message, 'error'); }
 }
+// ── (2026-11-06) Pestaña Reglas del módulo Configuración ──
+async function cfgCargarReglas_() {
+  if (!_cfg) return;
+  _cfg.regCargando = true;
+  try {
+    const r = await cfgPost_({ action: 'cfgObtenerReglas' });
+    const base = { reglas: r.reglas, canje: { desde: r.canje.desde, hasta: r.canje.hasta, cupoMes: r.canje.cupoMes,
+      lista: Object.keys(r.canje.pantallas || {}).sort().map(k => ({ codigo: k, tarifa: r.canje.pantallas[k] })) } };
+    _cfg.reg = { base: base, draft: cfgCopia_(base), defecto: r.defecto };
+    _cfg.regError = '';
+  } catch (e) { _cfg.regError = e.message; }
+  _cfg.regCargando = false;
+  cfgPintar_();
+}
+function cfgRegHayCambios_() { return !!(_cfg && _cfg.reg && JSON.stringify(_cfg.reg.draft) !== JSON.stringify(_cfg.reg.base)); }
+function cfgRegSet_(campo, valor) { _cfg.reg.draft.reglas[campo] = valor; cfgPintarBarra_(); }
+function cfgCanjeSet_(campo, valor) { _cfg.reg.draft.canje[campo] = valor; cfgPintarBarra_(); }
+function cfgCanjeFila_(i, campo, valor) { const f = _cfg.reg.draft.canje.lista[i]; if (f) f[campo] = valor; cfgPintarBarra_(); }
+function cfgCanjeAgregar_() { _cfg.reg.draft.canje.lista.push({ codigo: '', tarifa: 600 }); cfgPintar_(); }
+function cfgCanjeQuitar_(i) { _cfg.reg.draft.canje.lista.splice(i, 1); cfgPintar_(); }
+function cfgPintarReglas_() {
+  if (!_cfg.reg) {
+    if (_cfg.regError) return '<div style="padding:30px;text-align:center;color:var(--red)">❌ ' + esc(_cfg.regError) + '<br><button onclick="_cfg.regError=\'\';cfgCargarReglas_()" style="margin-top:10px;padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">Reintentar</button></div>';
+    if (!_cfg.regCargando) setTimeout(cfgCargarReglas_, 0);
+    return '<div style="padding:30px;text-align:center;color:var(--muted)">Cargando reglas…</div>';
+  }
+  const r = _cfg.reg.draft.reglas, c = _cfg.reg.draft.canje, df = _cfg.reg.defecto || {};
+  const caja = (t, sub, body) => '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px"><div style="font-size:14px;font-weight:800;color:var(--text)">' + t + '</div><div style="font-size:11.5px;color:var(--muted);margin:2px 0 12px">' + sub + '</div>' + body + '</div>';
+  const inpS = 'background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:14px;font-family:inherit;box-sizing:border-box';
+  const num = (campo, etq, unidad, min, max, ayuda) => '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)">' +
+    '<div style="flex:1;min-width:220px"><div style="font-size:13px;color:var(--text);font-weight:600">' + etq + '</div><div style="font-size:11px;color:var(--muted)">' + ayuda + (df[campo] !== undefined ? ' · de fábrica: ' + df[campo] : '') + '</div></div>' +
+    '<input type="number" min="' + min + '" max="' + max + '" value="' + esc(String(r[campo])) + '" oninput="cfgRegSet_(\'' + campo + '\', parseInt(this.value,10))" style="' + inpS + ';width:90px;text-align:right">' +
+    '<span style="font-size:12px;color:var(--muted);min-width:44px">' + unidad + '</span></div>';
+  const sw = (campo, etq, ayuda) => '<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);cursor:pointer">' +
+    '<div style="flex:1"><div style="font-size:13px;color:var(--text);font-weight:600">' + etq + '</div><div style="font-size:11px;color:var(--muted)">' + ayuda + '</div></div>' +
+    '<input type="checkbox" ' + (r[campo] ? 'checked' : '') + ' onchange="cfgRegSet_(\'' + campo + '\', this.checked)" style="width:20px;height:20px;accent-color:var(--accent);cursor:pointer"></label>';
+  const filas = c.lista.map((f, i) => '<div style="display:grid;grid-template-columns:minmax(0,1fr) 130px 36px;gap:8px;align-items:center;margin-bottom:6px">' +
+    '<input value="' + esc(f.codigo) + '" placeholder="LGYQ-O-000" oninput="cfgCanjeFila_(' + i + ',\'codigo\',this.value.toUpperCase().trim())" style="' + inpS + ';width:100%;text-transform:uppercase">' +
+    '<div style="display:flex;align-items:center;gap:4px"><span style="color:var(--muted)">$</span><input type="number" min="0" step="0.01" value="' + esc(String(f.tarifa)) + '" oninput="cfgCanjeFila_(' + i + ',\'tarifa\',Number(this.value))" style="' + inpS + ';width:100%;text-align:right"></div>' +
+    '<button onclick="cfgCanjeQuitar_(' + i + ')" title="Quitar pantalla" style="height:36px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--red);cursor:pointer">✕</button></div>').join('');
+  return caja('⏱️ Reservas', 'Aplica a las reservas nuevas; las que ya están corriendo mantienen su vencimiento.',
+      num('reservaHoras', 'Duración de una reserva', 'horas', 1, 240, 'Horas laborables (sin sábado ni domingo)') +
+      num('avisoReservaHoras', 'Avisar cuando a la reserva le queden menos de', 'horas', 1, 48, 'Correo a la ejecutiva y alerta en pantalla')) +
+    caja('📅 Contratos', 'Avisos de vencimiento de vallas contratadas.',
+      num('avisoVenceDias', 'Avisar cuando al contrato le queden', 'días', 1, 90, 'Correo de "vence pronto" y resumen diario')) +
+    caja('📺 LED', 'Reglas de programación de pantallas.',
+      num('ledMaxVersiones', 'Versiones de material por contrato', 'máx.', 1, 6, 'Si lo bajas, los contratos que ya tienen más versiones las conservan') +
+      num('ledMaxActivas', 'Versiones al aire el mismo día', 'máx.', 1, 6, 'No puede ser más que las versiones por contrato') +
+      sw('ledCorrerAlProgramar', 'Correr el contrato si se programa tarde', 'Si nunca tuvo material ni programación y su inicio ya pasó, al programarlo por primera vez empieza hoy y conserva sus días') +
+      sw('ledBloqueaOffline', 'No dejar contratar pantallas OFFLINE', 'Tú (Jorge) siempre puedes; las demás ejecutivas no')) +
+    caja('🤝 Convenio ALACC (canje)', 'Pantallas que entran en el canje, su tarifa mensual y cuántos canjes se permiten por mes.',
+      '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px">' +
+        '<label style="font-size:12px;color:var(--muted)">Vigente desde<br><input type="date" value="' + esc(c.desde) + '" onchange="cfgCanjeSet_(\'desde\',this.value)" style="' + inpS + ';margin-top:4px"></label>' +
+        '<label style="font-size:12px;color:var(--muted)">hasta<br><input type="date" value="' + esc(c.hasta) + '" onchange="cfgCanjeSet_(\'hasta\',this.value)" style="' + inpS + ';margin-top:4px"></label>' +
+        '<label style="font-size:12px;color:var(--muted)">Canjes por mes<br><input type="number" min="0" max="50" value="' + esc(String(c.cupoMes)) + '" oninput="cfgCanjeSet_(\'cupoMes\',parseInt(this.value,10))" style="' + inpS + ';margin-top:4px;width:110px;text-align:right"></label>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:minmax(0,1fr) 130px 36px;gap:8px;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px"><span>CÓDIGO DE PANTALLA</span><span>TARIFA / MES</span><span></span></div>' +
+      (filas || '<div style="font-size:12px;color:var(--muted);padding:8px 0">Sin pantallas en el convenio.</div>') +
+      '<button onclick="cfgCanjeAgregar_()" style="margin-top:6px;padding:7px 14px;border-radius:8px;border:1px dashed var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;font-size:12.5px">+ Agregar pantalla</button>') +
+    '<div style="font-size:11.5px;color:var(--muted);padding:4px 2px">💡 El margen mínimo se maneja por cada elemento en la bitácora, por eso no está aquí.</div>';
+}
+async function cfgGuardarReglas_() {
+  const d = _cfg.reg.draft, r = d.reglas, c = d.canje;
+  if (r.ledMaxActivas > r.ledMaxVersiones) { showToast('Las versiones al aire no pueden ser más que las versiones por contrato', 'error'); return; }
+  const pant = {}; let mal = '';
+  c.lista.forEach(f => { const k = String(f.codigo || '').trim().toUpperCase(); if (!k) return; if (pant[k] !== undefined) mal = 'La pantalla ' + k + ' está repetida'; pant[k] = Number(f.tarifa) || 0; });
+  if (mal) { showToast(mal, 'error'); return; }
+  const pin = await cfgPedirPin_('Guardar reglas');
+  if (!pin) return;
+  try {
+    const res = await cfgPost_({ action: 'cfgGuardarReglas', pin: pin, reglas: r, canje: { desde: c.desde, hasta: c.hasta, cupoMes: c.cupoMes, pantallas: pant } });
+    showToast('✅ Reglas guardadas' + (res.cambios ? ' · ' + res.cambios + (res.cambios === 1 ? ' cambio' : ' cambios') : ''), 'success');
+    _cfg.reg = null;
+    nxCargarCfgPublica_();
+    renderConfig(document.getElementById('mainContent'));
+  } catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
 // Barra de guardar (se repinta sola sin redibujar la tabla, para no perder lo que estás escribiendo)
 function cfgPintarBarra_() {
   const b = document.getElementById('cfgBarraGuardar'); if (!b) return;
   const usr = (_cfg.sub === 'usuarios' || _cfg.sub === 'permisos');
-  const hay = usr ? cfgUsrHayCambios_() : (_cfg.sub === 'correos' && cfgHayCambios_());
+  const hay = _cfg.sub === 'reglas' ? cfgRegHayCambios_() : usr ? cfgUsrHayCambios_() : (_cfg.sub === 'correos' && cfgHayCambios_());
   b.style.display = hay ? 'flex' : 'none';
 }
 
@@ -2010,7 +2097,7 @@ function esScrollingTipo(v) { return (v.tipo || '').toUpperCase().indexOf('SCROL
 function reservaProximaAVencer(v) {
   if (v.estado !== 'RESERVADA' || !v.bloqueo_expira) return null;
   const horas = (new Date(v.bloqueo_expira) - new Date()) / 3600000;
-  if (isNaN(horas) || horas <= 0 || horas > 5) return null;
+  if (isNaN(horas) || horas <= 0 || horas > ((window.NX_REGLAS_PUB && window.NX_REGLAS_PUB.avisoReservaHoras) || 5)) return null;
   return '🟠 RESERVA VENCE EN ' + Math.max(1, Math.round(horas)) + 'H';
 }
 
@@ -6955,7 +7042,7 @@ function openModal(codigo) {
       '<div class="form-row">' +
         // Solo el admin ve y puede cambiar la fecha: la reserva (y sus 48 h laborables) empieza ese día
         ((_usuarioActual || '').toUpperCase() === 'JORGE'
-          ? '<div class="form-group"><label>Fecha reserva (admin)</label><input type="date" id="rf-f" value="' + fechaLocalISO_() + '"><div style="font-size:10px;color:var(--muted);margin-top:3px">La reserva empieza ese día y se cuentan las 48 h laborables desde ahí.</div></div>' : '') +
+          ? '<div class="form-group"><label>Fecha reserva (admin)</label><input type="date" id="rf-f" value="' + fechaLocalISO_() + '"><div style="font-size:10px;color:var(--muted);margin-top:3px">La reserva empieza ese día y se cuentan las ' + BLOCK_HOURS + ' h laborables desde ahí.</div></div>' : '') +
         '<div class="form-group' + ((_usuarioActual || '').toUpperCase() === 'JORGE' ? '' : ' full') + '"><label>Observaciones</label><input type="text" id="rf-o" placeholder="Notas opcionales..."></div>' +
       '</div>' +
       '<button class="btn-reservar" id="btnReservar" onclick="hacerReserva(\'' + v.codigo + '\')">✓ Confirmar Reserva</button></div>';
@@ -7170,8 +7257,8 @@ async function hacerReserva(codigo) {
       registrado: new Date().toISOString()
     });
 
-    showToast('✓ Reserva registrada en Sheet y bloqueada 48h para ' + c, 'success');
-    mostrarCelebracionZaza('reserva', '¡Reserva registrada!', 'Quedó bloqueada por 48h.', [
+    showToast('✓ Reserva registrada en Sheet y bloqueada ' + BLOCK_HOURS + 'h para ' + c, 'success');
+    mostrarCelebracionZaza('reserva', '¡Reserva registrada!', 'Quedó bloqueada por ' + BLOCK_HOURS + 'h.', [
       { label: 'Código', value: codigo },
       { label: 'Cliente', value: c }
     ]);
@@ -7299,7 +7386,7 @@ function renderMapa(container) {
       <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div> Disponible</div>
       <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div> Reservada</div>
       <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Contratada</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div> Bloqueada 48h</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div> Bloqueada ${BLOCK_HOURS}h</div>
       <div class="legend-item" style="margin-left:auto;font-family:monospace;font-size:11px;color:var(--muted)" id="mapCount"></div>
     </div>
     <div id="mapContainer"></div>`;
@@ -7692,7 +7779,7 @@ async function confirmarMultiReserva() {
     }
 
     showToast('✅ ' + codigos.length + ' vallas reservadas', 'success');
-    mostrarCelebracionZaza('reserva-multi', '¡Reserva múltiple lista!', codigos.length + ' vallas quedaron bloqueadas 48h.', [
+    mostrarCelebracionZaza('reserva-multi', '¡Reserva múltiple lista!', codigos.length + ' vallas quedaron bloqueadas ' + BLOCK_HOURS + 'h.', [
       { label: 'Cantidad', value: codigos.length },
       { label: 'Cliente', value: cliente }
     ]);
@@ -7721,7 +7808,7 @@ function openModalSegundaReserva(codigo) {
 
     document.getElementById('modalBody').innerHTML =
       '<div style="background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#a78bfa">' +
-      '🔔 Esta reserva entrará en cola. Se activará automáticamente cuando expire la reserva actual (48h).' +
+      '🔔 Esta reserva entrará en cola. Se activará automáticamente cuando expire la reserva actual (' + BLOCK_HOURS + 'h).' +
       '</div>' +
       '<div class="form-group"><label>Cliente</label><input id="s2-cliente" class="modal-input" placeholder="Nombre del cliente"></div>' +
       '<div class="form-group" style="margin-top:10px"><label>Ejecutiva</label><select id="s2-ejecutiva" class="modal-input">' +
@@ -10253,7 +10340,7 @@ async function checkAdminPin(pin) {
     }
   }
 }
-const BLOCK_HOURS = 48; // horas laborales (sin contar sábado ni domingo)
+let BLOCK_HOURS = (window.NX_REGLAS_PUB && window.NX_REGLAS_PUB.reservaHoras) || 48; // horas laborales (sin contar sábado ni domingo) — (2026-11-06) ajustable en Configuración → Reglas
 
 /**
  * Calcula la fecha de expiración de una reserva sumando N horas laborales
@@ -11271,6 +11358,8 @@ const LED_CANJE_ALACC = {
   desde: '2026-03-01', hasta: '2026-12-31', cupoMes: 2,
   pantallas: { 'LGYQ-O-013': 600, 'LGYQ-O-002': 600, 'LGYQ-O-006': 600, 'LGYQ-O-001': 600, 'LGYQ-O-009': 600, 'LGYQ-O-016': 3000, 'LGYQ-O-024': 2000 }
 };
+// (2026-11-06) si Configuración → Reglas cambió el convenio y llegó antes de que se cargara esta parte
+if (window.NX_CANJE_PUB && window.NX_CANJE_PUB.pantallas) { const cj = window.NX_CANJE_PUB; LED_CANJE_ALACC.desde = cj.desde; LED_CANJE_ALACC.hasta = cj.hasta; LED_CANJE_ALACC.cupoMes = cj.cupoMes; LED_CANJE_ALACC.pantallas = Object.assign({}, cj.pantallas); }
 const LED_MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 function ledCodigoBase_(c) { const m = String(c || '').trim().toUpperCase().match(/^[A-Z]+-[A-Z]+-\d+/); return m ? m[0] : String(c || '').trim().toUpperCase(); }
 function ledCodigoDePlayer_(pid) {
@@ -11990,7 +12079,7 @@ function progRender_() {
   if (p.corrimiento) { const k = p.corrimiento; h += '<div style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.55;color:var(--text);margin-bottom:12px">📆 <b>Este contrato se correrá al guardar.</b> Se registró del ' + esc(k.inicioOriginal) + ' al ' + esc(k.finOriginal) + ' pero no tuvo material ni programación. Para que el cliente cumpla su período completo, al guardar quedará del <b>' + esc(k.inicio) + ' al ' + esc(k.fin) + '</b> (' + k.dias + (k.dias === 1 ? ' día' : ' días') + ' más). Ya puedes programar hasta el ' + esc(k.fin) + '.</div>'; }
   if (p.diferentes) h += '<div style="background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--accent);margin-bottom:12px">Estas pantallas tenían materiales distintos entre sí. Al guardar se unifican con los que ves aquí.</div>';
   h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
-    '<div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:8px">Materiales (hasta 6 versiones — se aplican a todas las pantallas de esta contratación)</div>' +
+    '<div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:8px">Materiales (hasta ' + p.slots.length + ' versiones — se aplican a todas las pantallas de esta contratación)</div>' +
     '<div style="display:grid;grid-template-columns:44px minmax(160px,1.2fr) 80px minmax(220px,2fr);gap:6px 8px;align-items:center;font-size:12px">' +
     '<div></div><div style="color:var(--muted);font-size:11px">Nombre del material</div><div style="color:var(--muted);font-size:11px">Duración (s)</div><div style="color:var(--muted);font-size:11px">Link</div>';
   p.slots.forEach((s, i) => {
