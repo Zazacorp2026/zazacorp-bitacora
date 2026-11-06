@@ -9925,17 +9925,52 @@ async function ledAvisoSinMaterialClick_(btn) {
     const j1 = await r1.json();
     if (j1.error) throw new Error(j1.error);
     if (!j1.resumen || !j1.resumen.length) { showToast('✅ Todos los contratos LED vigentes ya tienen material o programación', 'success'); return; }
-    const det = j1.resumen.map(r => '• ' + r.ejecutiva + ': ' + r.ordenes.length + (r.ordenes.length === 1 ? ' orden' : ' órdenes') + ' (' + r.pantallas + ' pantallas)' + (r.email ? '' : ' — SIN CORREO')).join('\n');
-    if (!confirm('Contratos LED sin material ni programación:\n\n' + det + '\n\nSe enviará UN correo grupal a estas ejecutivas, con copia para ti. ¿Enviar ahora?')) return;
-    if (btn) btn.textContent = '⏳ Enviando...';
-    const r2 = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledAvisoSinMaterial', enviar: true }) });
-    const j2 = await r2.json();
-    if (j2.error) throw new Error(j2.error);
-    showToast(j2.enviado ? '📧 Aviso enviado a ' + j2.destinatarios + ' ejecutiva(s) · ' + j2.totalOrdenes + ' órdenes' : (j2.mensaje || 'Nada que avisar'), 'success');
+    _ledAvisoResumen = j1.resumen;
+    // (2026-11-06) Elegir a quién avisar con casillas (todas marcadas por defecto)
+    document.getElementById('modalTitle').textContent = '📧 Avisar material pendiente';
+    document.getElementById('modalSubtitle').textContent = 'Contratos LED sin material ni programación · elige a quién enviar';
+    document.getElementById('modalBody').innerHTML = '<div class="contratar-form">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:12px;color:var(--muted)">' +
+        '<span>Se enviará UN correo grupal a las marcadas, con copia para ti.</span>' +
+        '<span><a href="#" onclick="event.preventDefault();ledAvisoMarcarTodas_(true)" style="color:#818cf8">Todas</a> · <a href="#" onclick="event.preventDefault();ledAvisoMarcarTodas_(false)" style="color:#818cf8">Ninguna</a></span></div>' +
+      j1.resumen.map((r, i) => '<label style="display:block;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:' + (r.email ? 'pointer' : 'not-allowed') + ';opacity:' + (r.email ? '1' : '.5') + '">' +
+        '<div style="display:flex;align-items:center;gap:10px"><input type="checkbox" class="led-aviso-chk" value="' + esc(r.ejecutiva) + '"' + (r.email ? ' checked' : ' disabled') + ' onchange="ledAvisoContar_()" style="width:17px;height:17px">' +
+        '<b style="font-size:13px">' + esc(r.ejecutiva) + '</b><span style="font-size:12px;color:var(--muted)">· ' + r.ordenes.length + (r.ordenes.length === 1 ? ' orden' : ' órdenes') + ' · ' + r.pantallas + ' pantallas' + (r.email ? '' : ' · SIN CORREO') + '</span></div>' +
+        '<div style="font-size:11px;color:var(--muted);margin:6px 0 0 27px">' + r.ordenes.map(o => esc(o.cliente) + ' (' + esc(o.inicio) + ' → ' + esc(o.fin) + ')').join(' · ') + '</div>' +
+      '</label>').join('') +
+      '<button id="btnLedAvisoEnviar" onclick="ledAvisoEnviar_()" style="width:100%;margin-top:8px;padding:12px;background:#10b981;border:none;border-radius:8px;color:#000;font-weight:800;font-size:14px;cursor:pointer">📧 Enviar aviso</button>' +
+      '</div>';
+    document.getElementById('modalOverlay').classList.add('open');
+    ledAvisoContar_();
   } catch (e) {
     showToast('❌ ' + e.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = txt0; }
+  }
+}
+let _ledAvisoResumen = [];
+function ledAvisoMarcarTodas_(v) { document.querySelectorAll('.led-aviso-chk:not(:disabled)').forEach(c => { c.checked = v; }); ledAvisoContar_(); }
+function ledAvisoContar_() {
+  const sel = [...document.querySelectorAll('.led-aviso-chk:checked')].map(c => c.value);
+  const b = document.getElementById('btnLedAvisoEnviar'); if (!b) return;
+  const ords = _ledAvisoResumen.filter(r => sel.indexOf(r.ejecutiva) !== -1).reduce((n, r) => n + r.ordenes.length, 0);
+  b.disabled = !sel.length; b.style.opacity = sel.length ? '1' : '.5'; b.style.cursor = sel.length ? 'pointer' : 'not-allowed';
+  b.textContent = sel.length ? '📧 Enviar aviso a ' + sel.length + ' ejecutiva' + (sel.length === 1 ? '' : 's') + ' · ' + ords + (ords === 1 ? ' orden' : ' órdenes') : 'Marca al menos una ejecutiva';
+}
+async function ledAvisoEnviar_() {
+  const sel = [...document.querySelectorAll('.led-aviso-chk:checked')].map(c => c.value);
+  if (!sel.length) return;
+  const b = document.getElementById('btnLedAvisoEnviar');
+  b.disabled = true; b.textContent = '⏳ Enviando...';
+  try {
+    const r2 = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledAvisoSinMaterial', enviar: true, ejecutivas: sel }) });
+    const j2 = await r2.json();
+    if (j2.error) throw new Error(j2.error);
+    closeModal();
+    showToast(j2.enviado ? '📧 Aviso enviado a ' + j2.destinatarios + ' ejecutiva(s) · ' + j2.totalOrdenes + ' órdenes' : (j2.mensaje || 'Nada que avisar'), 'success');
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
+    ledAvisoContar_();
   }
 }
 function buildLEDUI(container, data) {
@@ -10058,7 +10093,7 @@ function buildLEDUI(container, data) {
     grupo.forEach(player => {
       // (2026-11-06) Al aire = ya empezó (ocupa puesto hoy). Próximos = empiezan después: se muestran aparte y no ocupan puesto hoy
       const playerContratos = contratos.filter(c => c.playerId === player.playerId && ledAlAire_(c)).sort((a,b)=>(a.orden||999)-(b.orden||999));
-      const playerProximos  = contratos.filter(c => c.playerId === player.playerId && c.activo && !ledAlAire_(c)).sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio)));
+      const playerProximos  = contratos.filter(c => c.playerId === player.playerId && c.activo && !ledAlAire_(c)).sort((a,b)=>ledInicioEfectivo_(a).localeCompare(ledInicioEfectivo_(b)));
       const spotsUsados     = playerContratos.reduce((s, c) => s + c.spots, 0);
       const pct             = Math.min(100, Math.round(spotsUsados / SPOTS_DIA_CLIENT * 100));
       const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
@@ -10134,7 +10169,7 @@ function buildLEDUI(container, data) {
           '<div class="led-contrato-meta">' + c.inicio + ' → ' + c.fin +
             ' · <span style="color:' + colorDias + '">' + diasRestantes + ' días</span>' +
           '</div>' +
-          (esProximo ? '<div style="margin-top:4px"><span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;background:rgba(129,140,248,.15);color:#a5b4fc;border:1px solid rgba(129,140,248,.45)">🕒 Próximo · desde ' + c.inicio.slice(8, 10) + '/' + c.inicio.slice(5, 7) + '</span></div>' : '') +
+          (esProximo ? (() => { const d = ledInicioEfectivo_(c); const porProg = d !== c.inicio; return '<div style="margin-top:4px"><span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;background:rgba(129,140,248,.15);color:#a5b4fc;border:1px solid rgba(129,140,248,.45)">🕒 Próximo · ' + (porProg ? 'programado desde ' : 'desde ') + d.slice(8, 10) + '/' + d.slice(5, 7) + '</span></div>'; })() : '') +
           ledAvisoProgramacion_(c) +
           (c.contratadoPor ? '<div style="margin-top:4px"><span style="font-size:10px;padding:2px 7px;border-radius:4px;' +
             (esZaza ? 'background:rgba(34,197,94,.18);color:#4ade80;border:1px solid rgba(34,197,94,.4)' : 'background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4)') +
@@ -10166,7 +10201,7 @@ function buildLEDUI(container, data) {
           : '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">Ingresar nueva contratación</div>';
       }
       if (playerProximos.length) {
-        htmlGrupos += '<div style="grid-column:1/-1;font-size:11px;font-weight:800;color:#a5b4fc;margin-top:6px;padding-top:8px;border-top:1px dashed rgba(129,140,248,.35)">🕒 Próximos · aún no empiezan, no ocupan puesto hoy</div>';
+        htmlGrupos += '<div style="grid-column:1/-1;font-size:11px;font-weight:800;color:#a5b4fc;margin-top:6px;padding-top:8px;border-top:1px dashed rgba(129,140,248,.35)">🕒 Próximos · aún no empiezan (o su programación arranca después), no ocupan puesto hoy</div>';
         playerProximos.forEach((c, idx) => pintarContratoLED_(c, idx, playerProximos));
       }
       htmlGrupos += '</div>'; // led-slots-grid
@@ -10606,7 +10641,9 @@ function ledAvisoProgramacion_(c) {
   if (c.diasSinProg > 0) return '<div style="' + estilo + '">⚠️ ' + c.diasSinProg + ' día' + (c.diasSinProg === 1 ? '' : 's') + ' sin programación de ' + c.diasContrato + '</div>';
   return '<div style="margin-top:4px;font-size:10.5px;color:#4ade80">✓ Programación completa</div>';
 }
-function ledAlAire_(c) { return c.activo && String(c.inicio || '') <= ledHoyLocal_(); }
+// Inicio efectivo: si la programación arranca después del inicio del contrato, ocupa puesto desde el 1er día programado
+function ledInicioEfectivo_(c) { return (c.progInicio && c.progInicio > c.inicio) ? c.progInicio : String(c.inicio || ''); }
+function ledAlAire_(c) { return c.activo && ledInicioEfectivo_(c) <= ledHoyLocal_(); }
 function ledMesTexto_(mes) { return LED_MESES_ES[parseInt(mes.slice(5, 7), 10) - 1] + ' ' + mes.slice(0, 4); }
 function ledKpiCanje_() {
   const hoy = new Date().toISOString().slice(0, 10);
