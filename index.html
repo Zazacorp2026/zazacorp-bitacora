@@ -10596,7 +10596,7 @@ function openModalMultiContratoLED() {
   const items = ledMultiElementos_();
   const today = new Date().toISOString().split('T')[0];
   const execOpts = ['JORGE','LORENA','RICARDO','SASKYA','SHAYRA','VERONICA TERAN','VERONICA TRIVINO','YESENIA','ZULIA'].map(e => '<option>' + e + '</option>').join('');
-  _ledMultiPdfBase64 = null; _ledMultiPdfFile = null; _lmTipo = 'PAGADA';
+  _ledMultiPdfBase64 = null; _ledMultiPdfFile = null; _lmTipo = 'PAGADA'; _lmDesdeIndividual = null;
   document.getElementById('modalTitle').textContent = '📺 Contratación múltiple LED';
   document.getElementById('modalSubtitle').textContent = items.length + (items.length === 1 ? ' pantalla' : ' pantallas') + ' · mismo cliente, fechas y orden';
   document.getElementById('modalBody').innerHTML = `
@@ -10628,7 +10628,7 @@ function openModalMultiContratoLED() {
       <div style="margin-bottom:10px">
         ${items.map(x => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px">
           <div style="flex:1;min-width:0"><b>${esc(x.el.codigo)}</b><div style="color:var(--muted);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.el.direccion || '')}</div></div>
-          $<input type="number" class="lm-valor" data-pid="${esc(x.playerId)}" min="0" step="any" placeholder="Valor mensual" oninput="calcLEDMultiTotales()" style="width:120px">
+          $<input type="number" class="lm-valor" data-pid="${esc(x.playerId)}" min="0" step="any" placeholder="Valor mensual" oninput="calcLEDMultiTotales()" style="width:130px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 9px;color:var(--text);font-size:12px;outline:none">
         </div>`).join('')}
         <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px"><span id="lm-l-suma">Suma mensual</span><b id="lm-suma">$0.00</b></div>
         <div style="display:flex;justify-content:space-between;font-size:13px;color:#4ade80"><span id="lm-l-total">Total del contrato (todas las pantallas)</span><b id="lm-total">$0.00</b></div>
@@ -10688,6 +10688,15 @@ let _lmTipo = 'PAGADA';
 // Pagada | Bonificada: en bonificada el valor de cada pantalla es solo de REFERENCIA (valor de lista), no se pide agencia/comisión y
 // la contratación queda por autorizar (o autorizada al instante si quien la registra puede autorizarla).
 function lmSetTipo(t) {
+  // (2026-11-06) Si se llegó al canje desde "Nuevo contrato LED" (una pantalla), al volver a Pagada/Bonificada
+  // se regresa a ESE formulario (con valor total, período, agencia y PDF), no al de contratación múltiple.
+  if (t !== 'CANJE' && _lmDesdeIndividual) {
+    const o = _lmDesdeIndividual; _lmDesdeIndividual = null;
+    closeModal(); ledMultiSel.clear();
+    openModalNuevoContratoLED(o.pid, o.nombre);
+    if (t === 'BONIFICADA') ledSetTipo('BONIFICADA');
+    return;
+  }
   _lmTipo = t;
   const bon = t === 'BONIFICADA', canje = t === 'CANJE';
   [['lm-tipo-pagada', 'PAGADA'], ['lm-tipo-bonif', 'BONIFICADA'], ['lm-tipo-canje', 'CANJE']].forEach(([id, v]) => {
@@ -11534,11 +11543,14 @@ function ledIrACanje_() {
   const pid = document.getElementById('led-player')?.value;
   if (!pid) { showToast('Primero elige la pantalla', 'info'); return; }
   if (!ledTarifaCanje_(ledCodigoDePlayer_(pid))) { showToast('Esta pantalla no está en el convenio de canje ALACC', 'error'); return; }
+  const nombre = ledCodigoDePlayer_(pid);
   closeModal();
   ledMultiSel = new Set([pid]);
   openModalMultiContratoLED();
+  _lmDesdeIndividual = { pid: pid, nombre: nombre };   // si luego elige Pagada/Bonificada, vuelve al formulario individual
   lmSetTipo('CANJE');
 }
+let _lmDesdeIndividual = null;
 let _ledTipo = 'PAGADA';
 // Pagada | Bonificada (registro individual): en bonificada el valor es solo de REFERENCIA (valor de lista) y se registra por la misma vía
 // que la contratación múltiple (una sola pantalla): por autorizar, o autorizada al instante si quien la registra puede autorizarla.
