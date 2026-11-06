@@ -619,6 +619,7 @@
   <div class="tab" id="tabPipeline" onclick="switchTab('pipeline')">📈 Pipeline</div>
   <div class="tab" id="tabComercialGeneral" onclick="switchTab('comercialgeneral')">💼 Comercial General</div>
   <div class="tab" id="tabWallet" onclick="switchTab('wallet')">💰 Wallet</div>
+  <div class="tab" id="tabConfig" onclick="switchTab('config')" style="display:none">⚙️ Configuración</div>
 </div>
 
 <div class="toolbar" id="mainToolbar">
@@ -953,11 +954,227 @@ function aplicarPermisoComercialGeneral() {
 // amplía) tanto aquí como en el backend (qzGetWalletMes/
 // qzCongelarWalletMes ya están restringidos a JORGE del lado del
 // servidor también, no solo aquí en pantalla).
+// ══════════════════════════════════════════════════════════════
+//  ⚙️ CONFIGURACIÓN (solo Jorge) — 2026-11-06
+//  Entrega 1+2: PIN para guardar, historial con deshacer, y a quién llega cada correo.
+//  Todo se valida otra vez en el servidor (solo JORGE + PIN); ocultar la pestaña no es la seguridad.
+// ══════════════════════════════════════════════════════════════
+let _cfg = null; // { data, draft, sub }
+function aplicarPermisoConfig() {
+  const ok = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const tab = document.getElementById('tabConfig');
+  if (tab) tab.style.display = ok ? '' : 'none';
+  if (!ok && state.tab === 'config') switchTab('inventario');
+}
+// Llave de emergencia: el formulario de clave solo aparece abriendo Nexus con #emergencia al final de la dirección.
+(function () {
+  const ir = () => {
+    if (location.hash !== '#emergencia') return;
+    const f = document.getElementById('loginFormClasico'); if (!f) return;
+    f.style.display = '';
+    const sel = document.getElementById('loginUser');
+    if (sel) sel.innerHTML = '<option value="JORGE">Jorge (llave de emergencia)</option>';
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ir); else ir();
+})();
+
+async function cfgPost_(payload) {
+  const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+  const j = await r.json();
+  if (!j || j.error || j.ok === false) throw new Error((j && j.error) || 'No se pudo completar');
+  return j;
+}
+function cfgCopia_(o) { return JSON.parse(JSON.stringify(o || {})); }
+async function renderConfig(content) {
+  content.innerHTML = '<div id="cfgBoard" style="padding:40px;text-align:center;color:var(--muted)">⏳ Cargando configuración…</div>';
+  try {
+    const data = await cfgPost_({ action: 'cfgObtener' });
+    _cfg = { data: data, draft: cfgCopia_(data.correos), sub: (_cfg && _cfg.sub) || 'correos' };
+    cfgPintar_();
+  } catch (e) {
+    content.innerHTML = '<div id="cfgBoard" style="padding:40px;text-align:center;color:var(--red)">❌ ' + esc(e.message) + '<br><button onclick="renderConfig(document.getElementById(\'mainContent\'))" style="margin-top:12px;padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">Reintentar</button></div>';
+  }
+}
+function cfgHayCambios_() { return _cfg && JSON.stringify(cfgNormDraft_(_cfg.draft)) !== JSON.stringify(cfgNormDraft_(_cfg.data.correos)); }
+function cfgNormDraft_(d) {
+  const o = {};
+  Object.keys(d || {}).sort().forEach(k => { const c = d[k] || {}; const q = (c.quitar || []).slice().sort(), a = (c.agregar || []).slice().sort(); if (c.off || q.length || a.length) o[k] = { off: !!c.off, quitar: q, agregar: a }; });
+  return o;
+}
+function cfgPintar_() {
+  const board = document.getElementById('cfgBoard'); if (!board) return;
+  const p = _cfg, d = p.data;
+  const subBtn = (id, txt, ico) => '<button onclick="_cfg.sub=\'' + id + '\';cfgPintar_()" style="display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:12.5px;padding:7px 13px;border-radius:8px;cursor:pointer;border:1px solid ' + (p.sub === id ? 'rgba(245,158,11,.45)' : 'transparent') + ';background:' + (p.sub === id ? 'rgba(245,158,11,.12)' : 'transparent') + ';color:' + (p.sub === id ? 'var(--accent)' : 'var(--muted)') + ';font-weight:700">' + ico + ' ' + txt + '</button>';
+  const prox = txt => '<span title="Próxima entrega" style="font-size:12.5px;padding:7px 13px;color:var(--muted);opacity:.45">' + txt + '</span>';
+  let h = '<div style="max-width:1100px;margin:0 auto;padding:16px 18px 80px">' +
+    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px">' +
+      '<div style="flex:1;min-width:200px"><div style="font-size:18px;font-weight:800;color:var(--text)">⚙️ Configuración</div><div style="font-size:12px;color:var(--muted)">Solo tú ves esta pestaña · cada cambio pide tu PIN y queda en el historial</div></div>' +
+      subBtn('correos', 'Correos', '✉️') + subBtn('seguridad', 'Seguridad', '🔒') + subBtn('historial', 'Historial', '🕘') + prox('👤 Usuarios') + prox('🔑 Permisos') +
+    '</div>';
+  if (!d.tienePin) {
+    h += '<div style="background:rgba(245,158,11,.1);border:1px solid var(--accent);border-radius:12px;padding:16px;margin-bottom:16px">' +
+      '<div style="font-weight:800;color:var(--text);margin-bottom:4px">🔒 Primero crea tu PIN de Configuración</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Entre 6 y 10 números. Se pedirá cada vez que guardes un cambio. Es distinto al PIN de aprobaciones y no se guarda en texto (ni siquiera nosotros podemos verlo).</div>' +
+      cfgFormPin_(false) + '</div>';
+  }
+  if (p.sub === 'correos') h += cfgPintarCorreos_();
+  else if (p.sub === 'seguridad') h += cfgPintarSeguridad_();
+  else h += cfgPintarHistorial_();
+  h += '</div>';
+  if (p.sub === 'correos' && cfgHayCambios_()) {
+    h += '<div style="position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:12px 18px;display:flex;justify-content:flex-end;align-items:center;gap:10px;z-index:5">' +
+      '<span style="font-size:12px;color:var(--accent);margin-right:auto">Tienes cambios sin guardar</span>' +
+      '<button onclick="_cfg.draft=cfgCopia_(_cfg.data.correos);cfgPintar_()" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit">Descartar</button>' +
+      '<button onclick="cfgGuardarCorreos_()" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">Guardar cambios</button></div>';
+  }
+  board.innerHTML = h;
+}
+function cfgFormPin_(cambiar) {
+  const inp = (id, ph) => '<input id="' + id + '" type="password" inputmode="numeric" maxlength="10" placeholder="' + ph + '" style="width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 10px;font-size:14px;letter-spacing:2px;font-family:inherit">';
+  return '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
+    (cambiar ? inp('cfgPinActual', 'PIN actual') : '') + inp('cfgPinNuevo', cambiar ? 'PIN nuevo' : 'PIN nuevo') + inp('cfgPinRep', 'Repite el PIN') +
+    '<button onclick="cfgGuardarPin_(' + (cambiar ? 'true' : 'false') + ')" style="padding:9px 16px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">' + (cambiar ? 'Cambiar PIN' : 'Crear PIN') + '</button></div>';
+}
+async function cfgGuardarPin_(cambiar) {
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const nuevo = v('cfgPinNuevo'), rep = v('cfgPinRep');
+  if (!/^\d{6,10}$/.test(nuevo)) { showToast('El PIN debe tener entre 6 y 10 números', 'error'); return; }
+  if (nuevo !== rep) { showToast('Los dos PIN no coinciden', 'error'); return; }
+  try {
+    await cfgPost_({ action: 'cfgGuardarPin', nuevo: nuevo, actual: cambiar ? v('cfgPinActual') : '' });
+    showToast(cambiar ? '✅ PIN cambiado' : '✅ PIN creado', 'success');
+    renderConfig(document.getElementById('mainContent'));
+  } catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
+function cfgNombreDe_(email) {
+  const p = (_cfg.data.personas || []).find(x => String(x.email).toLowerCase() === String(email).toLowerCase());
+  return p ? p.nombre : email;
+}
+function cfgEmailDe_(nombre) {
+  const p = (_cfg.data.personas || []).find(x => x.nombre === nombre);
+  return p ? String(p.email).toLowerCase() : '';
+}
+function cfgTitulo_(n) { return String(n).toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()); }
+function cfgPintarCorreos_() {
+  const p = _cfg, tipos = p.data.tipos;
+  const chip = (txt, extra, quitado) => '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;margin:2px 4px 2px 0;color:' + (quitado ? 'var(--muted)' : 'var(--text)') + ';' + (quitado ? 'text-decoration:line-through;opacity:.7;' : '') + '">' + txt + extra + '</span>';
+  const btnX = (fn, t) => ' <button onclick="' + fn + '" title="' + t + '" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0 0 0 2px;font-size:12px;line-height:1">✕</button>';
+  const btnU = (fn) => ' <button onclick="' + fn + '" title="Volver a enviarle" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:0 0 0 2px;font-size:12px;line-height:1;text-decoration:none">↺</button>';
+  let h = '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Apaga un aviso, quita a alguien de los que lo reciben por defecto o agrega a otra persona. La ejecutiva dueña siempre recibe lo suyo.</div>';
+  let grupo = '';
+  tipos.forEach(t => {
+    if (t.grupo !== grupo) {
+      if (grupo) h += '</div>';
+      grupo = t.grupo;
+      h += '<div style="font-size:12px;font-weight:800;color:var(--accent);margin:16px 0 6px;letter-spacing:.5px">' + esc(grupo.toUpperCase()) + '</div><div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">';
+    }
+    const c = p.draft[t.id] || {};
+    const off = !!c.off;
+    let chips = '';
+    t.defecto.forEach(tok => {
+      const em = cfgEmailDe_(tok);
+      if (!em) { chips += chip(esc(tok), '', false); return; }
+      const q = (c.quitar || []).includes(em);
+      chips += chip(esc(cfgTitulo_(tok)), q ? btnU("cfgQuitar_('" + t.id + "','" + em + "',false)") : btnX("cfgQuitar_('" + t.id + "','" + em + "',true)", 'Dejar de enviarle este aviso'), q);
+    });
+    (c.agregar || []).forEach(em => { chips += chip('<span style="color:var(--accent)">+</span> ' + esc(cfgTitulo_(cfgNombreDe_(em))), btnX("cfgAgregarQuitar_('" + t.id + "','" + em + "')", 'Quitar'), false); });
+    h += '<div style="display:grid;grid-template-columns:52px minmax(170px,240px) 1fr;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid var(--border);' + (off ? 'opacity:.55' : '') + '">' +
+      '<label title="' + (off ? 'Apagado: no se envía' : 'Encendido') + '" style="position:relative;display:inline-block;width:38px;height:21px;cursor:pointer"><input type="checkbox" ' + (off ? '' : 'checked') + ' onchange="cfgToggle_(\'' + t.id + '\',!this.checked)" style="opacity:0;width:0;height:0"><span style="position:absolute;inset:0;border-radius:21px;background:' + (off ? '#374151' : 'var(--accent)') + ';transition:.2s"></span><span style="position:absolute;top:2px;left:' + (off ? '2px' : '19px') + ';width:17px;height:17px;border-radius:50%;background:#fff;transition:.2s"></span></label>' +
+      '<div style="font-size:13px;font-weight:700;color:var(--text)">' + esc(t.nombre) + (off ? '<div style="font-size:11px;font-weight:400;color:#f87171">Apagado: no se envía</div>' : '') + '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;align-items:center">' + chips +
+        '<button onclick="cfgAbrirAgregar_(\'' + t.id + '\',this)" style="font-size:11.5px;border:1px dashed var(--accent);background:transparent;color:var(--accent);border-radius:6px;padding:3px 9px;cursor:pointer;font-family:inherit;margin:2px 0">+ agregar</button></div></div>';
+  });
+  if (grupo) h += '</div>';
+  return h;
+}
+function cfgItem_(id) { return (_cfg.draft[id] = _cfg.draft[id] || { off: false, quitar: [], agregar: [] }); }
+function cfgToggle_(id, off) { cfgItem_(id).off = off; cfgPintar_(); }
+function cfgQuitar_(id, em, quitar) {
+  const c = cfgItem_(id); c.quitar = (c.quitar || []).filter(x => x !== em); if (quitar) c.quitar.push(em); cfgPintar_();
+}
+function cfgAgregarQuitar_(id, em) { const c = cfgItem_(id); c.agregar = (c.agregar || []).filter(x => x !== em); cfgPintar_(); }
+function cfgAbrirAgregar_(id, btn) {
+  document.getElementById('cfgAgregarPop')?.remove();
+  const c = cfgItem_(id);
+  const r = btn.getBoundingClientRect();
+  const pop = document.createElement('div');
+  pop.id = 'cfgAgregarPop';
+  pop.style.cssText = 'position:fixed;z-index:9999;top:' + (r.bottom + 6) + 'px;left:' + Math.max(8, Math.min(r.left, window.innerWidth - 268)) + 'px;width:260px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:10px;font-family:\'Space Grotesk\',sans-serif';
+  const ya = new Set((c.agregar || []));
+  const opts = (_cfg.data.personas || []).filter(x => !ya.has(String(x.email).toLowerCase())).map(x => '<option value="' + esc(String(x.email).toLowerCase()) + '">' + esc(cfgTitulo_(x.nombre)) + '</option>').join('');
+  pop.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Agregar a este aviso</div>' +
+    '<select id="cfgAgrSel" style="width:100%;margin-bottom:8px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px;font-family:inherit"><option value="">Elige una persona…</option>' + opts + '</select>' +
+    '<input id="cfgAgrMail" placeholder="o escribe otro correo" style="width:100%;box-sizing:border-box;margin-bottom:8px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px;font-family:inherit">' +
+    '<button onclick="cfgConfirmarAgregar_(\'' + id + '\')" style="width:100%;padding:8px;border-radius:7px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">Agregar</button>';
+  document.body.appendChild(pop);
+  setTimeout(() => document.addEventListener('click', function cerrar(e) { const pp = document.getElementById('cfgAgregarPop'); if (pp && !pp.contains(e.target)) { pp.remove(); document.removeEventListener('click', cerrar); } }), 0);
+}
+function cfgConfirmarAgregar_(id) {
+  const em = (document.getElementById('cfgAgrMail').value.trim() || document.getElementById('cfgAgrSel').value).toLowerCase();
+  if (!em) { showToast('Elige una persona o escribe un correo', 'info'); return; }
+  if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[a-z]{2,}$/i.test(em)) { showToast('Ese correo no es válido', 'error'); return; }
+  const c = cfgItem_(id);
+  c.quitar = (c.quitar || []).filter(x => x !== em);
+  if (!(c.agregar || []).includes(em)) (c.agregar = c.agregar || []).push(em);
+  document.getElementById('cfgAgregarPop')?.remove();
+  cfgPintar_();
+}
+// Pide el PIN en una ventanita; devuelve el PIN o null si cancela
+function cfgPedirPin_(titulo) {
+  return new Promise(res => {
+    document.getElementById('modalTitle').textContent = '🔒 ' + titulo;
+    document.getElementById('modalSubtitle').textContent = 'Ingresa tu PIN de Configuración';
+    document.getElementById('modalBody').innerHTML = '<input id="cfgPinModal" type="password" inputmode="numeric" maxlength="10" placeholder="PIN" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-size:18px;letter-spacing:4px;text-align:center;font-family:inherit;margin-bottom:14px">' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end"><button id="cfgPinNo" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit">Cancelar</button><button id="cfgPinSi" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">Confirmar</button></div>';
+    const ov = document.getElementById('modalOverlay'); ov.classList.add('open');
+    const inp = document.getElementById('cfgPinModal'); setTimeout(() => inp.focus(), 50);
+    const fin = v => { ov.classList.remove('open'); res(v); };
+    document.getElementById('cfgPinNo').onclick = () => fin(null);
+    document.getElementById('cfgPinSi').onclick = () => fin(inp.value || null);
+    inp.onkeydown = e => { if (e.key === 'Enter') fin(inp.value || null); };
+  });
+}
+async function cfgGuardarCorreos_() {
+  if (!_cfg.data.tienePin) { showToast('Primero crea tu PIN de Configuración (arriba)', 'info'); window.scrollTo(0, 0); return; }
+  const pin = await cfgPedirPin_('Guardar cambios de correos');
+  if (!pin) return;
+  try {
+    const r = await cfgPost_({ action: 'cfgGuardarCorreos', pin: pin, correos: cfgNormDraft_(_cfg.draft) });
+    showToast('✅ Guardado' + (r.cambios ? ' · ' + r.cambios + (r.cambios === 1 ? ' aviso cambiado' : ' avisos cambiados') : ''), 'success');
+    renderConfig(document.getElementById('mainContent'));
+  } catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
+function cfgPintarSeguridad_() {
+  const caja = (t, body) => '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px"><div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:8px">' + t + '</div>' + body + '</div>';
+  return (_cfg.data.tienePin ? caja('🔒 Cambiar PIN de Configuración', '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Si te equivocas 5 veces seguidas, se bloquea 15 minutos.</div>' + cfgFormPin_(true)) : '') +
+    caja('🔑 Cómo se entra a Nexus', '<div style="font-size:12.5px;color:var(--text);line-height:1.7">• Todos entran <b>solo con su cuenta de Google</b>. El ingreso con usuario y clave está cerrado en el servidor.<br>' +
+      '• <b>Llave de emergencia (solo tú):</b> si algún día falla el botón de Google, abre Nexus agregando <code style="background:var(--surface2);padding:1px 6px;border-radius:4px">#emergencia</code> al final de la dirección; aparecerá el ingreso con clave solo para Jorge.<br>' +
+      '• La configuración se guarda en las propiedades privadas del sistema (no en la hoja ni en Firebase).</div>');
+}
+function cfgPintarHistorial_() {
+  const hs = _cfg.data.historial || [];
+  if (!hs.length) return '<div style="padding:30px;text-align:center;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:12px">Todavía no hay cambios registrados.</div>';
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">' + hs.map((x, i) => {
+    const f = new Date(x.fecha); const ft = isNaN(f) ? x.fecha : f.toLocaleString('es-EC', { dateStyle: 'medium', timeStyle: 'short' });
+    return '<div style="display:flex;gap:12px;align-items:flex-start;padding:11px 14px;' + (i ? 'border-top:1px solid var(--border);' : '') + '">' +
+      '<div style="min-width:140px;font-size:11.5px;color:var(--muted)">' + esc(ft) + '<div style="color:var(--accent);font-weight:700">' + esc(x.seccion) + '</div></div>' +
+      '<div style="flex:1;font-size:12.5px;color:var(--text);line-height:1.5">' + esc(x.detalle) + '</div>' +
+      (x.seccion === 'Correos' ? '<button onclick="cfgDeshacer_(' + x.fila + ')" style="font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap">↺ Deshacer</button>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+async function cfgDeshacer_(fila) {
+  const pin = await cfgPedirPin_('Deshacer este cambio');
+  if (!pin) return;
+  try { await cfgPost_({ action: 'cfgDeshacer', pin: pin, fila: fila }); showToast('✅ Cambio deshecho', 'success'); renderConfig(document.getElementById('mainContent')); }
+  catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
+
 function aplicarPermisoWallet() {
   const tieneAcceso = (_usuarioActual || '').toUpperCase() === 'JORGE';
   const tab = document.getElementById('tabWallet');
   if (tab) tab.style.display = tieneAcceso ? '' : 'none';
   if (!tieneAcceso && state.tab === 'wallet') switchTab('inventario');
+  aplicarPermisoConfig();
 }
 
 // Instalaciones — visible para todas las que tengan sesión iniciada:
@@ -5810,11 +6027,11 @@ async function renderComercialGeneral(container) {
 function switchTab(t) {
   state.tab = t; state.page = 1;
   document.querySelectorAll('.tab').forEach((el,i) =>
-    el.classList.toggle('active', ['inventario','disponibles','reservadas','instalaciones','alertas','led','mapa','dashboard','cotizador','pipeline','comercialgeneral','wallet'][i] === t));
+    el.classList.toggle('active', ['inventario','disponibles','reservadas','instalaciones','alertas','led','mapa','dashboard','cotizador','pipeline','comercialgeneral','wallet','config'][i] === t));
   const mainToolbar = document.getElementById('mainToolbar');
   // (2026-11-05) En LED tampoco: el módulo LED tiene su propio filtro "Cliente activo"
-  if (mainToolbar) mainToolbar.style.display = (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral' || t === 'wallet' || t === 'instalaciones' || t === 'led') ? 'none' : '';
-  if (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral' || t === 'wallet' || t === 'instalaciones') { render(); return; }
+  if (mainToolbar) mainToolbar.style.display = (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral' || t === 'wallet' || t === 'instalaciones' || t === 'led' || t === 'config') ? 'none' : '';
+  if (t === 'cotizador' || t === 'pipeline' || t === 'comercialgeneral' || t === 'wallet' || t === 'instalaciones' || t === 'config') { render(); return; }
   document.getElementById('viewToggle').style.display = (t === 'alertas' || t === 'mapa' || t === 'led') ? 'none' : '';
   const mfEj = document.getElementById('mf-ejecutiva');
   if (mfEj) mfEj.style.display = (t === 'led') ? 'none' : '';
@@ -5950,6 +6167,10 @@ function render() {
   }
   if (state.tab === 'wallet') {
     if (!document.getElementById('qzWalletBoard')) renderWallet(content);
+    return;
+  }
+  if (state.tab === 'config') {
+    if (!document.getElementById('cfgBoard')) renderConfig(content);
     return;
   }
   if (state.tab === 'instalaciones') {
