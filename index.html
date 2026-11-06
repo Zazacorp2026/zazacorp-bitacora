@@ -644,6 +644,10 @@
     <input type="checkbox" id="chkMostrarReservadas" checked onchange="toggleMostrarReservadasDisp(this.checked)" style="cursor:pointer">
     Mostrar reservadas
   </label>
+  <label id="chkMostrarPrereservadasWrap" title="Contratadas que ya tienen otro cliente apartado para cuando terminen" style="display:none;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:11.5px;color:var(--text);cursor:pointer;white-space:nowrap;font-family:'Space Grotesk',sans-serif">
+    <input type="checkbox" id="chkMostrarPrereservadas" checked onchange="toggleMostrarPrereservadasDisp(this.checked)" style="cursor:pointer">
+    Mostrar pre-reservadas
+  </label>
   <button id="btnExportPPT" onclick="exportarPPT()" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:var(--accent);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='rgba(245,158,11,.25)'" onmouseout="this.style.background='rgba(245,158,11,.12)'">⬇ Exportar PPT</button>
   <div id="filtroMesWrap" style="display:none;align-items:center;gap:8px;background:rgba(245,158,11,.12);border:1px solid var(--accent);border-radius:10px;padding:6px 10px">
     <span style="font-size:12px;color:var(--accent);font-weight:700;white-space:nowrap">📅 Disponibles a partir de (día exacto o solo mes):</span>
@@ -1209,6 +1213,7 @@ let state = {
   // en la pestaña Disponibles deja a cada ejecutiva desactivarlo si
   // solo quiere ver lo realmente libre.
   mostrarReservadasDisp: true,
+  mostrarPrereservadasDisp: true,
   page: 1,
   perPage: 48
 };
@@ -1624,6 +1629,13 @@ function diasRestantesLocal(fechaISO) {
   return Math.round((fin - hoy) / 86400000);
 }
 
+// (2026-11-06) Pre-reservada = valla contratada que ya tiene otro cliente apartado para cuando termine.
+function esPrereservadaDisp_(v) { return v && v.estado === 'CONTRATADA' && !!String(v.reserva2_cliente || '').trim(); }
+function toggleMostrarPrereservadasDisp(checked) {
+  state.mostrarPrereservadasDisp = checked;
+  state.page = 1;
+  render();
+}
 function toggleMostrarReservadasDisp(checked) {
   state.mostrarReservadasDisp = checked;
   state.page = 1;
@@ -1691,6 +1703,13 @@ function getFiltered() {
           ? espaciosScrollingDisponibles(v) > 0
           : (v.estado === 'DISPONIBLE' || (state.mostrarReservadasDisp && v.estado === 'RESERVADA')));
     }
+    // (2026-11-06) Los dos checks valen también con el filtro "Disponibles a partir de" (vallas normales; LED/scrolling no aplican)
+    d = d.filter(v => {
+      if (esLEDtipo(v) || esScrollingTipo(v)) return true;
+      if (!state.mostrarReservadasDisp && v.estado === 'RESERVADA') return false;
+      if (!state.mostrarPrereservadasDisp && esPrereservadaDisp_(v)) return false;
+      return true;
+    });
   }
   else if (state.tab === 'reservadas') d = d.filter(v => !esLEDtipo(v) && (v.estado === 'RESERVADA' || (v.estado === 'DISPONIBLE' && isBlocked(v.codigo))));
   else if (state.tab === 'alertas') d = d.filter(v => v.alerta || reservaProximaAVencer(v));
@@ -5812,6 +5831,8 @@ function switchTab(t) {
   if (pptBtn) pptBtn.style.display = t === 'disponibles' ? 'block' : 'none';
   const chkResWrap = document.getElementById('chkMostrarReservadasWrap');
   if (chkResWrap) chkResWrap.style.display = t === 'disponibles' ? 'flex' : 'none';
+  const chkPreWrap = document.getElementById('chkMostrarPrereservadasWrap');
+  if (chkPreWrap) chkPreWrap.style.display = t === 'disponibles' ? 'flex' : 'none';
   const mesWrap = document.getElementById('filtroMesWrap');
   if (mesWrap) mesWrap.style.display = t === 'disponibles' ? 'flex' : 'none';
   if (t !== 'disponibles') { limpiarFiltroMes(true); }
