@@ -1568,7 +1568,7 @@ async function cargarLedContratosGlobal() {
 }
 function espaciosLEDDisponibles(v) {
   const clave = v.playerVnnoxId || v.codigo;
-  const ocupados = _ledContratosGlobal.filter(c => c.playerId === clave && c.activo).length;
+  const ocupados = _ledContratosGlobal.filter(c => c.playerId === clave && ledAlAire_(c)).length;
   const capacidad = _ledCapacidadesGlobal[clave] || 15;
   return Math.max(0, capacidad - ocupados);
 }
@@ -9909,6 +9909,35 @@ function ledFiltrarClienteActivo_(v) {
   _ledFiltroClienteActivo = v || '';
   if (_ledData && _ledContenedorActual) buildLEDUI(_ledContenedorActual, _ledData);
 }
+// (2026-11-06) Filtro por tipo de elemento LED (Pantalla, Túnel, Pilar, Puente, Paso Peatonal, Paradero)
+let _ledFiltroTipo = '';
+function ledFiltrarTipo_(v) {
+  _ledFiltroTipo = v || '';
+  if (_ledData && _ledContenedorActual) buildLEDUI(_ledContenedorActual, _ledData);
+}
+// (2026-11-06) Solo Jorge: correo grupal a las ejecutivas con contratos LED sin material ni programación.
+// Se dispara SOLO con este botón: primero muestra a quién y cuántas órdenes, y pide confirmar.
+async function ledAvisoSinMaterialClick_(btn) {
+  const txt0 = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Revisando...'; }
+  try {
+    const r1 = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledAvisoSinMaterial', enviar: false }) });
+    const j1 = await r1.json();
+    if (j1.error) throw new Error(j1.error);
+    if (!j1.resumen || !j1.resumen.length) { showToast('✅ Todos los contratos LED vigentes ya tienen material o programación', 'success'); return; }
+    const det = j1.resumen.map(r => '• ' + r.ejecutiva + ': ' + r.ordenes.length + (r.ordenes.length === 1 ? ' orden' : ' órdenes') + ' (' + r.pantallas + ' pantallas)' + (r.email ? '' : ' — SIN CORREO')).join('\n');
+    if (!confirm('Contratos LED sin material ni programación:\n\n' + det + '\n\nSe enviará UN correo grupal a estas ejecutivas, con copia para ti. ¿Enviar ahora?')) return;
+    if (btn) btn.textContent = '⏳ Enviando...';
+    const r2 = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledAvisoSinMaterial', enviar: true }) });
+    const j2 = await r2.json();
+    if (j2.error) throw new Error(j2.error);
+    showToast(j2.enviado ? '📧 Aviso enviado a ' + j2.destinatarios + ' ejecutiva(s) · ' + j2.totalOrdenes + ' órdenes' : (j2.mensaje || 'Nada que avisar'), 'success');
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = txt0; }
+  }
+}
 function buildLEDUI(container, data) {
   const { elementosLED: elementosLEDsinFiltrar0, contratos, materiales, vnnoxError } = data;
   // Clientes con contratos activos → pantallas donde están
@@ -9919,9 +9948,11 @@ function buildLEDUI(container, data) {
   });
   if (_ledFiltroClienteActivo && !clientesActivos[_ledFiltroClienteActivo]) _ledFiltroClienteActivo = '';
   const contratosFiltro = _ledFiltroClienteActivo ? clientesActivos[_ledFiltroClienteActivo] : null;
-  const elementosLEDsinFiltrar = contratosFiltro
-    ? elementosLEDsinFiltrar0.filter(el => contratosFiltro.some(c => c.playerId === (el.playerVnnoxId || el.codigo)))
-    : elementosLEDsinFiltrar0;
+  const tiposPresentes = LED_TIPOS_ORDER.filter(t => elementosLEDsinFiltrar0.some(el => detectLEDTipo(el.tipo) === t));
+  if (_ledFiltroTipo && tiposPresentes.indexOf(_ledFiltroTipo) === -1) _ledFiltroTipo = '';
+  const elementosLEDsinFiltrar = elementosLEDsinFiltrar0
+    .filter(el => !contratosFiltro || contratosFiltro.some(c => c.playerId === (el.playerVnnoxId || el.codigo)))
+    .filter(el => !_ledFiltroTipo || detectLEDTipo(el.tipo) === _ledFiltroTipo);
 
   // Filtros de la barra global: ciudad y tipo se aplican directo sobre
   // el elemento; cliente se aplica sobre sus contratos activos, ya que
@@ -9933,8 +9964,9 @@ function buildLEDUI(container, data) {
 
   // Estadísticas
   const online  = elementosLED.filter(p => p.isOnline === true).length;
-  const activos = contratos.filter(c => c.activo).length;
-  const totalSpotsSold = contratos.filter(c => c.activo).reduce((s, c) => s + c.spots, 0);
+  const activos = contratos.filter(ledAlAire_).length;
+  const proximosTot = contratos.filter(c => c.activo && !ledAlAire_(c)).length;
+  const totalSpotsSold = contratos.filter(ledAlAire_).reduce((s, c) => s + c.spots, 0);
 
   let html = '';
   if (vnnoxError) html += '<div class="led-vnnox-error">⚠️ VNNOX: ' + vnnoxError + '</div>';
@@ -9942,7 +9974,7 @@ function buildLEDUI(container, data) {
   html += '<div class="led-kpis">' +
     '<div class="led-kpi"><b>' + elementosLED.length + '</b><span>Elementos LED (Bitácora)</span></div>' +
     '<div class="led-kpi"><b style="color:#4ade80">' + online + '</b><span>En línea</span></div>' +
-    '<div class="led-kpi"><b>' + activos + '</b><span>Contratos activos</span></div>' +
+    '<div class="led-kpi"><b>' + activos + '</b><span>Contratos al aire hoy</span>' + (proximosTot ? '<small>🕒 ' + proximosTot + ' próximos por empezar</small>' : '') + '</div>' +
     '<div class="led-kpi"><b>' + totalSpotsSold.toLocaleString() + '</b><span>Spots/día vendidos</span></div>' +
     ledKpiCanje_() +
     '</div>';
@@ -9955,8 +9987,14 @@ function buildLEDUI(container, data) {
       '<option value="">Todos (' + nombresCli.length + ' clientes activos)</option>' +
       nombresCli.map(n => { const np = new Set(clientesActivos[n].map(c => c.playerId)).size; return '<option value="' + esc(n) + '"' + (n === _ledFiltroClienteActivo ? ' selected' : '') + '>' + esc(n) + ' · ' + np + (np === 1 ? ' pantalla' : ' pantallas') + '</option>'; }).join('') +
     '</select>' +
-    (_ledFiltroClienteActivo ? '<button class="led-tbtn" onclick="ledFiltrarClienteActivo_(\'\')" style="background:transparent;color:var(--muted)">✕ Quitar filtro</button>' : '') +
+    '<label for="ledFiltroTipo" style="font-size:12px;font-weight:700;color:var(--muted);margin-left:6px">Tipo</label>' +
+    '<select id="ledFiltroTipo" class="led-tsel" style="min-width:170px" onchange="ledFiltrarTipo_(this.value)">' +
+      '<option value="">Todos los tipos</option>' +
+      tiposPresentes.map(t => { const n = elementosLEDsinFiltrar0.filter(el => detectLEDTipo(el.tipo) === t).length; return '<option value="' + esc(t) + '"' + (t === _ledFiltroTipo ? ' selected' : '') + '>' + esc(t) + ' · ' + n + '</option>'; }).join('') +
+    '</select>' +
+    ((_ledFiltroClienteActivo || _ledFiltroTipo) ? '<button class="led-tbtn" onclick="_ledFiltroTipo=\'\';ledFiltrarClienteActivo_(\'\')" style="background:transparent;color:var(--muted)">✕ Quitar filtros</button>' : '') +
     '</div><div class="grp">' +
+    ((_usuarioActual || '').toUpperCase() === 'JORGE' ? '<button class="led-tbtn" onclick="ledAvisoSinMaterialClick_(this)" title="Correo grupal a las ejecutivas con contratos LED sin material ni programación" style="background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.4);color:#34d399">📧 Avisar material pendiente</button>' : '') +
     (qzEsAdmin() ? '<button class="led-tbtn" onclick="openModalCargaMasivaLED()" style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.4);color:var(--blue)">📥 Carga masiva</button>' : '') +
     ((_usuarioActual || '').toUpperCase() === 'JORGE' ? '<button class="led-tbtn" onclick="bonifReporteAbrir()" style="background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.4);color:#c4b5fd">🎁 Bonificaciones</button>' : '') +
     (isReadOnly() ? '' : '<button class="led-tbtn" onclick="ledToggleMulti()" style="background:' + (ledMultiMode ? 'rgba(239,68,68,.12)' : 'rgba(99,102,241,.12)') + ';border-color:' + (ledMultiMode ? 'rgba(239,68,68,.4)' : 'rgba(99,102,241,.4)') + ';color:' + (ledMultiMode ? 'var(--red)' : '#818cf8') + '">' + (ledMultiMode ? '✕ Cancelar selección' : '☑ Contratación múltiple') + '</button>') +
@@ -10018,7 +10056,9 @@ function buildLEDUI(container, data) {
         '<div class="led-grid">';
 
     grupo.forEach(player => {
-      const playerContratos = contratos.filter(c => c.playerId === player.playerId && c.activo).sort((a,b)=>(a.orden||999)-(b.orden||999));
+      // (2026-11-06) Al aire = ya empezó (ocupa puesto hoy). Próximos = empiezan después: se muestran aparte y no ocupan puesto hoy
+      const playerContratos = contratos.filter(c => c.playerId === player.playerId && ledAlAire_(c)).sort((a,b)=>(a.orden||999)-(b.orden||999));
+      const playerProximos  = contratos.filter(c => c.playerId === player.playerId && c.activo && !ledAlAire_(c)).sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio)));
       const spotsUsados     = playerContratos.reduce((s, c) => s + c.spots, 0);
       const pct             = Math.min(100, Math.round(spotsUsados / SPOTS_DIA_CLIENT * 100));
       const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
@@ -10070,7 +10110,8 @@ function buildLEDUI(container, data) {
         (esAdmin ? '<button data-pid="' + esc(player.playerId) + '" data-nombre="' + esc(player.name || '') + '" onclick="event.stopPropagation();toggleBloqueoLED(this.dataset.pid, ' + (bloqueadaAdmin ? 'false' : 'true') + ', this.dataset.nombre)" style="margin:4px 0;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;' +
           (bloqueadaAdmin ? 'background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.45);color:#4ade80">🔓 Permitir nuevas contrataciones' : 'background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.4);color:#f87171">🔒 Bloquear nuevas contrataciones') + '</button>' : '') +
         '<div style="font-size:11px;color:var(--muted);margin:4px 0">' +
-          playerContratos.length + ' de ' + capacidad + ' ocupados · <span style="color:var(--accent);font-weight:700">' + (capacidad-playerContratos.length) + ' disponibles</span>' +
+          playerContratos.length + ' de ' + capacidad + ' ocupados hoy · <span style="color:var(--accent);font-weight:700">' + Math.max(0, capacidad-playerContratos.length) + ' disponibles</span>' +
+          (playerProximos.length ? ' · <span style="color:#a5b4fc;font-weight:700">🕒 ' + playerProximos.length + ' próximo' + (playerProximos.length === 1 ? '' : 's') + '</span>' : '') +
           '' +
         '</div>' +
         '<div class="led-capacity-label"><span>Spots hoy</span><span>' + pct + '%</span></div>' +
@@ -10078,12 +10119,13 @@ function buildLEDUI(container, data) {
       '</div>';
 
       htmlGrupos += '<div class="led-slots-grid">';
-      playerContratos.forEach((c, idx) => {
+      const pintarContratoLED_ = (c, idx, lista) => {
+        const esProximo = !ledAlAire_(c);
         const mats = materiales.filter(m => m.idContrato === c.id && m.vigente);
         const diasRestantes = diasRestantesLocal(c.fin);
         const colorDias = diasRestantes <= 7 ? '#f87171' : diasRestantes <= 15 ? '#fbbf24' : '#4ade80';
         const esZaza = c.contratadoPor && c.contratadoPor.toUpperCase() === 'ZAZACORP';
-        htmlGrupos += '<div class="led-contrato-item" onclick="openModalDetalleContratoLED(\'' + c.id + '\')" style="cursor:pointer">' +
+        htmlGrupos += '<div class="led-contrato-item" onclick="openModalDetalleContratoLED(\'' + c.id + '\')" style="cursor:pointer' + (esProximo ? ';border-style:dashed;border-color:rgba(129,140,248,.5)' : '') + '">' +
           '<div class="led-contrato-header">' +
             (esAdmin ? '<span style="font-size:10px;color:var(--muted);margin-right:4px">#'+(c.orden||idx+1)+'</span>' : '') +
             '<span class="led-contrato-cliente">' + c.cliente + '</span>' +
@@ -10092,6 +10134,8 @@ function buildLEDUI(container, data) {
           '<div class="led-contrato-meta">' + c.inicio + ' → ' + c.fin +
             ' · <span style="color:' + colorDias + '">' + diasRestantes + ' días</span>' +
           '</div>' +
+          (esProximo ? '<div style="margin-top:4px"><span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;background:rgba(129,140,248,.15);color:#a5b4fc;border:1px solid rgba(129,140,248,.45)">🕒 Próximo · desde ' + c.inicio.slice(8, 10) + '/' + c.inicio.slice(5, 7) + '</span></div>' : '') +
+          ledAvisoProgramacion_(c) +
           (c.contratadoPor ? '<div style="margin-top:4px"><span style="font-size:10px;padding:2px 7px;border-radius:4px;' +
             (esZaza ? 'background:rgba(34,197,94,.18);color:#4ade80;border:1px solid rgba(34,197,94,.4)' : 'background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4)') +
             '">' + c.contratadoPor + '</span></div>' : '');
@@ -10105,11 +10149,12 @@ function buildLEDUI(container, data) {
         '</div>';
         htmlGrupos += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" onclick="event.stopPropagation()">' +
           (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar</button>' : '') +
-          (esAdmin && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+playerContratos[idx-1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
-          (esAdmin && idx < playerContratos.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+playerContratos[idx+1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
+          (esAdmin && !esProximo && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+lista[idx-1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
+          (esAdmin && !esProximo && idx < lista.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+lista[idx+1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
         '</div>';
         htmlGrupos += '</div>';
-      });
+      };
+      playerContratos.forEach((c, idx) => pintarContratoLED_(c, idx, playerContratos));
       if (esAdmin) {
         htmlGrupos += '<div class="led-slot-empty" style="border-color:#60a5fa;color:#60a5fa" onclick="agregarEspaciosLED(\'' + player.playerId + '\',' + capacidad + ')">+ Agregar más espacios</div>';
       }
@@ -10119,6 +10164,10 @@ function buildLEDUI(container, data) {
           : offlineNoAdmin
           ? '<div class="led-slot-empty" style="cursor:not-allowed;opacity:.55;border-color:rgba(248,113,113,.4);color:#f87171">📴 Offline · no disponible</div>'
           : '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">Ingresar nueva contratación</div>';
+      }
+      if (playerProximos.length) {
+        htmlGrupos += '<div style="grid-column:1/-1;font-size:11px;font-weight:800;color:#a5b4fc;margin-top:6px;padding-top:8px;border-top:1px dashed rgba(129,140,248,.35)">🕒 Próximos · aún no empiezan, no ocupan puesto hoy</div>';
+        playerProximos.forEach((c, idx) => pintarContratoLED_(c, idx, playerProximos));
       }
       htmlGrupos += '</div>'; // led-slots-grid
       htmlGrupos += '</div>'; // led-player-card
@@ -10543,6 +10592,21 @@ function ledTarifaCanje_(codigo) { return LED_CANJE_ALACC.pantallas[ledCodigoBas
 function ledCanjeDelMes_(mes) {
   return ((_ledData && _ledData.contratos) || []).filter(c => c.tipo === 'CANJE' && c.estado !== 'CANCELADO' && String(c.inicio || '').slice(0, 7) === mes);
 }
+function ledHoyLocal_() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+// (2026-11-06) Un contrato ocupa puesto HOY solo si ya empezó; los futuros se muestran como "Próximos"
+// (2026-11-06) Aviso de días sin programación (el servidor manda diasContrato / diasProgramados / diasSinProg)
+function ledAvisoProgramacion_(c) {
+  if (c.diasContrato === undefined || c.diasContrato === null) return '';
+  if (c.bonificada && c.estadoAuth === 'PENDIENTE') return '';
+  const hoy = ledHoyLocal_();
+  const diasParaEmpezar = Math.round((new Date(c.inicio + 'T00:00:00') - new Date(hoy + 'T00:00:00')) / 86400000);
+  const urgente = diasParaEmpezar <= 7;
+  const estilo = 'margin-top:4px;font-size:10.5px;font-weight:700;color:' + (urgente ? '#f87171' : '#fbbf24');
+  if (!c.diasProgramados) return '<div style="' + estilo + '">⚠️ Sin programación' + (diasParaEmpezar <= 0 ? ' (ya empezó)' : '') + '</div>';
+  if (c.diasSinProg > 0) return '<div style="' + estilo + '">⚠️ ' + c.diasSinProg + ' día' + (c.diasSinProg === 1 ? '' : 's') + ' sin programación de ' + c.diasContrato + '</div>';
+  return '<div style="margin-top:4px;font-size:10.5px;color:#4ade80">✓ Programación completa</div>';
+}
+function ledAlAire_(c) { return c.activo && String(c.inicio || '') <= ledHoyLocal_(); }
 function ledMesTexto_(mes) { return LED_MESES_ES[parseInt(mes.slice(5, 7), 10) - 1] + ' ' + mes.slice(0, 4); }
 function ledKpiCanje_() {
   const hoy = new Date().toISOString().slice(0, 10);
@@ -11442,7 +11506,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
     .map(e => '<option>' + e + '</option>').join('');
   let playerOpts = elementos.map(el => {
     const pid = el.playerVnnoxId || el.codigo;
-    const llena = pid !== prePlayerId && contratosLed.filter(c => c.playerId === pid && c.activo).length >= (el.capacidad || 15);
+    const llena = pid !== prePlayerId && contratosLed.filter(c => c.playerId === pid && ledAlAire_(c)).length >= (el.capacidad || 15);
     const bloq = (!!el.bloqueada || (!!el.playerVnnoxId && el.isOnline === false)) && (_usuarioActual || '').toUpperCase() !== 'JORGE';
     return '<option value="' + esc(pid) + '" data-nombre="' + esc(el.codigo + ' — ' + pid) + '"' + (pid === prePlayerId && !bloq ? ' selected' : '') + (llena || bloq ? ' disabled' : '') + '>' +
       esc(el.codigo + (el.direccion ? ' — ' + String(el.direccion).substring(0, 40) : '') + (bloq ? (el.bloqueada ? ' · 🔒 bloqueada' : ' · 📴 offline') : llena ? ' · sin espacios' : '')) + '</option>';
