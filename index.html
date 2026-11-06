@@ -1010,7 +1010,7 @@ function cfgPintar_() {
   let h = '<div style="max-width:1100px;margin:0 auto;padding:16px 18px 80px;text-align:left;box-sizing:border-box">' +
     '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px">' +
       '<div style="flex:1;min-width:200px"><div style="font-size:18px;font-weight:800;color:var(--text)">⚙️ Configuración</div><div style="font-size:12px;color:var(--muted)">Solo tú ves esta pestaña · cada cambio pide tu PIN y queda en el historial</div></div>' +
-      subBtn('correos', 'Correos', '✉️') + subBtn('seguridad', 'Seguridad', '🔒') + subBtn('usuarios', 'Usuarios', '👤') + subBtn('permisos', 'Permisos', '🔑') + subBtn('reglas', 'Reglas', '📏') + subBtn('historial', 'Historial', '🕘') +
+      subBtn('correos', 'Correos', '✉️') + subBtn('seguridad', 'Seguridad', '🔒') + subBtn('usuarios', 'Usuarios', '👤') + subBtn('permisos', 'Permisos', '🔑') + subBtn('reglas', 'Reglas', '📏') + subBtn('agencias', 'Agencias', '🏢') + subBtn('historial', 'Historial', '🕘') +
     '</div>';
   if (!d.tienePin) {
     h += '<div style="background:rgba(245,158,11,.1);border:1px solid var(--accent);border-radius:12px;padding:16px;margin-bottom:16px">' +
@@ -1023,15 +1023,16 @@ function cfgPintar_() {
   else if (p.sub === 'usuarios') h += cfgPintarUsuarios_();
   else if (p.sub === 'permisos') h += cfgPintarPermisos_();
   else if (p.sub === 'reglas') h += cfgPintarReglas_();
+  else if (p.sub === 'agencias') h += cfgPintarAgencias_();
   else h += cfgPintarHistorial_();
   h += '</div>';
-  const esUsr = p.sub === 'usuarios' || p.sub === 'permisos', esReg = p.sub === 'reglas';
-  if (p.sub === 'correos' || esUsr || esReg) {
-    const hay = esReg ? cfgRegHayCambios_() : esUsr ? cfgUsrHayCambios_() : cfgHayCambios_();
+  const esUsr = p.sub === 'usuarios' || p.sub === 'permisos', esReg = p.sub === 'reglas', esAg = p.sub === 'agencias';
+  if (p.sub === 'correos' || esUsr || esReg || esAg) {
+    const hay = esAg ? cfgAgHayCambios_() : esReg ? cfgRegHayCambios_() : esUsr ? cfgUsrHayCambios_() : cfgHayCambios_();
     h += '<div id="cfgBarraGuardar" style="position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:12px 18px;display:' + (hay ? 'flex' : 'none') + ';justify-content:flex-end;align-items:center;gap:10px;z-index:5">' +
       '<span style="font-size:12px;color:var(--accent);margin-right:auto">Tienes cambios sin guardar</span>' +
-      '<button onclick="' + (esReg ? '_cfg.reg.draft=cfgCopia_(_cfg.reg.base)' : esUsr ? '_cfg.usr.draft=cfgCopia_(_cfg.usr.lista)' : '_cfg.draft=cfgCopia_(_cfg.data.correos)') + ';cfgPintar_()" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit">Descartar</button>' +
-      '<button onclick="' + (esReg ? 'cfgGuardarReglas_()' : esUsr ? 'cfgGuardarUsuarios_()' : 'cfgGuardarCorreos_()') + '" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">Guardar cambios</button></div>';
+      '<button onclick="' + (esAg ? '_cfg.ag.draft=cfgCopia_(_cfg.ag.base)' : esReg ? '_cfg.reg.draft=cfgCopia_(_cfg.reg.base)' : esUsr ? '_cfg.usr.draft=cfgCopia_(_cfg.usr.lista)' : '_cfg.draft=cfgCopia_(_cfg.data.correos)') + ';cfgPintar_()" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit">Descartar</button>' +
+      '<button onclick="' + (esAg ? 'cfgGuardarAgencias_()' : esReg ? 'cfgGuardarReglas_()' : esUsr ? 'cfgGuardarUsuarios_()' : 'cfgGuardarCorreos_()') + '" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">Guardar cambios</button></div>';
   }
   board.innerHTML = h;
 }
@@ -1187,10 +1188,37 @@ async function cfgGuardarCorreos_() {
 }
 function cfgPintarSeguridad_() {
   const caja = (t, body) => '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px"><div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:8px">' + t + '</div>' + body + '</div>';
+  const inpS = 'background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 10px;font-size:14px;font-family:inherit;box-sizing:border-box';
+  const btn = (fn, t) => '<button onclick="' + fn + '" style="padding:9px 16px;border-radius:8px;border:none;background:var(--accent);color:#000;font-weight:800;cursor:pointer;font-family:inherit">' + t + '</button>';
+  const estado = (propio, txtSi, txtNo) => '<div style="font-size:11.5px;margin-bottom:10px;color:' + (propio ? 'var(--green, #22c55e)' : 'var(--accent)') + '">' + (propio ? '✓ ' + txtSi : '⚠️ ' + txtNo) + '</div>';
   return (_cfg.data.tienePin ? caja('🔒 Cambiar PIN de Configuración', '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Si te equivocas 5 veces seguidas, se bloquea 15 minutos.</div>' + cfgFormPin_(true)) : '') +
+    (_cfg.data.tienePin ? caja('🛡️ PIN de aprobaciones', '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Es el que se pide para liberar o editar vallas, aprobar descuentos, reenviar contrataciones, editar instalaciones y comisiones de Wallet. Quien lo use tendrá que usar el nuevo.</div>' +
+      estado(_cfg.data.pinAprobPropio, 'Ya tiene un PIN propio (guardado como huella, nadie puede leerlo).', 'Todavía es el PIN de siempre, de 4 dígitos y escrito en el código. Te recomiendo cambiarlo.') +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><input id="cfgPaNuevo" type="password" inputmode="numeric" maxlength="10" placeholder="PIN nuevo (4-10 números)" style="' + inpS + ';width:200px;letter-spacing:2px"><input id="cfgPaRep" type="password" inputmode="numeric" maxlength="10" placeholder="Repite el PIN" style="' + inpS + ';width:160px;letter-spacing:2px">' + btn('cfgGuardarPinAprob_()', 'Cambiar') + '</div>') : '') +
+    (_cfg.data.tienePin ? caja('🗝️ Llave de emergencia', '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">La que usas con <code>#emergencia</code> si falla el ingreso con Google. Mínimo 10 caracteres, con letras y números.</div>' +
+      estado(_cfg.data.llavePropia, 'Cambiada desde aquí.', 'Es la que definiste al cerrar el login (sigue siendo válida hasta que la cambies).') +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><input id="cfgLlNueva" type="password" autocomplete="new-password" placeholder="Llave nueva" style="' + inpS + ';width:200px"><input id="cfgLlRep" type="password" autocomplete="new-password" placeholder="Repite la llave" style="' + inpS + ';width:180px">' + btn('cfgGuardarLlave_()', 'Cambiar') + '</div>') : '') +
     caja('🔑 Cómo se entra a Nexus', '<div style="font-size:12.5px;color:var(--text);line-height:1.7">• Todos entran <b>solo con su cuenta de Google</b>. El ingreso con usuario y clave está cerrado en el servidor.<br>' +
       '• <b>Llave de emergencia (solo tú):</b> si algún día falla el botón de Google, abre Nexus agregando <code style="background:var(--surface2);padding:1px 6px;border-radius:4px">#emergencia</code> al final de la dirección; aparecerá el ingreso con clave solo para Jorge.<br>' +
       '• La configuración se guarda en las propiedades privadas del sistema (no en la hoja ni en Firebase).</div>');
+}
+async function cfgGuardarPinAprob_() {
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const n = v('cfgPaNuevo');
+  if (!/^\d{4,10}$/.test(n)) { showToast('El PIN de aprobaciones debe tener entre 4 y 10 números', 'error'); return; }
+  if (n !== v('cfgPaRep')) { showToast('Los dos PIN no coinciden', 'error'); return; }
+  const pin = await cfgPedirPin_('Cambiar PIN de aprobaciones'); if (!pin) return;
+  try { await cfgPost_({ action: 'cfgGuardarPinAprob', pin: pin, nuevo: n }); showToast('✅ PIN de aprobaciones cambiado', 'success'); renderConfig(document.getElementById('mainContent')); }
+  catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
+async function cfgGuardarLlave_() {
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const n = v('cfgLlNueva');
+  if (n.length < 10 || !/[A-Za-z]/.test(n) || !/\d/.test(n)) { showToast('La llave debe tener al menos 10 caracteres, con letras y números', 'error'); return; }
+  if (n !== v('cfgLlRep')) { showToast('Las dos llaves no coinciden', 'error'); return; }
+  const pin = await cfgPedirPin_('Cambiar llave de emergencia'); if (!pin) return;
+  try { await cfgPost_({ action: 'cfgGuardarLlave', pin: pin, nueva: n }); showToast('✅ Llave de emergencia cambiada', 'success'); renderConfig(document.getElementById('mainContent')); }
+  catch (e) { showToast('❌ ' + e.message, 'error'); }
 }
 function cfgPintarHistorial_() {
   const hs = _cfg.data.historial || [];
@@ -1200,13 +1228,13 @@ function cfgPintarHistorial_() {
     return '<div style="display:flex;gap:12px;align-items:flex-start;padding:11px 14px;' + (i ? 'border-top:1px solid var(--border);' : '') + '">' +
       '<div style="min-width:140px;font-size:11.5px;color:var(--muted)">' + esc(ft) + '<div style="color:var(--accent);font-weight:700">' + esc(x.seccion) + '</div></div>' +
       '<div style="flex:1;font-size:12.5px;color:var(--text);line-height:1.5">' + esc(x.detalle) + '</div>' +
-      ((x.seccion === 'Correos' || x.seccion === 'Usuarios' || x.seccion === 'Reglas') ? '<button onclick="cfgDeshacer_(' + x.fila + ')" style="font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap">↺ Deshacer</button>' : '') + '</div>';
+      ((x.seccion === 'Correos' || x.seccion === 'Usuarios' || x.seccion === 'Reglas' || x.seccion === 'Agencias') ? '<button onclick="cfgDeshacer_(' + x.fila + ')" style="font-size:11.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap">↺ Deshacer</button>' : '') + '</div>';
   }).join('') + '</div>';
 }
 async function cfgDeshacer_(fila) {
   const pin = await cfgPedirPin_('Deshacer este cambio');
   if (!pin) return;
-  try { await cfgPost_({ action: 'cfgDeshacer', pin: pin, fila: fila }); showToast('✅ Cambio deshecho', 'success'); if (_cfg) { _cfg.usr = null; _cfg.reg = null; } nxCargarCfgPublica_(); renderConfig(document.getElementById('mainContent')); }
+  try { await cfgPost_({ action: 'cfgDeshacer', pin: pin, fila: fila }); showToast('✅ Cambio deshecho', 'success'); if (_cfg) { _cfg.usr = null; _cfg.reg = null; _cfg.ag = null; } nxCargarCfgPublica_(); renderConfig(document.getElementById('mainContent')); }
   catch (e) { showToast('❌ ' + e.message, 'error'); }
 }
 
@@ -1429,11 +1457,75 @@ async function cfgGuardarReglas_() {
     renderConfig(document.getElementById('mainContent'));
   } catch (e) { showToast('❌ ' + e.message, 'error'); }
 }
+// ── (2026-11-06) Pestaña Agencias y descuentos (hoja QZ_DEALS) — solo Jorge ──
+const cfgPct_ = x => (x === null || x === undefined || x === '') ? '' : String(Math.round(Number(x) * 10000) / 100);
+async function cfgCargarAgencias_() {
+  if (!_cfg) return;
+  _cfg.agCargando = true;
+  try {
+    const r = await cfgPost_({ action: 'cfgObtenerAgencias' });
+    const base = { tope: cfgPct_(r.topeGeneral), lista: (r.lista || []).sort((a, b) => a.agencia.localeCompare(b.agencia)).map(a => ({ agencia: a.agencia, comision: cfgPct_(a.comision), over: cfgPct_(a.over), tope: cfgPct_(a.tope) })) };
+    _cfg.ag = { base: base, draft: cfgCopia_(base), filtro: '' };
+    _cfg.agError = '';
+  } catch (e) { _cfg.agError = e.message; }
+  _cfg.agCargando = false;
+  cfgPintar_();
+}
+function cfgAgHayCambios_() { return !!(_cfg && _cfg.ag && JSON.stringify(_cfg.ag.draft) !== JSON.stringify(_cfg.ag.base)); }
+function cfgAgSet_(i, campo, valor) { const a = _cfg.ag.draft.lista[i]; if (a) a[campo] = valor; cfgPintarBarra_(); }
+function cfgAgAgregar_() { _cfg.ag.draft.lista.unshift({ agencia: '', comision: '0', over: '0', tope: '' }); _cfg.ag.filtro = ''; cfgPintar_(); }
+function cfgAgQuitar_(i) { const a = _cfg.ag.draft.lista[i]; if (a && a.agencia && !confirm('¿Quitar ' + a.agencia + ' de la lista de agencias?')) return; _cfg.ag.draft.lista.splice(i, 1); cfgPintar_(); }
+function cfgAgFiltrar_(v) { _cfg.ag.filtro = v; document.querySelectorAll('[data-ag-fila]').forEach(el => { el.style.display = !v || el.getAttribute('data-ag-fila').indexOf(v.toUpperCase()) >= 0 ? 'grid' : 'none'; }); }
+function cfgPintarAgencias_() {
+  if (!_cfg.ag) {
+    if (_cfg.agError) return '<div style="padding:30px;text-align:center;color:var(--red)">❌ ' + esc(_cfg.agError) + '<br><button onclick="_cfg.agError=\'\';cfgCargarAgencias_()" style="margin-top:10px;padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">Reintentar</button></div>';
+    if (!_cfg.agCargando) setTimeout(cfgCargarAgencias_, 0);
+    return '<div style="padding:30px;text-align:center;color:var(--muted)">Cargando agencias…</div>';
+  }
+  const d = _cfg.ag.draft, f = (_cfg.ag.filtro || '').toUpperCase();
+  const inpS = 'background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:13px;font-family:inherit;box-sizing:border-box;width:100%';
+  const pctInp = (i, campo, val, ph) => '<div style="display:flex;align-items:center;gap:3px"><input type="number" min="0" max="100" step="0.01" value="' + esc(val) + '" placeholder="' + ph + '" oninput="cfgAgSet_(' + i + ',\'' + campo + '\',this.value)" style="' + inpS + ';text-align:right"><span style="color:var(--muted);font-size:12px">%</span></div>';
+  const cols = 'grid-template-columns:minmax(0,2.4fr) minmax(80px,1fr) minmax(80px,1fr) minmax(90px,1fr) 34px';
+  const filas = d.lista.map((a, i) => '<div data-ag-fila="' + esc(String(a.agencia).toUpperCase()) + '" style="display:grid;' + cols + ';gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--border);' + (f && String(a.agencia).toUpperCase().indexOf(f) < 0 ? 'display:none' : '') + '">' +
+    '<input value="' + esc(a.agencia) + '" placeholder="Nombre de la agencia (como sale en facturación)" oninput="cfgAgSet_(' + i + ',\'agencia\',this.value)" style="' + inpS + '">' +
+    pctInp(i, 'comision', a.comision, '0') + pctInp(i, 'over', a.over, '0') + pctInp(i, 'tope', a.tope, 'general') +
+    '<button onclick="cfgAgQuitar_(' + i + ')" title="Quitar agencia" style="height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--red);cursor:pointer">✕</button></div>').join('');
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">' +
+      '<div style="font-size:14px;font-weight:800;color:var(--text)">🏷️ Tope de descuento general</div>' +
+      '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 10px">Si una cotización da más descuento que esto (y la agencia no tiene tope propio), pide aprobación.</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;max-width:160px"><input type="number" min="0" max="100" step="0.01" value="' + esc(d.tope) + '" oninput="_cfg.ag.draft.tope=this.value;cfgPintarBarra_()" style="' + inpS + ';text-align:right;font-size:14px"><span style="color:var(--muted)">%</span></div></div>' +
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px"><div style="flex:1;min-width:200px"><div style="font-size:14px;font-weight:800;color:var(--text)">🏢 Agencias (' + d.lista.length + ')</div>' +
+      '<div style="font-size:11.5px;color:var(--muted)">Comisión y over se descuentan para ver si la cotización cubre el mínimo. 🔒 Confidencial: las ejecutivas solo ven el nombre de la agencia.</div></div>' +
+      '<input placeholder="🔍 Buscar agencia" value="' + esc(_cfg.ag.filtro || '') + '" oninput="cfgAgFiltrar_(this.value)" style="' + inpS + ';width:200px">' +
+      '<button onclick="cfgAgAgregar_()" style="padding:8px 14px;border-radius:8px;border:1px dashed var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:inherit;font-size:12.5px">+ Agregar agencia</button></div>' +
+      '<div style="display:grid;' + cols + ';gap:8px;font-size:11px;color:var(--muted);font-weight:700;padding:6px 0"><span>AGENCIA</span><span>COMISIÓN</span><span>OVER</span><span>TOPE DESC.</span><span></span></div>' +
+      (filas || '<div style="font-size:12px;color:var(--muted);padding:10px 0">Todavía no hay agencias.</div>') +
+      '<div style="font-size:11px;color:var(--muted);margin-top:8px">Tope vacío = usa el tope general. Las demás columnas de la hoja (base de cálculo, periodicidad, contractual, vigencia) se conservan.</div></div>';
+}
+async function cfgGuardarAgencias_() {
+  const d = _cfg.ag.draft, num = v => (v === '' || v === null || v === undefined) ? null : Number(v) / 100;
+  const vistos = {};
+  for (const a of d.lista) {
+    const k = String(a.agencia || '').trim().toUpperCase();
+    if (!k) { showToast('Hay una agencia sin nombre', 'error'); return; }
+    if (vistos[k]) { showToast(a.agencia + ' está repetida', 'error'); return; }
+    vistos[k] = true;
+  }
+  const pin = await cfgPedirPin_('Guardar agencias y descuentos'); if (!pin) return;
+  try {
+    const r = await cfgPost_({ action: 'cfgGuardarAgencias', pin: pin, topeGeneral: num(d.tope),
+      lista: d.lista.map(a => ({ agencia: a.agencia, comision: num(a.comision) || 0, over: num(a.over) || 0, tope: num(a.tope) })) });
+    showToast('✅ Guardado' + (r.cambios ? ' · ' + r.cambios + (r.cambios === 1 ? ' cambio' : ' cambios') : ' · sin cambios'), 'success');
+    _cfg.ag = null;
+    renderConfig(document.getElementById('mainContent'));
+  } catch (e) { showToast('❌ ' + e.message, 'error'); }
+}
 // Barra de guardar (se repinta sola sin redibujar la tabla, para no perder lo que estás escribiendo)
 function cfgPintarBarra_() {
   const b = document.getElementById('cfgBarraGuardar'); if (!b) return;
   const usr = (_cfg.sub === 'usuarios' || _cfg.sub === 'permisos');
-  const hay = _cfg.sub === 'reglas' ? cfgRegHayCambios_() : usr ? cfgUsrHayCambios_() : (_cfg.sub === 'correos' && cfgHayCambios_());
+  const hay = _cfg.sub === 'agencias' ? cfgAgHayCambios_() : _cfg.sub === 'reglas' ? cfgRegHayCambios_() : usr ? cfgUsrHayCambios_() : (_cfg.sub === 'correos' && cfgHayCambios_());
   b.style.display = hay ? 'flex' : 'none';
 }
 
@@ -3177,7 +3269,7 @@ function renderCotizador(container) {
       '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;max-width:760px;margin:0 auto">' +
         '<div style="font-weight:900;font-size:14px;color:var(--text);margin-bottom:12px">🧮 Resultado de la cotización</div>' +
         '<div id="qzResultadoPanel" style="font-size:12px;color:var(--muted)">Calculando...</div>' +
-        '<div id="qzPinPanel" style="display:none;gap:8px;align-items:center;background:rgba(239,68,68,.08);border:1px solid var(--red);border-radius:8px;padding:10px;margin-top:12px"><input id="qzPinInputWiz" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit"><button onclick="qzAprobarPin()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:11.5px;padding:8px 10px;cursor:pointer">Aprobar</button></div>' +
+        '<div id="qzPinPanel" style="display:none;gap:8px;align-items:center;background:rgba(239,68,68,.08);border:1px solid var(--red);border-radius:8px;padding:10px;margin-top:12px"><input id="qzPinInputWiz" type="password" maxlength="10" placeholder="PIN admin" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit"><button onclick="qzAprobarPin()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:11.5px;padding:8px 10px;cursor:pointer">Aprobar</button></div>' +
         '<div id="qzAvisoPendiente" style="display:none;background:rgba(245,158,11,.1);border:1px solid var(--accent);border-radius:8px;padding:12px;margin-top:12px;font-size:12px;font-weight:700;color:var(--accent);line-height:1.5"></div>' +
       '</div>' +
       '<div style="display:flex;justify-content:space-between;margin-top:14px;max-width:760px;margin-left:auto;margin-right:auto">' +
@@ -3317,7 +3409,7 @@ function qzRenderTarjetaCotizacion(c) {
       // no lo necesita — su propia sesión ya la autoriza y ya la limita
       // a esas ejecutivas, así que el campo de PIN ni se muestra.
       html += '<div style="display:flex;gap:6px;align-items:center;margin-top:8px">' +
-        (qzEsAdmin() ? '<input id="qzPipelinePin_' + c.cotId + '" type="password" maxlength="6" placeholder="PIN admin" style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:11.5px;font-family:inherit">' : '') +
+        (qzEsAdmin() ? '<input id="qzPipelinePin_' + c.cotId + '" type="password" maxlength="10" placeholder="PIN admin" style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 8px;font-size:11.5px;font-family:inherit">' : '') +
         '<button onclick="qzResolverPendientePin(\'' + c.cotId + '\',\'APROBADO\')" style="background:var(--green);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:10.5px;padding:7px 9px;cursor:pointer;white-space:nowrap">✅ Aprobar</button>' +
         '<button onclick="qzResolverPendientePin(\'' + c.cotId + '\',\'NEGADO\')" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-weight:800;font-size:10.5px;padding:7px 9px;cursor:pointer;white-space:nowrap">❌ Negar</button>' +
         '</div>';
@@ -4073,7 +4165,7 @@ function insBloqueEditarAdmin(r) {
       insCampoAdmin_('Fecha prueba color', 'fechaPruebaColor', r.fechaPruebaColor, 'date') +
       insCampoAdmin_('Aprobó prueba color', 'aprobadoPruebaColorPor', r.aprobadoPruebaColorPor) +
       '<div style="margin-top:8px"><label style="font-size:9px;color:var(--red);font-weight:800">TU PIN ADMIN</label>' +
-        '<input type="password" id="insAdminPin_' + r.id + '" placeholder="PIN" maxlength="6" style="display:block;width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:12px;margin-top:3px"></div>' +
+        '<input type="password" id="insAdminPin_' + r.id + '" placeholder="PIN" maxlength="10" style="display:block;width:130px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:12px;margin-top:3px"></div>' +
       '<button id="insBtnGuardarAdmin_' + r.id + '" onclick="insGuardarManualUI(\'' + r.id + '\')" style="margin-top:9px;background:var(--red);border:1px solid var(--red);border-radius:7px;color:#fff;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer">💾 Guardar cambios (Admin)</button>' +
     '</div>' +
   '</div>';
@@ -4793,7 +4885,7 @@ function qzPedirPinComision_(tipo, color, nuevoValorStr, ejecutiva, quitar, call
     '<div style="background:var(--surface);border:1px solid ' + color + ';border-radius:10px;padding:20px;width:270px;text-align:center">' +
       '<div style="font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text)">Confirmar cambio</div>' +
       '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">' + mensaje + '</div>' +
-      '<input type="password" id="qzPinInput" placeholder="PIN admin" maxlength="6" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:9px 10px;font-size:14px;text-align:center;letter-spacing:3px;font-family:inherit;margin-bottom:12px">' +
+      '<input type="password" id="qzPinInput" placeholder="PIN admin" maxlength="10" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:9px 10px;font-size:14px;text-align:center;letter-spacing:3px;font-family:inherit;margin-bottom:12px">' +
       '<div id="qzPinError" style="font-size:11px;color:var(--red);margin-bottom:8px;display:none"></div>' +
       '<div style="display:flex;gap:8px">' +
         '<button id="qzPinCancelar" style="flex:1;background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);padding:9px;cursor:pointer;font-size:12px">Cancelar</button>' +
@@ -7030,7 +7122,7 @@ function openModal(codigo) {
       'Expira: <strong data-countdown="' + bloqueoActivo.expira + '" data-codigo="' + v.codigo + '">calculando...</strong></p></div>' +
       '<div class="admin-section">' +
       '<div style="font-size:10px;color:var(--muted);margin-bottom:6px;text-align:center">DESBLOQUEO ADMIN</div>' +
-      '<input type="password" class="admin-pin-input" id="adminPin" placeholder="PIN" maxlength="6">' +
+      '<input type="password" class="admin-pin-input" id="adminPin" placeholder="PIN" maxlength="10">' +
       '<button class="btn-desbloquear-admin" onclick="desbloquearAdmin(\'' + v.codigo + '\')">🔓 Desbloquear ahora</button></div>';
   } else if (v.estado === 'DISPONIBLE') {
     rSec = '<div class="reserve-form"><h4>🟢 Reservar este elemento</h4>' +
