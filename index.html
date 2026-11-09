@@ -1429,7 +1429,7 @@ function cfgPintarReglas_() {
       num('ledMaxVersiones', 'Versiones de material por contrato', 'máx.', 1, 6, 'Si lo bajas, los contratos que ya tienen más versiones las conservan') +
       num('ledMaxActivas', 'Versiones al aire el mismo día', 'máx.', 1, 6, 'No puede ser más que las versiones por contrato') +
       sw('ledCorrerAlProgramar', 'Correr el contrato si se programa tarde', 'Si nunca tuvo material ni programación y su inicio ya pasó, al programarlo por primera vez empieza hoy y conserva sus días') +
-      sw('ledBloqueaOffline', 'No dejar contratar pantallas OFFLINE', 'Tú (Jorge) siempre puedes; las demás ejecutivas no')) +
+      sw('ledBloqueaOffline', 'No dejar contratar pantallas OFFLINE', 'Encendido: las ejecutivas no pueden en ninguna offline (tú siempre puedes). Apagado: pueden en todas. Para abrir solo una pantalla, déjalo encendido y usa el botón ✅ en esa pantalla del módulo LED')) +
     caja('🤝 Convenio ALACC (canje)', 'Pantallas que entran en el canje, su tarifa mensual y cuántos canjes se permiten por mes.',
       '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px">' +
         '<label style="font-size:12px;color:var(--muted)">Vigente desde<br><input type="date" value="' + esc(c.desde) + '" onchange="cfgCanjeSet_(\'desde\',this.value)" style="' + inpS + ';margin-top:4px"></label>' +
@@ -10894,6 +10894,8 @@ function buildLEDUI(container, data) {
     sn: el.sn, account: el.account,
     capacidad: el.capacidad,
     bloqueada: !!el.bloqueada,
+    permiteOffline: !!el.permiteOffline,
+    offlineLibre: !!el.offlineLibre,
     _tipo: detectLEDTipo(el.tipo)
   }));
 
@@ -10936,7 +10938,7 @@ function buildLEDUI(container, data) {
       // así que siempre se pueden contratar.
       const bloqueadoOffline = !player.esExterno && player.isOnline === false;
       // (2026-11-05) Offline bloquea de verdad a las ejecutivas (recuadros, múltiple, modal y servidor); Jorge sí puede
-      const offlineNoAdmin = bloqueadoOffline && (_usuarioActual || '').toUpperCase() !== 'JORGE';
+      const offlineNoAdmin = bloqueadoOffline && !player.offlineLibre && (_usuarioActual || '').toUpperCase() !== 'JORGE'; // (2026-11-09) offlineLibre = Jorge lo permitió (regla general o esta pantalla)
       // (2026-11-04) Jorge puede bloquear las nuevas contrataciones de una pantalla (si se satura).
       // Para él sigue habilitada; para las ejecutivas no.
       const bloqueadaAdmin = !!player.bloqueada;
@@ -10973,7 +10975,9 @@ function buildLEDUI(container, data) {
           (player.account ? ' <span style="font-size:9px;color:var(--muted);background:var(--surface2);border-radius:4px;padding:1px 5px">' + player.account + '</span>' : '') +
         '</div>' +
         (ledTarifaCanje_(ledCodigoDePlayer_(player.playerId)) ? '<div style="font-size:10.5px;font-weight:700;color:#a5b4fc;margin:2px 0">🔄 En canje ALACC · extra $' + ledTarifaCanje_(ledCodigoDePlayer_(player.playerId)).toLocaleString('en-US') + ' + IVA</div>' : '') +
-        (bloqueadoOffline ? '<div style="font-size:10px;color:#f87171;margin:2px 0">Pantalla offline: no se pueden agregar nuevas contrataciones hasta que vuelva a línea' + (offlineNoAdmin ? '' : ' (tú sí puedes, como administrador)') + '</div>' : '') +
+        (esAdmin && (player.permiteOffline || (bloqueadoOffline && !player.offlineLibre)) ? '<button data-pid="' + esc(player.playerId) + '" data-nombre="' + esc(player.name || '') + '" onclick="event.stopPropagation();toggleOfflineLED(this.dataset.pid, ' + (player.permiteOffline ? 'false' : 'true') + ', this.dataset.nombre)" style="margin:4px 6px 4px 0;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (player.permiteOffline ? 'rgba(248,113,113,.5)' : 'rgba(74,222,128,.5)') + ';background:transparent;color:' + (player.permiteOffline ? '#f87171' : '#4ade80') + '">' + (player.permiteOffline ? '📴 Quitar permiso offline' : '✅ Permitir contratar offline') + '</button>' : '') +
+        (bloqueadoOffline && player.offlineLibre ? '<div style="font-size:10px;color:#4ade80;margin:2px 0">Pantalla offline: contratación habilitada por el administrador</div>' : '') +
+        (bloqueadoOffline && !player.offlineLibre ? '<div style="font-size:10px;color:#f87171;margin:2px 0">Pantalla offline: no se pueden agregar nuevas contrataciones hasta que vuelva a línea' + (offlineNoAdmin ? '' : ' (tú sí puedes, como administrador)') + '</div>' : '') +
         (bloqueadaAdmin ? '<div style="font-size:10.5px;font-weight:700;color:#f87171;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);border-radius:6px;padding:4px 8px;margin:4px 0">🔒 Nuevas contrataciones bloqueadas' + (esAdmin ? ' para las ejecutivas (tú sí puedes contratar)' : ' por el administrador') + '</div>' : '') +
         (esAdmin ? '<button data-pid="' + esc(player.playerId) + '" data-nombre="' + esc(player.name || '') + '" onclick="event.stopPropagation();toggleBloqueoLED(this.dataset.pid, ' + (bloqueadaAdmin ? 'false' : 'true') + ', this.dataset.nombre)" style="margin:4px 0;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;' +
           (bloqueadaAdmin ? 'background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.45);color:#4ade80">🔓 Permitir nuevas contrataciones' : 'background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.4);color:#f87171">🔒 Bloquear nuevas contrataciones') + '</button>' : '') +
@@ -11189,6 +11193,21 @@ async function confirmarAgregarEspaciosLED(playerId, capacidadActual) {
     showToast('✅ Ahora tiene ' + nuevaCapacidad + ' espacios', 'success');
     closeModal();
     renderLED(document.getElementById('mainContent'));
+  } catch(e) { showToast('❌ ' + e.message, 'error'); }
+}
+
+// (2026-11-09) Jorge decide, pantalla por pantalla, si se puede subir orden aunque esté offline
+async function toggleOfflineLED(playerId, permitir, nombre) {
+  const txt = permitir
+    ? '¿Permitir contratar en ' + (nombre || playerId) + ' aunque esté OFFLINE?\n\nLas ejecutivas podrán subir órdenes en esta pantalla. El permiso sigue activo hasta que lo quites, también si la pantalla vuelve a caerse más adelante.'
+    : '¿Quitar el permiso de ' + (nombre || playerId) + '?\n\nSi la pantalla está offline, las ejecutivas ya no podrán subir órdenes en ella.';
+  if (!confirm(txt)) return;
+  try {
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'setPermiteOfflineLED', playerId, permitir: !!permitir, nombre: nombre || '' }) });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    showToast(permitir ? '✅ Ya se puede contratar en esta pantalla aunque esté offline' : '📴 Permiso quitado', 'success');
+    renderLED(document.getElementById('mainContent'), true);
   } catch(e) { showToast('❌ ' + e.message, 'error'); }
 }
 
@@ -12381,7 +12400,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
   let playerOpts = elementos.map(el => {
     const pid = el.playerVnnoxId || el.codigo;
     const llena = pid !== prePlayerId && contratosLed.filter(c => c.playerId === pid && ledAlAire_(c)).length >= (el.capacidad || 15);
-    const bloq = (!!el.bloqueada || (!!el.playerVnnoxId && el.isOnline === false)) && (_usuarioActual || '').toUpperCase() !== 'JORGE';
+    const bloq = (!!el.bloqueada || (!!el.playerVnnoxId && el.isOnline === false && !el.offlineLibre)) && (_usuarioActual || '').toUpperCase() !== 'JORGE';
     return '<option value="' + esc(pid) + '" data-nombre="' + esc(el.codigo + ' — ' + pid) + '"' + (pid === prePlayerId && !bloq ? ' selected' : '') + (llena || bloq ? ' disabled' : '') + '>' +
       esc(el.codigo + (el.direccion ? ' — ' + String(el.direccion).substring(0, 40) : '') + (bloq ? (el.bloqueada ? ' · 🔒 bloqueada' : ' · 📴 offline') : llena ? ' · sin espacios' : '')) + '</option>';
   }).join('');
