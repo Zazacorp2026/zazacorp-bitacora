@@ -1263,6 +1263,7 @@ function nxAplicarCfgPublica_(c) {
     c.usuarios.forEach(u => { if (u.ciudad) CG_CIUDAD_POR_EJECUTIVA[u.nombre] = u.ciudad; });
     CG_CLAVES_CIUDAD_ORDENADAS.length = 0; Object.keys(CG_CIUDAD_POR_EJECUTIVA).sort((a, b) => b.length - a.length).forEach(k => CG_CLAVES_CIUDAD_ORDENADAS.push(k));
     NX_EJECUTIVAS_CFG = (c.ejecutivas || []).slice();
+    if (c.walletVer && typeof c.walletVer === 'object') NX_WALLET_VER = Object.assign({}, c.walletVer);
   } catch (e) { console.warn('nxAplicarCfgPublica_', e); }
 }
 function nxCfgPublicaCache_() { try { return JSON.parse(localStorage.getItem('zz_cfg_pub') || 'null'); } catch (e) { return null; } }
@@ -1276,6 +1277,7 @@ async function nxCargarCfgPublica_() {
     if (typeof aplicarPermisoCotizador === 'function') aplicarPermisoCotizador();
     if (typeof aplicarPermisoAsistente === 'function') aplicarPermisoAsistente();
     if (typeof aplicarPermisoComercialGeneral === 'function') aplicarPermisoComercialGeneral();
+    if (typeof aplicarPermisoWallet === 'function') aplicarPermisoWallet();
   } catch (e) { console.warn('cfgPublica', e); }
 }
 
@@ -1347,9 +1349,9 @@ function cfgPintarPermisos_() {
   const nombres = L.filter(u => u.activo && u.nombre).map(u => u.nombre);
   const chips = (i, campo, arr, dis) => (arr || []).map(n => '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 7px;margin:2px 4px 2px 0">' + esc(cfgTitulo_(n)) + (dis ? '' : ' <button onclick="cfgPermQuitar_(' + i + ',\'' + campo + '\',\'' + n + '\')" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;font-size:11px">✕</button>') + '</span>').join('') +
     (dis ? '' : '<select onchange="cfgPermAgregar_(' + i + ',\'' + campo + '\',this.value)" style="font-size:11.5px;background:transparent;border:1px dashed var(--accent);color:var(--accent);border-radius:6px;padding:2px 4px;font-family:inherit;cursor:pointer"><option value="">+ agregar</option>' + nombres.filter(n => n !== L[i].nombre && n !== 'JORGE' && !(arr || []).includes(n)).map(n => '<option value="' + esc(n) + '">' + esc(cfgTitulo_(n)) + '</option>').join('') + '</select>');
-  let h = '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5"><b>Cotizador y Pipeline</b>: puede entrar a esos módulos (cada una ve lo suyo). <b>Aprueba descuentos de</b>: puede aprobar sin tu PIN las cotizaciones con margen bajo de esas personas. <b>Actúa también como</b>: ve y gestiona lo de esa persona como si fuera suyo (cotizaciones, instalaciones, reservas, renovaciones y programación LED). Tú (Jorge) siempre tienes todo.</div>' +
+  let h = '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5"><b>Cotizador y Pipeline</b>: puede entrar a esos módulos (cada una ve lo suyo). <b>Ve su Wallet desde</b>: vacío = no lo ve; con un mes, ve solo sus comisiones desde ese mes. <b>Aprueba descuentos de</b>: puede aprobar sin tu PIN las cotizaciones con margen bajo de esas personas. <b>Actúa también como</b>: ve y gestiona lo de esa persona como si fuera suyo (cotizaciones, instalaciones, reservas, renovaciones y programación LED). Tú (Jorge) siempre tienes todo.</div>' +
     '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto"><table style="width:100%;min-width:820px;border-collapse:collapse;font-size:12px">' +
-    '<thead><tr style="color:var(--muted);text-align:left">' + ['Usuario', 'Cotizador y Pipeline', 'Asistente IA', 'Aprueba descuentos de', 'Actúa también como'].map(t => '<th style="padding:9px 8px;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">' + t + '</th>').join('') + '</tr></thead><tbody>';
+    '<thead><tr style="color:var(--muted);text-align:left">' + ['Usuario', 'Cotizador y Pipeline', 'Asistente IA', 'Ve su Wallet desde', 'Aprueba descuentos de', 'Actúa también como'].map(t => '<th style="padding:9px 8px;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">' + t + '</th>').join('') + '</tr></thead><tbody>';
   L.forEach((u, i) => {
     if (!u.activo || !u.nombre) return;
     const esJ = u.nombre === 'JORGE', ro = !!u.soloLectura;
@@ -1357,6 +1359,7 @@ function cfgPintarPermisos_() {
     h += '<tr>' + td('<b style="color:var(--text)">' + esc(cfgTitulo_(u.nombre)) + '</b>' + (ro ? ' <span style="font-size:10.5px;color:var(--muted)">solo lectura</span>' : '')) +
       td('<div style="text-align:center">' + cfgChk_(esJ || u.cotizador, 'cfgUsrSet_(' + i + ',\'cotizador\',this.checked)', esJ || ro) + '</div>') +
       td('<div style="text-align:center">' + cfgChk_(esJ || u.ia, 'cfgUsrSet_(' + i + ',\'ia\',this.checked)', esJ) + '</div>') +
+      td(esJ ? '<span style="color:var(--muted)">Todo</span>' : '<input type="month" value="' + esc(u.walletDesde || '') + '" onchange="cfgUsrSet_(' + i + ',\'walletDesde\',this.value)" title="Vacío = no ve el Wallet. Con un mes: ve solo sus datos desde ese mes." style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 6px;font-size:11.5px;font-family:inherit">' + (u.walletDesde ? ' <span onclick="cfgUsrSet_(' + i + ',\'walletDesde\',\'\');cfgPintar_()" title="Quitar" style="cursor:pointer;color:var(--muted)">✕</span>' : '')) +
       td(esJ ? '<span style="color:var(--muted)">Todas</span>' : chips(i, 'apruebaA', u.apruebaA, ro)) +
       td(chips(i, 'actuaComo', u.actuaComo, ro)) + '</tr>';
   });
@@ -1529,8 +1532,12 @@ function cfgPintarBarra_() {
   b.style.display = hay ? 'flex' : 'none';
 }
 
+// (2026-11-10) Ejecutivas que ven SU Wallet (solo sus filas) y desde qué mes — viene de Configuración → Permisos.
+// El servidor vuelve a validarlo todo; esto solo decide si se muestra la pestaña.
+let NX_WALLET_VER = { 'ZULIA': '2026-08' };
+function nxWalletDesde_(u) { return NX_WALLET_VER[String(u || '').toUpperCase()] || ''; }
 function aplicarPermisoWallet() {
-  const tieneAcceso = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  const tieneAcceso = (_usuarioActual || '').toUpperCase() === 'JORGE' || !!nxWalletDesde_(_usuarioActual);
   const tab = document.getElementById('tabWallet');
   if (tab) tab.style.display = tieneAcceso ? '' : 'none';
   if (!tieneAcceso && state.tab === 'wallet') switchTab('inventario');
@@ -3651,6 +3658,8 @@ async function renderPipeline(container) {
 let qzWalletMes = new Date().toISOString().slice(0, 7);
 let qzWalletData = null;
 let qzWalletPorEjecutivaCache = {};
+let qzWalletVerComo = ''; // (2026-11-10) Jorge: '' = su vista de siempre; un nombre = ve exactamente lo que ve esa ejecutiva
+function qzWalletModoEjecutiva_() { return !qzEsAdmin() || !!qzWalletVerComo; }
 const QZ_WALLET_TIPO_COLOR = { RECURRENTE: 'var(--green)', PASIVO: '#a78bfa', NUEVO: 'var(--blue)' };
 
 // Arma la tabla de una ejecutiva la primera vez que se expande (no de
@@ -3678,7 +3687,7 @@ async function qzCargarWallet() {
   const board = document.getElementById('qzWalletBoard');
   if (board) board.innerHTML = '<div class="empty"><p>Cargando wallet...</p></div>';
   try {
-    const json = await fetchJsonGet(API_URL + '?action=qzGetWalletMes&mes=' + encodeURIComponent(qzWalletMes));
+    const json = await fetchJsonGet(API_URL + '?action=qzGetWalletMes&mes=' + encodeURIComponent(qzWalletMes) + (qzEsAdmin() && qzWalletVerComo ? '&verComo=' + encodeURIComponent(qzWalletVerComo) : ''));
     if (!json.ok) throw new Error(json.error || 'Error al cargar');
     qzWalletData = json;
   } catch (e) {
@@ -3890,9 +3899,14 @@ function qzPintarWallet() {
   qzPintarComisionesPanel();
   const board = document.getElementById('qzWalletBoard');
   if (!board || !qzWalletData) return;
-  const esJorge = qzEsAdmin();
+  const esJorge = !qzWalletModoEjecutiva_();
   const filas = qzWalletData.filas || [];
 
+  if (qzWalletData.antesDeDesde) {
+    const [a, m] = String(qzWalletData.desde || '').split('-');
+    board.innerHTML = '<div class="empty" style="padding:30px 10px"><p>El Wallet está disponible desde ' + (LED_MESES_ES[Number(m) - 1] || '') + ' ' + esc(a || '') + '.</p></div>';
+    return;
+  }
   if (!qzWalletData.congelado) {
     board.innerHTML = '<div class="empty" style="padding:30px 10px">' +
       '<p>El wallet de ' + qzWalletMes + ' todavía no se ha calculado.</p>' +
@@ -3934,6 +3948,14 @@ function qzPintarWallet() {
     // (evita construir de entrada decenas de tablas nunca vistas).
     qzWalletPorEjecutivaCache = porEjecutiva;
   } else {
+    // (2026-11-10) resumen arriba para la ejecutiva: su comisión, su venta de alquileres y cuántos clientes
+    const tot = (k) => filas.reduce((s2, f) => s2 + (Number(f[k]) || 0), 0);
+    const nCli = new Set(filas.map(f => f.cliente)).size;
+    const tarjeta = (t, v, color) => '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10.5px;color:var(--muted);font-weight:700">' + t + '</div><div style="font-size:20px;font-weight:900;color:' + (color || 'var(--text)') + ';margin-top:4px">' + v + '</div></div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">' +
+      tarjeta('TU COMISIÓN DEL MES', '$' + tot('comisionMonto').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 'var(--accent)') +
+      tarjeta('VENTA DE ALQUILERES DEL MES', '$' + tot('ventaNeta').toLocaleString(undefined, { maximumFractionDigits: 0 })) +
+      tarjeta('CLIENTES', String(nCli)) + '</div>';
     html += qzTablaWalletHTML_(filas);
   }
 
@@ -4728,11 +4750,16 @@ function renderInstalaciones(container) {
 }
 
 function renderWallet(container) {
+  const desdeV = qzWalletModoEjecutiva_() ? nxWalletDesde_(qzWalletVerComo || _usuarioActual) : '';
+  if (desdeV && qzWalletMes < desdeV) qzWalletMes = desdeV;
+  const opcVer = qzEsAdmin() ? Object.keys(NX_WALLET_VER).sort() : [];
   container.innerHTML =
     '<div style="padding:4px 0">' +
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
+      (qzEsAdmin() && qzWalletVerComo ? '<div style="background:rgba(59,130,246,.1);border:1px solid var(--blue);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;color:var(--text);display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span style="flex:1;min-width:200px">👁 <b>Vista previa:</b> así ve el Wallet <b>' + esc(qzWalletVerComo) + '</b> (solo sus datos, desde ' + esc(nxWalletDesde_(qzWalletVerComo)) + ').</span><button onclick="qzWalletVerComo=\'\';renderWallet(document.getElementById(\'mainContent\'))" style="background:var(--blue);border:none;border-radius:7px;color:#fff;font-weight:800;font-size:11.5px;padding:6px 12px;cursor:pointer">Volver a mi vista</button></div>' : '') +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">' +
         '<label style="font-size:11px;color:var(--muted);font-weight:700">MES</label>' +
-        '<input id="qzWalletMesInput" type="month" value="' + qzWalletMes + '" onchange="qzCambiarMesWallet()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark">' +
+        '<input id="qzWalletMesInput" type="month"' + (desdeV ? ' min="' + desdeV + '"' : '') + ' value="' + qzWalletMes + '" onchange="qzCambiarMesWallet()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit;color-scheme:dark">' +
+        (opcVer.length ? '<label style="font-size:11px;color:var(--muted);font-weight:700;margin-left:auto">👁 VER COMO</label><select onchange="qzWalletVerComo=this.value;renderWallet(document.getElementById(\'mainContent\'))" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit"><option value="">Yo (todas)</option>' + opcVer.map(n => '<option' + (n === qzWalletVerComo ? ' selected' : '') + ' value="' + esc(n) + '">' + esc(n) + '</option>').join('') + '</select>' : '') +
       '</div>' +
       '<div id="qzWalletComisionesPanel"></div>' +
       '<div id="qzWalletBoard"><div class="empty"><p>Cargando wallet...</p></div></div>' +
@@ -4754,7 +4781,7 @@ let qzComEjecutivaSel = '';
 function qzPintarComisionesPanel() {
   const cont = document.getElementById('qzWalletComisionesPanel');
   if (!cont) return;
-  if (!qzEsAdmin() || !qzWalletData || !qzWalletData.comisiones) { cont.innerHTML = ''; return; }
+  if (qzWalletModoEjecutiva_() || !qzWalletData || !qzWalletData.comisiones) { cont.innerHTML = ''; return; }
   const com = qzWalletData.comisiones;
   const overridesTodas = qzWalletData.comisionesPorEjecutiva || {};
   // Lista de ejecutivas con actividad este mes (de las filas ya
