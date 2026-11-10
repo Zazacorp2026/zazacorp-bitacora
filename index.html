@@ -840,25 +840,59 @@ let _fbTokenPromise = null;
 let _fbToken = null;
 let _fbTokenExpira = 0;
 
+// (2026-11-10) SEGURIDAD: ya no se usa el pase ANÓNIMO (cualquiera podía pedirlo con la clave pública).
+// Al entrar a Nexus, el servidor entrega un pase firmado solo para esa persona; con él se lee Firebase.
+// Se renueva solo (zz_fb_rt). Sin sesión de Nexus no hay pase y Firebase no muestra nada.
+async function nxFbPost_(url, cuerpo, form, ms) {
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms || 8000);
+  try {
+    const res = await fetch(url, form
+      ? { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: cuerpo, signal: ctrl.signal }
+      : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo), signal: ctrl.signal });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((d.error && d.error.message) || ('HTTP ' + res.status));
+    return d;
+  } finally { clearTimeout(t); }
+}
+function nxFbOlvidar_() {
+  _fbToken = null; _fbTokenExpira = 0;
+  sessionStorage.removeItem('zz_fb_rt'); sessionStorage.removeItem('zz_fb_pase');
+}
 async function fbObtenerToken() {
   if (_fbToken && Date.now() < _fbTokenExpira - 60000) return _fbToken;
   if (_fbTokenPromise) return _fbTokenPromise;
   _fbTokenPromise = (async () => {
-    // Con timeout: si en una red/computadora esta llamada se queda colgada, antes bloqueaba TODA la carga (inventario y bloqueos
-    // esperaban este token para siempre). Ahora a los 8 s falla y la app sigue con Apps Script.
-    const ctrl = new AbortController();
-    const tt = setTimeout(() => ctrl.abort(), 8000);
     try {
-      const res = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FIREBASE_API_KEY, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ returnSecureToken: true }), signal: ctrl.signal
-      });
-      const data = await res.json();
-      if (!data.idToken) throw new Error('No se pudo autenticar con Firebase');
-      _fbToken = data.idToken;
-      _fbTokenExpira = Date.now() + (Number(data.expiresIn || 3600) * 1000);
+      let d = null;
+      const rt = sessionStorage.getItem('zz_fb_rt');
+      if (rt) {
+        try {
+          const r = await nxFbPost_('https://securetoken.googleapis.com/v1/token?key=' + FIREBASE_API_KEY, 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(rt), true);
+          d = { idToken: r.id_token, refreshToken: r.refresh_token, expiresIn: r.expires_in };
+        } catch (e) { sessionStorage.removeItem('zz_fb_rt'); }
+      }
+      if (!d) {
+        let pase = sessionStorage.getItem('zz_fb_pase');
+        sessionStorage.removeItem('zz_fb_pase');
+        if (!pase && sessionStorage.getItem('zz_token')) {
+          const ctrl = new AbortController(); const tt = setTimeout(() => ctrl.abort(), 12000);
+          try { const r = await (await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'nxFbToken' }), signal: ctrl.signal })).json(); pase = r && r.fbToken; }
+          catch (e) {} finally { clearTimeout(tt); }
+        }
+        if (pase) d = await nxFbPost_('https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=' + FIREBASE_API_KEY, { token: pase, returnSecureToken: true });
+        else {
+          // Transición: mientras el servidor no tenga su llave, se sigue con el pase anónimo de antes.
+          // Cuando se apague el ingreso anónimo en Firebase, esto falla y Nexus lee de Apps Script.
+          d = await nxFbPost_('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FIREBASE_API_KEY, { returnSecureToken: true });
+          d.refreshToken = null;
+        }
+      }
+      if (!d || !d.idToken) throw new Error('No se pudo autenticar con Firebase');
+      _fbToken = d.idToken;
+      _fbTokenExpira = Date.now() + (Number(d.expiresIn || 3600) * 1000);
+      if (d.refreshToken) sessionStorage.setItem('zz_fb_rt', d.refreshToken);
       return _fbToken;
-    } finally { clearTimeout(tt); _fbTokenPromise = null; }
+    } finally { _fbTokenPromise = null; }
   })();
   return _fbTokenPromise;
 }
@@ -891,6 +925,7 @@ function sesionExpirada() {
 }
 function forzarLogoutPorExpiracion() {
   swrLimpiar_();
+  nxFbOlvidar_();
   sessionStorage.removeItem('zz_usuario');
   sessionStorage.removeItem('zz_token');
   sessionStorage.removeItem('zz_readonly');
@@ -1621,6 +1656,8 @@ function completarLoginExitoso(user, data) {
   sessionStorage.setItem('zz_usuario', user);
   sessionStorage.setItem('zz_login_ts', String(Date.now()));
   if (data.token) sessionStorage.setItem('zz_token', data.token);
+  nxFbOlvidar_();
+  if (data.fbToken) sessionStorage.setItem('zz_fb_pase', data.fbToken);
   if (data.readOnly) sessionStorage.setItem('zz_readonly', '1'); else sessionStorage.removeItem('zz_readonly');
   _usuarioActual = user;
   document.getElementById('loginOverlay').classList.add('hidden');
@@ -1741,6 +1778,7 @@ function cerrarSesion() {
   if (!confirm('¿Cerrar sesión?')) return;
   campanaCerrar_();
   swrLimpiar_();
+  nxFbOlvidar_();
   sessionStorage.removeItem('zz_usuario');
   _usuarioActual = null; _avisos = { pend: 0, cot: 0, nov: '' }; campanaPintar_();
   document.getElementById('loginOverlay').classList.remove('hidden');
