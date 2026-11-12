@@ -6141,6 +6141,38 @@ function cgSincronizarFiltrosUI() {
   }
 }
 
+// (2026-11-12) Equipos: filas cuya "Ejecutiva" agrupa ventas de otras personas (columna "Vendió" de Facturación Master)
+function cgPintarEquipos() {
+  const card = document.getElementById('cgEquiposCard'), body = document.getElementById('cgEquiposBody');
+  if (!card || !body) return;
+  const equipos = {};
+  cgGetFilteredData().forEach(d => {
+    const vendio = String(d['Vendió'] || '').trim();
+    if (!vendio) return;
+    const ej = d['Ejecutiva'] || 'Sin asignar';
+    const e = equipos[ej] || (equipos[ej] = { total: 0, distinto: false, por: {} });
+    const quien = cgTitleCase_(vendio), neto = Number(d['Neto (Stotal)']) || 0;
+    e.total += neto;
+    e.por[quien] = (e.por[quien] || 0) + neto;
+    if (cgNormalizarNombre_(quien) !== cgNormalizarNombre_(ej)) e.distinto = true;
+  });
+  const lista = Object.entries(equipos).filter(([, e]) => e.distinto).sort((a, b) => b[1].total - a[1].total);
+  if (!lista.length) { card.style.display = 'none'; body.innerHTML = ''; return; }
+  card.style.display = '';
+  body.innerHTML = lista.map(([ej, e]) => {
+    const max = Math.max(1, ...Object.values(e.por).map(Math.abs));
+    const filas = Object.entries(e.por).sort((a, b) => b[1] - a[1]).map(([q, v]) =>
+      '<div style="display:grid;grid-template-columns:minmax(120px,200px) 1fr 110px 48px;gap:10px;align-items:center;padding:5px 0 5px 18px;font-size:12.5px">' +
+        '<span>' + esc(q) + '</span>' +
+        '<div style="height:8px;border-radius:4px;background:var(--surface2)"><div style="height:100%;border-radius:4px;background:#8b5cf6;width:' + Math.max(0, Math.round(v / max * 100)) + '%"></div></div>' +
+        '<span style="text-align:right;font-family:\'DM Mono\',monospace">' + cgFmtMoney(v) + '</span>' +
+        '<span style="text-align:right;color:var(--muted);font-size:11.5px">' + (e.total ? Math.round(v / e.total * 100) : 0) + '%</span></div>').join('');
+    return '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:4px"><b style="font-size:14px">' + esc(ej) + ' <span style="font-size:11px;font-weight:700;color:#a78bfa;background:rgba(139,92,246,.15);padding:2px 8px;border-radius:5px;margin-left:4px">equipo</span></b>' +
+      '<span style="font-family:\'DM Mono\',monospace;font-weight:800;color:var(--accent)">' + cgFmtMoney(e.total) + '</span></div>' + filas + '</div>';
+  }).join('');
+}
+
 function cgRepintarTodo() {
   cgPintarKpis();
   cgPintarPorCiudad();
@@ -6151,6 +6183,7 @@ function cgRepintarTodo() {
   cgPintarTipoElemento();
   cgPintarTablaClientes();
   cgPintarDetalleEjecutivas();
+  try { cgPintarEquipos(); } catch (e) { console.warn('cgPintarEquipos', e); }
 }
 
 function cgCambiarFiltro(campo, valor) {
@@ -6408,6 +6441,7 @@ async function renderComercialGeneral(container) {
       '<div class="cg-chart-card"><h4>Ranking de ejecutivas · Bruto y Neto <small>(la barra es el Neto · clic en una barra para comparar)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartEjecutivas"></canvas></div></div>' +
       '<div class="cg-chart-card"><h4>Tendencia mensual del Neto</h4><div class="cg-chart-wrap"><canvas id="cgChartTendencia"></canvas></div></div>' +
     '</div>' +
+    '<div class="cg-chart-card" id="cgEquiposCard" style="margin-bottom:16px;display:none"><h4>👥 Equipos · quién vendió <small>(desde nov-2026 lo de Shayra y Saskya sale como Verónica Terán; aquí se ve cuánto vendió cada una · respeta los filtros)</small></h4><div id="cgEquiposBody"></div></div>' +
     '<div class="cg-charts-grid">' +
       '<div class="cg-chart-card"><h4>Ventas por ciudad · Neto <small>(según la ejecutiva que vendió)</small></h4><div class="cg-chart-wrap"><canvas id="cgChartCiudad"></canvas></div></div>' +
       '<div class="cg-chart-card"><h4>Detalle por ciudad</h4><div class="cg-table-wrap"><table class="cg-table compact"><thead><tr><th>Ciudad</th><th style="text-align:right">Facturas</th><th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th><th style="text-align:right">% del total</th></tr></thead><tbody id="cgTablaCiudadBody"></tbody></table></div></div>' +
