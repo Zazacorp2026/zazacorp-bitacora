@@ -11073,6 +11073,7 @@ function buildLEDUI(container, data) {
         '<div style="margin:6px 0">' + estadoTag +
           (player.account ? ' <span style="font-size:9px;color:var(--muted);background:var(--surface2);border-radius:4px;padding:1px 5px">' + player.account + '</span>' : '') +
         '</div>' +
+        (esAdmin && (playerContratos.length + playerProximos.length) ? '<button data-pid="' + esc(player.playerId) + '" onclick="event.stopPropagation();ledAbrirTraslado_(this.dataset.pid, null)" style="margin:4px 6px 4px 0;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,.5);background:rgba(99,102,241,.1);color:#818cf8">🔀 Mover contrataciones…</button>' : '') +
         (ledTarifaCanje_(ledCodigoDePlayer_(player.playerId)) ? '<div style="font-size:10.5px;font-weight:700;color:#a5b4fc;margin:2px 0">🔄 En canje ALACC · extra $' + ledTarifaCanje_(ledCodigoDePlayer_(player.playerId)).toLocaleString('en-US') + ' + IVA</div>' : '') +
         (esAdmin && (player.permiteOffline || (bloqueadoOffline && !player.offlineLibre)) ? '<button data-pid="' + esc(player.playerId) + '" data-nombre="' + esc(player.name || '') + '" onclick="event.stopPropagation();toggleOfflineLED(this.dataset.pid, ' + (player.permiteOffline ? 'false' : 'true') + ', this.dataset.nombre)" style="margin:4px 6px 4px 0;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (player.permiteOffline ? 'rgba(248,113,113,.5)' : 'rgba(74,222,128,.5)') + ';background:transparent;color:' + (player.permiteOffline ? '#f87171' : '#4ade80') + '">' + (player.permiteOffline ? '📴 Quitar permiso offline' : '✅ Permitir contratar offline') + '</button>' : '') +
         (bloqueadoOffline && player.offlineLibre ? '<div style="font-size:10px;color:#4ade80;margin:2px 0">Pantalla offline: contratación habilitada por el administrador</div>' : '') +
@@ -11107,6 +11108,7 @@ function buildLEDUI(container, data) {
           '</div>' +
           (esProximo ? (() => { const d = ledInicioEfectivo_(c); const porProg = d !== c.inicio; return '<div style="margin-top:4px"><span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;background:rgba(129,140,248,.15);color:#a5b4fc;border:1px solid rgba(129,140,248,.45)">🕒 Próximo · ' + (porProg ? 'programado desde ' : 'desde ') + d.slice(8, 10) + '/' + d.slice(5, 7) + '</span></div>'; })() : '') +
           ledAvisoProgramacion_(c) +
+          (c.traslado && c.traslado.indexOf('MOVIDO DESDE') === 0 ? '<div style="font-size:10px;color:#a5b4fc;margin-top:3px">🔀 ' + esc(c.traslado.split(' · ')[0].replace('MOVIDO DESDE', 'Movida desde')) + '</div>' : '') +
           (c.contratadoPor ? '<div style="margin-top:4px"><span style="font-size:10px;padding:2px 7px;border-radius:4px;' +
             (esZaza ? 'background:rgba(34,197,94,.18);color:#4ade80;border:1px solid rgba(34,197,94,.4)' : 'background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4)') +
             '">' + c.contratadoPor + '</span></div>' : '');
@@ -11120,6 +11122,7 @@ function buildLEDUI(container, data) {
         '</div>';
         htmlGrupos += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" onclick="event.stopPropagation()">' +
           (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar</button>' : '') +
+          (esAdmin ? '<button onclick="ledAbrirTraslado_(\'' + esc(c.playerId) + '\',[\'' + c.id + '\'])" title="Mover a otra pantalla" style="font-size:10px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.4);border-radius:5px;color:#818cf8;padding:3px 8px;cursor:pointer">🔀 Mover</button>' : '') +
           (esAdmin && !esProximo && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+lista[idx-1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
           (esAdmin && !esProximo && idx < lista.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+lista[idx+1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
         '</div>';
@@ -11263,6 +11266,101 @@ async function confirmarDetalleContratoLED(id) {
 function verMaterialLED(link) {
   if (link && link.startsWith('http')) window.open(link, '_blank');
   else showToast('Sin link de VNNOX registrado', 'info');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  (2026-11-12) MOVER CONTRATACIONES A OTRA PANTALLA — solo Jorge (ver ledTrasladarContratos en Code.gs)
+// ══════════════════════════════════════════════════════════════
+let _ledTras = null; // { origen, ids, destino, opciones }
+function ledManianaLocal_() { const d = new Date(); d.setDate(d.getDate() + 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function ledAbrirTraslado_(playerId, ids) {
+  const contratos = ((_ledData && _ledData.contratos) || []).filter(c => c.playerId === playerId && c.activo);
+  if (!contratos.length) { showToast('Esta pantalla no tiene contrataciones vigentes', 'info'); return; }
+  const marcados = ids || contratos.map(c => c.id);
+  _ledTras = { origen: playerId, destino: null, opciones: null };
+  const cod = ledCodigoDePlayer_(playerId) || playerId;
+  document.getElementById('modalTitle').textContent = '🔀 Mover contrataciones de ' + cod;
+  document.getElementById('modalSubtitle').textContent = 'Se llevan su cliente, valor, materiales y la programación de los días que faltan';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="contratar-form">
+      <div class="form-group" style="margin-bottom:10px"><label>Contrataciones a mover</label>
+        <div style="max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px">
+          ${contratos.map(c => `<label style="display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;cursor:pointer;text-transform:none;letter-spacing:0">
+            <input type="checkbox" class="ledtras-chk" value="${esc(c.id)}" ${marcados.indexOf(c.id) >= 0 ? 'checked' : ''} onchange="ledTrasBuscar_()" style="width:auto">
+            <span><b>${esc(c.cliente)}</b> <span style="color:var(--muted)">${c.inicio} → ${c.fin}${c.tipo && c.tipo !== 'PAGADA' ? ' · ' + esc(c.tipo) : ''}</span></span></label>`).join('')}
+        </div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:150px"><label>Desde qué día</label><input type="date" id="ledtras-desde" value="${ledManianaLocal_()}" min="${ledHoyLocal_()}" onchange="ledTrasBuscar_()"></div>
+        <div class="form-group" style="flex:2;min-width:180px"><label>Motivo</label><input type="text" id="ledtras-motivo" value="Pantalla apagada"></div>
+      </div>
+      <div class="form-group" style="margin-top:6px"><label>Pantalla destino <span style="text-transform:none;color:var(--muted);font-weight:400">· solo se pueden elegir las que tienen espacio todos los días</span></label>
+        <div id="ledtras-lista" style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px"></div></div>
+      <div id="ledtras-resumen" style="font-size:12px;color:var(--muted);margin:8px 0;line-height:1.5"></div>
+      <button id="ledtras-btn" onclick="ledTrasConfirmar_()" style="width:100%;padding:12px;background:#6366f1;border:none;border-radius:8px;color:#fff;font-weight:700;font-size:13px;cursor:pointer">🔀 Mover</button>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+  ledTrasBuscar_();
+}
+function ledTrasIds_() { return [...document.querySelectorAll('.ledtras-chk:checked')].map(x => x.value); }
+let _ledTrasPedido = 0;
+async function ledTrasBuscar_() {
+  const lista = document.getElementById('ledtras-lista');
+  if (!lista || !_ledTras) return;
+  const ids = ledTrasIds_();
+  _ledTras.destino = null; _ledTras.opciones = null;
+  ledTrasPintarResumen_();
+  if (!ids.length) { lista.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--muted)">Marca al menos una contratación</div>'; return; }
+  lista.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--muted)">⏳ Buscando pantallas con espacio…</div>';
+  const n = ++_ledTrasPedido;
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledOpcionesTraslado', ids, desde: document.getElementById('ledtras-desde').value }) });
+    const json = await res.json();
+    if (n !== _ledTrasPedido) return;
+    if (!json.ok) throw new Error(json.error || 'No se pudo calcular');
+    _ledTras.opciones = json;
+    lista.innerHTML = json.pantallas.map(p => {
+      const ok = p.cabe && !p.offline;
+      const det = p.offline ? '<span style="color:#f87171">offline</span>' : (p.cabe ? '<span style="color:#4ade80">' + p.libres + ' libre' + (p.libres === 1 ? '' : 's') + '</span>' : '<span style="color:#f87171">sin espacio</span>');
+      return '<label style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px;text-transform:none;letter-spacing:0;' + (ok ? 'cursor:pointer' : 'opacity:.45') + '">' +
+        '<span style="display:flex;gap:8px;align-items:center"><input type="radio" name="ledtras-dest" value="' + esc(p.playerId) + '" ' + (ok ? '' : 'disabled') + ' onchange="ledTrasElegir_(this.value)" style="width:auto">' +
+        '<span><b>' + esc(p.codigo) + '</b> <span style="color:var(--muted)">' + esc(String(p.direccion || '').slice(0, 45)) + (p.ciudad ? ' · ' + esc(p.ciudad) : '') + '</span></span></span>' + det + '</label>';
+    }).join('') || '<div style="padding:12px;font-size:12px;color:var(--muted)">No hay otras pantallas LED</div>';
+    ledTrasPintarResumen_();
+  } catch (e) { if (n === _ledTrasPedido) lista.innerHTML = '<div style="padding:12px;font-size:12px;color:#f87171">❌ ' + esc(e.message) + '</div>'; }
+}
+function ledTrasElegir_(pid) { _ledTras.destino = pid; ledTrasPintarResumen_(); }
+function ledTrasPintarResumen_() {
+  const el = document.getElementById('ledtras-resumen');
+  if (!el || !_ledTras) return;
+  const o = _ledTras.opciones;
+  if (!o) { el.innerHTML = ''; return; }
+  const dest = _ledTras.destino ? o.pantallas.find(p => p.playerId === _ledTras.destino) : null;
+  const aviso = o.contratos.some(c => c.tipo === 'CANJE') && dest && !dest.canje ? '<div style="color:#fbbf24">⚠ Hay un canje ALACC y ' + esc(dest.codigo) + ' no está en el convenio de canje.</div>' : '';
+  el.innerHTML = o.contratos.map(c => '• <b>' + esc(c.cliente) + '</b>: ' + (c.desde <= c.inicio ? 'se mueve completa (' + c.inicio + ' → ' + c.fin + ')' : 'desde el ' + c.desde + ' hasta el ' + c.fin + '; en la pantalla actual termina el día anterior')).join('<br>') +
+    '<div style="margin-top:4px">Se avisará al equipo de programación con el Excel (apagar en la pantalla actual y encender en la nueva).</div>' + aviso;
+}
+async function ledTrasConfirmar_() {
+  const ids = ledTrasIds_();
+  if (!ids.length) { showToast('Marca al menos una contratación', 'info'); return; }
+  if (!_ledTras || !_ledTras.destino) { showToast('Elige la pantalla destino', 'info'); return; }
+  const dest = _ledTras.opciones.pantallas.find(p => p.playerId === _ledTras.destino);
+  const desde = document.getElementById('ledtras-desde').value;
+  if (!confirm('¿Mover ' + ids.length + (ids.length === 1 ? ' contratación' : ' contrataciones') + ' a ' + dest.codigo + ' desde el ' + desde + '?\n\nSe enviará el correo de programación al equipo.')) return;
+  const btn = document.getElementById('ledtras-btn');
+  btn.disabled = true; btn.textContent = '⏳ Moviendo…';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledTrasladarContratos', ids, destino: _ledTras.destino, desde, motivo: document.getElementById('ledtras-motivo').value }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'No se pudo mover');
+    showToast('✅ ' + json.movidos + (json.movidos === 1 ? ' contratación movida' : ' contrataciones movidas') + ' a ' + json.destino, 'success');
+    if (json.avisoCorreo) showToast('⚠️ ' + json.avisoCorreo, 'error');
+    closeModal();
+    _ledData = null;
+    renderLED(document.getElementById('mainContent'));
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = '🔀 Mover';
+  }
 }
 
 function agregarEspaciosLED(playerId, capacidadActual) {
@@ -11578,7 +11676,7 @@ function ledCodigoDePlayer_(pid) {
 }
 function ledTarifaCanje_(codigo) { return LED_CANJE_ALACC.pantallas[ledCodigoBase_(codigo)] || 0; }
 function ledCanjeDelMes_(mes) {
-  return ((_ledData && _ledData.contratos) || []).filter(c => c.tipo === 'CANJE' && c.estado !== 'CANCELADO' && String(c.inicio || '').slice(0, 7) === mes);
+  return ((_ledData && _ledData.contratos) || []).filter(c => c.tipo === 'CANJE' && c.estado !== 'CANCELADO' && String(c.inicio || '').slice(0, 7) === mes && String(c.traslado || '').indexOf('MOVIDO DESDE') !== 0);
 }
 function ledHoyLocal_() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 // (2026-11-06) Un contrato ocupa puesto HOY solo si ya empezó; los futuros se muestran como "Próximos"
