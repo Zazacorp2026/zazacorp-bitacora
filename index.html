@@ -641,6 +641,10 @@
     <div class="mf-drop"></div>
   </div>
   <span class="count-badge" id="countBadge">–</span>
+  <label title="Vallas con visibilidad reducida (columna del Sheet)" style="display:flex;align-items:center;gap:6px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:8px;padding:7px 10px;font-size:11.5px;color:#fbbf24;cursor:pointer;white-space:nowrap">
+    <input type="checkbox" id="chkSoloVisReducida" onchange="state.soloVisReducida=this.checked;state.page=1;render()" style="cursor:pointer">
+    👁️‍🗨️ Solo visibilidad reducida
+  </label>
   <label id="chkMostrarReservadasWrap" style="display:none;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:11.5px;color:var(--text);cursor:pointer;white-space:nowrap;font-family:'Space Grotesk',sans-serif">
     <input type="checkbox" id="chkMostrarReservadas" checked onchange="toggleMostrarReservadasDisp(this.checked)" style="cursor:pointer">
     Mostrar reservadas
@@ -1838,6 +1842,7 @@ let state = {
   // solo quiere ver lo realmente libre.
   mostrarReservadasDisp: true,
   mostrarPrereservadasDisp: true,
+  soloVisReducida: false, // (2026-11-13) filtro "Solo visibilidad reducida"
   page: 1,
   perPage: 48
 };
@@ -2346,6 +2351,7 @@ function getFiltered() {
     (v.lugar||'').toLowerCase().includes(s) ||
     (v.cliente_reserva||'').toLowerCase().includes(s)
   );
+  if (state.soloVisReducida) d = d.filter(v => visTexto_(v));
   if (state.filterCiudad.size)    d = d.filter(v => state.filterCiudad.has(v.lugar));
   if (state.filterTipo.size)      d = d.filter(v => state.filterTipo.has(v.tipo));
   // FIX (2026-09-25): una valla RESERVADA guarda a su ejecutiva en
@@ -6728,6 +6734,52 @@ function insCerrarFotoGrande() {
   if (overlay) overlay.style.display = 'none';
 }
 
+// ══════════════════════════════════════════════════════════════
+//  (2026-11-13) VISIBILIDAD REDUCIDA — parte del Sheet (columna "Visibilidad Reducida" de la bitácora).
+//  Con texto = alerta para todos (tarjeta, detalle, mapa, LED) y confirmación obligatoria al reservar
+//  o contratar. No sale en el PPT/propuesta del cliente.
+// ══════════════════════════════════════════════════════════════
+function visTexto_(v) { return String((v && v.visibilidad_reducida) || '').trim(); }
+function visDePlayer_(pid) { return (DATA || []).find(x => String(x.playerVnnoxId || '').trim() === String(pid || '').trim()) || null; }
+function visBadge_(v, grande) {
+  const t = visTexto_(v);
+  if (!t) return '';
+  return '<div title="' + esc(t) + '" style="margin:' + (grande ? '10px 0 0' : '4px 0') + ';font-size:' + (grande ? '12px' : '10.5px') + ';font-weight:700;line-height:1.35;padding:' + (grande ? '8px 10px' : '4px 7px') + ';border-radius:6px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.45);color:#fbbf24">👁️‍🗨️ Visibilidad reducida: <span style="font-weight:500">' + esc(t) + '</span></div>';
+}
+// Pide confirmación si alguna de las vallas (por código) o pantallas LED (por playerId) tiene visibilidad reducida.
+// Devuelve una promesa: true = seguir, false = cancelar.
+function visConfirmar_(codigos, playerIds) {
+  const vistos = {};
+  const lista = [];
+  (codigos || []).forEach(c => { const v = (DATA || []).find(x => String(x.codigo).trim() === String(c).trim()); if (v && visTexto_(v) && !vistos[v.codigo]) { vistos[v.codigo] = 1; lista.push(v); } });
+  (playerIds || []).forEach(p => { const v = visDePlayer_(p); if (v && visTexto_(v) && !vistos[v.codigo]) { vistos[v.codigo] = 1; lista.push(v); } });
+  if (!lista.length) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML = '<div style="background:var(--surface);border:1px solid rgba(245,158,11,.5);border-radius:14px;max-width:460px;width:100%;padding:18px 18px 14px;box-shadow:0 10px 40px rgba(0,0,0,.5)">' +
+      '<div style="font-size:15px;font-weight:800;color:#fbbf24;margin-bottom:6px">👁️‍🗨️ ' + (lista.length === 1 ? 'Este elemento tiene' : 'Estos elementos tienen') + ' visibilidad reducida</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Antes de seguir, el cliente debe estar informado.</div>' +
+      '<div style="max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px">' +
+        lista.map(v => '<div style="padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px"><b>' + esc(v.codigo) + '</b> <span style="color:var(--muted)">' + esc(String(v.direccion || '').slice(0, 50)) + '</span><div style="color:#fbbf24;margin-top:2px">' + esc(visTexto_(v)) + '</div></div>').join('') +
+      '</div>' +
+      '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--text)"><input type="checkbox" id="visChk" style="width:auto;margin-top:2px"> Confirmo que el cliente está informado de la visibilidad reducida</label>' +
+      '<div id="visErr" style="font-size:11.5px;color:#f87171;margin-top:6px;min-height:14px"></div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">' +
+        '<button id="visNo" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 14px;cursor:pointer">Cancelar</button>' +
+        '<button id="visSi" style="background:#f59e0b;border:none;border-radius:8px;color:#000;font-weight:800;padding:9px 16px;cursor:pointer">Continuar</button>' +
+      '</div></div>';
+    document.body.appendChild(ov);
+    const cerrar = r => { ov.remove(); resolve(r); };
+    ov.querySelector('#visNo').onclick = () => cerrar(false);
+    ov.querySelector('#visChk').onchange = () => { ov.querySelector('#visErr').textContent = ''; };
+    ov.querySelector('#visSi').onclick = () => {
+      if (!ov.querySelector('#visChk').checked) { ov.querySelector('#visErr').textContent = 'Marca la confirmación para continuar'; return; }
+      cerrar(true);
+    };
+  });
+}
+
 function renderCard(v) {
   const fotoCard = cldOptimizar(localStorage.getItem('zz_foto_' + v.codigo) || v.foto, 500);
   const fotoPosCard = localStorage.getItem('zz_fotopos_' + v.codigo) || 'center';
@@ -6793,7 +6845,7 @@ function renderCard(v) {
       '<div class="card-header"><div class="card-codigo">' + v.codigo + '</div>' + (esProximaDisp ? badgeEstado : '<div class="estado-badge ' + (bloqueo ? 'eb-RESERVADA' : ec(v.estado)) + '">' + (bloqueo ? 'RESERVADA' : v.estado) + '</div>') + '</div>' +
       '<div class="card-dir">' + esc(v.direccion) + '</div>' +
       '<div class="card-meta"><span class="meta-tag">' + v.tipo + '</span>' + (esc(v.medidas) ? '<span class="meta-tag">' + esc(v.medidas) + '</span>' : '') + '<span class="meta-tag">' + esc(v.lugar) + '</span></div>' +
-      aHtml +
+      aHtml + visBadge_(v) +
       (v.estado === 'CONTRATADA' && esc(v.reserva2_cliente) ? '<div style="font-size:9px;color:#818cf8;font-weight:600;margin-bottom:4px">🔄 Pre-reservada: ' + esc(v.reserva2_cliente) + (esc(v.prereserva2b_cliente) ? ' (+1 en cola)' : '') + '</div>' : '') +
       (v.estado === 'RESERVADA' && esc(v.reserva2_cliente) ? '<div style="font-size:9px;color:#818cf8;font-weight:600;margin-bottom:4px">🔔 2ª reserva en cola: ' + esc(v.reserva2_cliente) + (esc(v.reserva2_ejecutiva) ? ' (' + esc(v.reserva2_ejecutiva) + ')' : '') + '</div>' : '') +
       (v.estado === 'CONTRATADA' && v.termino && !v.alerta ? (function(){
@@ -7278,7 +7330,7 @@ function openModal(codigo) {
       </div>`;
 
   document.getElementById('modalBody').innerHTML =
-    fotoVisor +
+    fotoVisor + visBadge_(v, true) +
     '<div class="detail-grid" style="margin-top:14px">' +
       '<div class="detail-item"><div class="detail-label">Estado</div><div class="detail-value"><span class="estado-badge ' + ec(v.estado) + '">' + v.estado + '</span></div></div>' +
       '<div class="detail-item"><div class="detail-label">Propietario</div><div class="detail-value">' + (esc(v.propietario) || '—') + '</div></div>' +
@@ -7407,6 +7459,7 @@ async function hacerReserva(codigo) {
     return;
   }
 
+  if (!(await visConfirmar_([codigo]))) return;
   const btn = document.getElementById('btnReservar');
   btn.disabled = true;
   btn.textContent = 'Registrando...';
@@ -7742,6 +7795,7 @@ function mapPopupItem_(v, compacto, idx) {
       ${fotoTag}
       <div class="pop-estado" style="background:${estadoBg};color:${estadoColor}${compacto ? ';align-self:flex-start' : ''}">${estadoDisplay}</div>
       <h4>${v.codigo}</h4>
+      ${visBadge_(v)}
       ${compacto ? '' : `<p>${dir.substring(0,80)}${dir.length>80?'...':''}</p>`}
       <p><strong>${v.tipo}</strong> ${esc(v.medidas) ? '· '+esc(v.medidas) : ''}</p>
       ${esc(v.cliente) ? '<p>Cliente: <strong>'+esc(v.cliente)+'</strong></p>' : ''}
@@ -7943,6 +7997,7 @@ async function confirmarMultiReserva() {
   const ejecutiva = document.getElementById('mr-ejecutiva')?.value;
   if (!cliente || !ejecutiva) { showToast('Completa cliente y ejecutiva', 'info'); return; }
 
+  if (!(await visConfirmar_([...selectedVallas]))) return;
   const btn = document.querySelector('.btn-contratar-confirm');
   if (btn) { btn.disabled=true; btn.textContent='⏳ Reservando...'; }
 
@@ -8021,6 +8076,7 @@ async function confirmarSegundaReserva(codigo) {
 
   if (!cliente || !ejecutiva) { showToast('Completa cliente y ejecutiva', 'info'); return; }
 
+  if (!(await visConfirmar_([codigo]))) return;
   const btn = document.querySelector('.btn-contratar-confirm');
   if (btn) { btn.disabled=true; btn.textContent='⏳ Registrando...'; }
 
@@ -8067,6 +8123,7 @@ async function confirmarPreReserva(codigo) {
 
   if (!cliente || !ejecutiva) { showToast('Completa cliente y ejecutiva', 'info'); return; }
 
+  if (!(await visConfirmar_([codigo]))) return;
   const btn = document.querySelector('.btn-contratar-confirm');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Registrando...'; }
 
@@ -8536,6 +8593,7 @@ async function confirmarMultiContratacion() {
     else { const m = Math.round((diffDias/30)*2)/2; periodo = (m%1===0?m:m.toFixed(1)) + (m===1?' MES':' MESES'); }
   }
 
+  if (!(await visConfirmar_(codigos))) return;
   const btn = document.getElementById('btnMultiContratar');
   btn.disabled = true;
   btn.textContent = '⏳ Procesando...';
@@ -9404,6 +9462,7 @@ async function confirmarRenovacion() {
   if (!codigos.length || !base || !fin) return;
   const valoresPorCodigo = {};
   document.querySelectorAll('.rn-valor').forEach(i => { if (codigos.includes(i.dataset.codigo)) valoresPorCodigo[i.dataset.codigo] = parseFloat(i.value) || ''; });
+  if (!(await visConfirmar_(codigos))) return;
   const btn = document.getElementById('btnRenovar');
   btn.disabled = true; btn.textContent = '⏳ Procesando...';
   try {
@@ -9486,6 +9545,7 @@ async function confirmarContratacion(codigo) {
     return;
   }
 
+  if (!(await visConfirmar_([codigo]))) return;
   const btn = document.getElementById('btnContratar');
   btn.disabled = true;
   btn.textContent = '⏳ Procesando...';
@@ -11990,6 +12050,7 @@ async function confirmarContratoLEDMulti() {
     duracion: document.querySelector('.lm-mat-duracion[data-n="' + n + '"]')?.value || '',
     linkVNNOX: document.querySelector('.lm-mat-link[data-n="' + n + '"]')?.value || ''
   })).filter(m => m.nombre);
+  if (!(await visConfirmar_([], pantallas.map(p => p.playerId)))) return;
   const btn = document.getElementById('btnLEDMultiConfirmar');
   btn.disabled = true; btn.textContent = '⏳ Registrando...';
   let json = null;
@@ -12876,6 +12937,7 @@ async function confirmarContratoLED() {
   const contratadoPor = getLEDContratadoPor();
 
   const esAdminActual = (_usuarioActual || '').toUpperCase() === 'JORGE';
+  if (playerId && !(await visConfirmar_([], [playerId]))) return;
   if (_ledTipo === 'BONIFICADA') { await confirmarBonificacionLEDIndividual_(playerId, nombrePantalla, cliente, ejecutiva, spots, inicio, fin, valorMensual); return; }
   const faltantes = [];
   if (!playerId) faltantes.push('pantalla');
