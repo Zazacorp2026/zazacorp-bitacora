@@ -361,6 +361,17 @@
   .cg-kpi-value{display:block;font-size:30px;font-weight:900;color:var(--text);letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums;}
   .cg-kpi-sub{display:block;margin-top:6px;font-size:11px;color:var(--muted);min-height:14px;}
   .cg-kpi-sub b{color:var(--kpi,var(--blue));}
+  /* (2026-11-16) Tipo de venta: Alquiler vs Producción y otros */
+  .cg-venta-split{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:-4px 0 16px;}
+  .cg-venta-btn{display:block;width:100%;text-align:left;font-family:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;cursor:pointer;}
+  .cg-venta-btn:hover{border-color:var(--muted);}
+  .cg-venta-btn.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,var(--surface));}
+  .cg-venta-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;}
+  .cg-venta-nom{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
+  .cg-venta-val{font-family:'DM Mono',monospace;font-size:18px;font-weight:800;}
+  .cg-venta-bar{height:6px;border-radius:3px;background:var(--surface2);margin:8px 0 5px;overflow:hidden;}
+  .cg-venta-bar>div{height:100%;border-radius:3px;}
+  .cg-venta-sub{font-size:11px;color:var(--muted);}
   .cg-ag-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
   .cg-ag-search{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-size:12px;max-width:220px;font-family:inherit;}
   .cg-ag-leg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin-bottom:12px;}
@@ -443,7 +454,7 @@
   .cg-sem-empty{font-size:12px;color:var(--muted);font-style:italic;margin-top:6px;}
 
   @media (max-width:760px){.cg-ag-hd,.cg-ag-row,.cg-ag-tot{grid-template-columns:1fr 84px 84px 16px;}.cg-ag-hd span:nth-child(2),.cg-ag-bar,.cg-ag-tot span:nth-child(2){display:none;}.cg-ag-dr{grid-template-columns:1fr 80px 80px 44px;}}
-  @media (max-width:900px){.cg-sem-grid{grid-template-columns:1fr;}.cg-sem-lista2{grid-template-columns:1fr;}.cg-kpis{grid-template-columns:1fr;}.cg-kpi-value{font-size:26px;}.cg-charts-grid{grid-template-columns:1fr;}.cg-charts-grid.cg-tipo-split{grid-template-columns:1fr;}.cg-insight-grid{grid-template-columns:1fr;}.cg-insight-card.cg-span-2{grid-column:span 1;}}
+  @media (max-width:900px){.cg-venta-split{grid-template-columns:1fr;}.cg-sem-grid{grid-template-columns:1fr;}.cg-sem-lista2{grid-template-columns:1fr;}.cg-kpis{grid-template-columns:1fr;}.cg-kpi-value{font-size:26px;}.cg-charts-grid{grid-template-columns:1fr;}.cg-charts-grid.cg-tipo-split{grid-template-columns:1fr;}.cg-insight-grid{grid-template-columns:1fr;}.cg-insight-card.cg-span-2{grid-column:span 1;}}
 
   .edit-form{background:var(--surface2);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:16px;margin-top:14px;}
   .edit-form h4{font-size:13px;font-weight:600;margin-bottom:14px;color:var(--accent);}
@@ -5024,7 +5035,7 @@ let cgAllEjecutivas = [];
 let cgAllClientes = [];
 let cgAllMarcas = [];
 let cgCharts = {};
-let cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [], clientes: [], marcas: [], groupBy: 'Cliente' };
+let cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', venta: '', ejecutivas: [], clientes: [], marcas: [], groupBy: 'Cliente' };
 const CG_MONTH_NAMES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const CG_LINE_PALETTE = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4', '#eab308', '#ec4899', '#84cc16', '#f97316'];
 
@@ -5364,7 +5375,7 @@ function cgRefrescarOpcionesFiltros_() {
     sel.value = actual;
   };
   rehacer('cgFilterYear', [...new Set(cgDataCache.map(d => d['Año']))].filter(Boolean).sort());
-  rehacer('cgFilterTipo', [...new Set(cgDataCache.map(d => d['Tipo de Elemento']))].filter(Boolean).sort());
+  rehacer('cgFilterTipo', cgTiposParaVenta_());
 }
 
 // Evita que 2 llamadas se disparen al mismo tiempo (ej. entrar dos
@@ -5420,6 +5431,7 @@ function cgGetBaseFilteredData() {
     if (cgState.monthFrom && Number(d['Mes']) < Number(cgState.monthFrom)) return false;
     if (cgState.monthTo && Number(d['Mes']) > Number(cgState.monthTo)) return false;
     if (cgState.tipo && d['Tipo de Elemento'] !== cgState.tipo) return false;
+    if (!cgPasaVenta_(d)) return false;
     if (!cgEnSeleccion(d['Cliente'], cgState.clientes)) return false;
     if (!cgEnSeleccion(d['Marca'], cgState.marcas)) return false;
     return true;
@@ -5439,6 +5451,7 @@ function cgGetDataParaCompararAnios() {
     if (cgState.monthFrom && Number(d['Mes']) < Number(cgState.monthFrom)) return false;
     if (cgState.monthTo && Number(d['Mes']) > Number(cgState.monthTo)) return false;
     if (cgState.tipo && d['Tipo de Elemento'] !== cgState.tipo) return false;
+    if (!cgPasaVenta_(d)) return false;
     if (!cgEnSeleccion(d['Cliente'], cgState.clientes)) return false;
     if (!cgEnSeleccion(d['Marca'], cgState.marcas)) return false;
     if (setEj.size && !setEj.has(d['Ejecutiva'])) return false;
@@ -5952,6 +5965,46 @@ function cgEsTipoAlquiler_(tipo) {
   return String(tipo || '').trim().toUpperCase().indexOf('ALQUILER') === 0;
 }
 
+// (2026-11-16) Tipo de venta = mismo criterio que los dos gráficos de abajo:
+// "Alquiler" es todo tipo de elemento que empieza con "Alquiler"; lo demás (producción especial,
+// instalación, cambio de lona, materia prima, descuentos/rebates) es "Producción y otros".
+function cgTipoVentaDe_(tipo) { return cgEsTipoAlquiler_(tipo) ? 'alquiler' : 'produccion'; }
+function cgPasaVenta_(d) { return !cgState.venta || cgTipoVentaDe_(d['Tipo de Elemento']) === cgState.venta; }
+function cgTiposParaVenta_() {
+  return [...new Set((cgDataCache || []).map(d => d['Tipo de Elemento']))].filter(Boolean)
+    .filter(t => !cgState.venta || cgTipoVentaDe_(t) === cgState.venta).sort();
+}
+function cgElegirVenta(v) {
+  cgCambiarFiltro('venta', cgState.venta === v ? '' : v);
+}
+// Recuadros bajo los KPIs: cuánto es Alquiler y cuánto Producción y otros con los demás filtros
+// (se calcula sin el filtro de tipo de venta, para ver siempre los dos lados; clic = filtrar).
+function cgPintarTipoVenta() {
+  const cont = document.getElementById('cgVentaSplit');
+  if (!cont) return;
+  const antes = cgState.venta;
+  cgState.venta = '';
+  let data;
+  try { data = cgGetFilteredData(); } finally { cgState.venta = antes; }
+  const t = { alquiler: { neto: 0, fact: new Set() }, produccion: { neto: 0, fact: new Set() } };
+  data.forEach(d => {
+    const x = t[cgTipoVentaDe_(d['Tipo de Elemento'])];
+    x.neto += Number(d['Neto (Stotal)']) || 0;
+    if (d['Comprobante']) x.fact.add(d['Comprobante']);
+  });
+  const total = t.alquiler.neto + t.produccion.neto;
+  const caja = (clave, nombre, color) => {
+    const x = t[clave];
+    const pct = total ? x.neto / total * 100 : 0;
+    return '<button type="button" class="cg-venta-btn' + (cgState.venta === clave ? ' on' : '') + '" onclick="cgElegirVenta(\'' + clave + '\')" title="Clic para ver solo ' + nombre + ' (otra vez para quitar)">' +
+      '<div class="cg-venta-top"><span class="cg-venta-nom">' + nombre + '</span><span class="cg-venta-val">' + cgFmtMoney(x.neto) + '</span></div>' +
+      '<div class="cg-venta-bar"><div style="width:' + Math.max(0, Math.min(100, pct)).toFixed(1) + '%;background:' + color + '"></div></div>' +
+      '<div class="cg-venta-sub"><b style="color:var(--text)">' + pct.toFixed(1).replace('.', ',') + '%</b> del neto · ' + x.fact.size.toLocaleString('es-EC') + ' factura' + (x.fact.size === 1 ? '' : 's') + (cgState.venta === clave ? ' · <span style="color:var(--accent)">filtrando ✕</span>' : '') + '</div>' +
+    '</button>';
+  };
+  cont.innerHTML = caja('alquiler', 'Alquiler', '#10b981') + caja('produccion', 'Producción y otros', '#8b5cf6');
+}
+
 function cgPintarTipoElemento() {
   cgPintarTipoElementoGrupo_('cgChartTipoAlquiler', 'tipoAlquiler', cgEsTipoAlquiler_);
   cgPintarTipoElementoGrupo_('cgChartTipoProduccion', 'tipoProduccion', function (tipo) { return !cgEsTipoAlquiler_(tipo); });
@@ -6072,6 +6125,7 @@ function cgOpcionesClientes() {
   if (cgState.monthFrom) data = data.filter(d => Number(d['Mes']) >= Number(cgState.monthFrom));
   if (cgState.monthTo) data = data.filter(d => Number(d['Mes']) <= Number(cgState.monthTo));
   if (cgState.tipo) data = data.filter(d => d['Tipo de Elemento'] === cgState.tipo);
+  if (cgState.venta) data = data.filter(cgPasaVenta_);
   if (cgState.marcas.length) data = data.filter(d => cgEnSeleccion(d['Marca'], cgState.marcas));
   if (cgState.ejecutivas.length) data = data.filter(d => new Set(cgState.ejecutivas).has(d['Ejecutiva']));
   return [...new Set(data.map(d => d['Cliente']).filter(Boolean))].sort();
@@ -6083,6 +6137,7 @@ function cgOpcionesMarcas() {
   if (cgState.monthFrom) data = data.filter(d => Number(d['Mes']) >= Number(cgState.monthFrom));
   if (cgState.monthTo) data = data.filter(d => Number(d['Mes']) <= Number(cgState.monthTo));
   if (cgState.tipo) data = data.filter(d => d['Tipo de Elemento'] === cgState.tipo);
+  if (cgState.venta) data = data.filter(cgPasaVenta_);
   if (cgState.clientes.length) data = data.filter(d => cgEnSeleccion(d['Cliente'], cgState.clientes));
   if (cgState.ejecutivas.length) data = data.filter(d => new Set(cgState.ejecutivas).has(d['Ejecutiva']));
   return [...new Set(data.map(d => d['Marca']).filter(Boolean))].sort();
@@ -6128,6 +6183,8 @@ function cgToggleMultiPanel(id) {
 }
 
 function cgSincronizarFiltrosUI() {
+  const selVenta = document.getElementById('cgFilterVenta'); if (selVenta) selVenta.value = cgState.venta || '';
+  const selTipo = document.getElementById('cgFilterTipo'); if (selTipo) selTipo.value = cgState.tipo || '';
   const label = document.getElementById('cgEjecutivaToggleLabel');
   if (label) label.textContent = cgState.ejecutivas.length ? (cgState.ejecutivas.length + ' seleccionada' + (cgState.ejecutivas.length > 1 ? 's' : '')) : 'Todas';
   const cliLabel = document.getElementById('cgClienteToggleLabel');
@@ -6181,6 +6238,7 @@ function cgPintarEquipos() {
 
 function cgRepintarTodo() {
   cgPintarKpis();
+  cgPintarTipoVenta();
   cgPintarPorCiudad();
   cgPintarGerencial();
   cgPintarRanking();
@@ -6194,7 +6252,12 @@ function cgRepintarTodo() {
 
 function cgCambiarFiltro(campo, valor) {
   cgState[campo] = valor;
-  if (['year','monthFrom','monthTo','tipo'].includes(campo) && cgState.marcas.length) {
+  if (campo === 'venta') {
+    // Si el tipo de elemento elegido no es de este tipo de venta, se suelta (si no, no quedaría nada)
+    if (cgState.tipo && valor && cgTipoVentaDe_(cgState.tipo) !== valor) cgState.tipo = '';
+    cgRefrescarOpcionesFiltros_();
+  }
+  if (['year','monthFrom','monthTo','tipo','venta'].includes(campo) && cgState.marcas.length) {
     const disponibles = new Set(cgOpcionesMarcas());
     cgState.marcas = cgState.marcas.filter(m => disponibles.has(m));
   }
@@ -6203,8 +6266,9 @@ function cgCambiarFiltro(campo, valor) {
 }
 
 function cgLimpiarFiltros() {
-  cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', ejecutivas: [], clientes: [], marcas: [], groupBy: 'Cliente' };
-  ['cgFilterYear', 'cgFilterMonthFrom', 'cgFilterMonthTo', 'cgFilterTipo'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  cgState = { year: '', monthFrom: '', monthTo: '', tipo: '', venta: '', ejecutivas: [], clientes: [], marcas: [], groupBy: 'Cliente' };
+  cgRefrescarOpcionesFiltros_();
+  ['cgFilterYear', 'cgFilterMonthFrom', 'cgFilterMonthTo', 'cgFilterTipo', 'cgFilterVenta'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const gb = document.getElementById('cgGroupBy'); if (gb) gb.value = 'Cliente';
   const cs = document.getElementById('cgClienteSearch'); if (cs) cs.value = '';
   const ms = document.getElementById('cgMarcaSearch'); if (ms) ms.value = '';
@@ -6241,6 +6305,7 @@ function cgResumenFiltros_() {
     const hasta = cgState.monthTo ? CG_MONTH_NAMES[Number(cgState.monthTo)] : 'fin';
     partes.push('Meses: ' + desde + ' a ' + hasta);
   }
+  if (cgState.venta) partes.push('Venta: ' + (cgState.venta === 'alquiler' ? 'Alquiler' : 'Producción y otros'));
   if (cgState.tipo) partes.push('Tipo: ' + cgState.tipo);
   if (cgState.ejecutivas.length) partes.push('Ejecutivas: ' + cgState.ejecutivas.join(', '));
   if (cgState.clientes.length) partes.push('Clientes: ' + cgState.clientes.join(', '));
@@ -6399,7 +6464,7 @@ async function renderComercialGeneral(container) {
   }
 
   const years =[...new Set(cgDataCache.map(d => d['Año']))].filter(Boolean).sort();
-  const tipos = [...new Set(cgDataCache.map(d => d['Tipo de Elemento']))].filter(Boolean).sort();
+  const tipos = cgTiposParaVenta_();
   const monthOpts = ['<option value="">Todos</option>'];
   for (let m = 1; m <= 12; m++) monthOpts.push('<option value="' + m + '">' + CG_MONTH_NAMES[m] + '</option>');
 
@@ -6409,6 +6474,7 @@ async function renderComercialGeneral(container) {
       '<div class="cg-filter-group"><label>Año</label><select id="cgFilterYear" onchange="cgCambiarFiltro(\'year\',this.value)"><option value="">Todos</option>' + years.map(y => '<option value="' + y + '">' + y + '</option>').join('') + '</select></div>' +
       '<div class="cg-filter-group"><label>Mes desde</label><select id="cgFilterMonthFrom" onchange="cgCambiarFiltro(\'monthFrom\',this.value)">' + monthOpts.join('') + '</select></div>' +
       '<div class="cg-filter-group"><label>Mes hasta</label><select id="cgFilterMonthTo" onchange="cgCambiarFiltro(\'monthTo\',this.value)">' + monthOpts.join('') + '</select></div>' +
+      '<div class="cg-filter-group"><label>Tipo de venta</label><select id="cgFilterVenta" onchange="cgCambiarFiltro(\'venta\',this.value)"><option value="">Todas</option><option value="alquiler"' + (cgState.venta === 'alquiler' ? ' selected' : '') + '>Alquiler</option><option value="produccion"' + (cgState.venta === 'produccion' ? ' selected' : '') + '>Producción y otros</option></select></div>' +
       '<div class="cg-filter-group"><label>Tipo de elemento</label><select id="cgFilterTipo" onchange="cgCambiarFiltro(\'tipo\',this.value)"><option value="">Todos</option>' + tipos.map(t => '<option value="' + esc(t) + '">' + esc(t) + '</option>').join('') + '</select></div>' +
       '<div class="cg-filter-group"><label>Cliente</label><div class="cg-multi-select"><button type="button" class="cg-multi-btn" onclick="cgToggleMultiPanel(\'cgClientePanel\')"><span id="cgClienteToggleLabel">Todos</span><span style="color:var(--muted)">▾</span></button><div id="cgClientePanel" class="cg-multi-panel"><input id="cgClienteSearch" class="cg-multi-search" type="text" placeholder="Buscar cliente..." oninput="cgRenderMultiOptions(\'clientes\',this.value)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><button type="button" onclick="cgLimpiarSeleccion(\'clientes\')" style="background:transparent;border:0;color:var(--muted);font-size:11px;cursor:pointer">Limpiar clientes</button><span style="font-size:10px;color:var(--muted)">multiselección</span></div><div id="cgClienteOptions" class="cg-multi-list"></div></div></div></div>' +
       '<div class="cg-filter-group"><label>Marca</label><div class="cg-multi-select"><button type="button" class="cg-multi-btn" onclick="cgToggleMultiPanel(\'cgMarcaPanel\')"><span id="cgMarcaToggleLabel">Todas</span><span style="color:var(--muted)">▾</span></button><div id="cgMarcaPanel" class="cg-multi-panel"><input id="cgMarcaSearch" class="cg-multi-search" type="text" placeholder="Buscar marca..." oninput="cgRenderMultiOptions(\'marcas\',this.value)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><button type="button" onclick="cgLimpiarSeleccion(\'marcas\')" style="background:transparent;border:0;color:var(--muted);font-size:11px;cursor:pointer">Limpiar marcas</button><span style="font-size:10px;color:var(--muted)">según cliente</span></div><div id="cgMarcaOptions" class="cg-multi-list"></div></div></div></div>' +
@@ -6436,6 +6502,7 @@ async function renderComercialGeneral(container) {
       '<div class="cg-kpi-card" style="--kpi:var(--blue)"><div class="cg-kpi-head"><span class="cg-kpi-ico">✅</span><span class="cg-kpi-label">Neto total</span></div><span class="cg-kpi-value" id="cgKpiNeto">—</span><span class="cg-kpi-sub" id="cgKpiNetoSub"></span></div>' +
       '<div class="cg-kpi-card" style="--kpi:var(--green)"><div class="cg-kpi-head"><span class="cg-kpi-ico">🧾</span><span class="cg-kpi-label"># Facturas</span></div><span class="cg-kpi-value" id="cgKpiFacturas">—</span><span class="cg-kpi-sub" id="cgKpiFacturasSub"></span></div>' +
     '</div>' +
+    '<div class="cg-venta-split" id="cgVentaSplit"></div>' +
     '<div class="cg-exec-summary"><div class="cg-summary-icon">📌</div><div><h4>Resumen ejecutivo automático</h4><p id="cgResumenEjecutivoTexto">—</p></div></div>' +
     '<div class="cg-insight-grid">' +
       '<div class="cg-insight-card"><h4>Pulso comercial</h4><div id="cgPulsoBody" class="cg-pulse-list"></div></div>' +
