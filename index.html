@@ -128,6 +128,7 @@
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:1200;align-items:center;justify-content:center;padding:16px;}
   .modal-overlay.open{display:flex;}
   .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:660px;max-height:90vh;overflow-y:auto;animation:slideUp .2s ease;}
+  .modal.modal-ancho{max-width:min(1180px,94vw);}
   @keyframes slideUp{from{transform:translateY(18px);opacity:0;}to{transform:translateY(0);opacity:1;}}
   .modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;position:sticky;top:0;background:var(--surface);z-index:1;}
   .modal-title{font-size:14px;font-weight:600;line-height:1.4;}
@@ -7512,7 +7513,7 @@ function openModal(codigo) {
   }, 50);
 }
 
-function closeModal() { _modalCodigoActual = null; document.getElementById('modalOverlay').classList.remove('open'); }
+function closeModal() { _modalCodigoActual = null; document.getElementById('modalOverlay').classList.remove('open'); document.querySelector('#modalOverlay .modal')?.classList.remove('modal-ancho'); }
 function closeModalOutside(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
 
 // ── RESERVAS ─────────────────────────────────────────────────
@@ -11968,25 +11969,26 @@ function ledAbrirCanjeLista_(mes) {
   mes = mes || hoy.slice(0, 7);
   const pantDe = pid => ((_ledData && _ledData.elementosLED) || []).find(e => (e.playerVnnoxId || e.codigo) === pid) || {};
   const marca = c => String(c.cliente || '').replace(/^ALACC\s*·\s*/i, '');
-  const fecha = f => f ? f.slice(8, 10) + '/' + f.slice(5, 7) : '';
+  const fecha = f => f ? f.slice(8, 10) + '/' + f.slice(5, 7) + '/' + f.slice(0, 4) : '';
   const estado = c => c.estado === 'PAUSADO' ? '<span style="color:#fbbf24">⏸ Pausada</span>' : (c.fin < hoy ? '<span style="color:var(--muted)">Terminó</span>' : (c.inicio > hoy ? '<span style="color:#a5b4fc">Próxima</span>' : '<span style="color:#4ade80">Al aire</span>'));
   const canjes = ledCanjeDelMes_(mes).slice().sort((a, b) => (ledCodPantalla_(a) + a.inicio).localeCompare(ledCodPantalla_(b) + b.inicio));
   const excedentes = ((_ledData && _ledData.contratos) || []).filter(c => c.tipo !== 'CANJE' && c.estado !== 'CANCELADO' && /^ALACC\s*·/i.test(String(c.cliente || '')) && String(c.inicio || '').slice(0, 7) === mes);
   const th = 'text-align:left;padding:6px 8px;font-size:10.5px;color:var(--muted);font-weight:700;letter-spacing:.4px;border-bottom:1px solid var(--border)';
-  const td = 'padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;vertical-align:top';
-  const tabla = lista => '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:520px"><thead><tr>' +
+  const td = 'padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.06);font-size:13px;vertical-align:top';
+  const tabla = lista => '<table style="width:100%;border-collapse:collapse;table-layout:auto"><thead><tr>' +
     '<th style="' + th + '">PANTALLA</th><th style="' + th + '">MARCA</th><th style="' + th + '">PERIODO</th><th style="' + th + '">EJECUTIVA</th><th style="' + th + '">ESTADO</th></tr></thead><tbody>' +
-    lista.map(c => { const el = pantDe(c.playerId); return '<tr><td style="' + td + '"><b>' + esc(ledCodPantalla_(c)) + '</b><div style="font-size:10.5px;color:var(--muted)">' + esc(String(el.direccion || '').slice(0, 45)) + '</div></td>' +
+    lista.map(c => { const el = pantDe(c.playerId); return '<tr><td style="' + td + '"><b>' + esc(ledCodPantalla_(c)) + '</b><div style="font-size:11.5px;color:var(--muted)">' + esc(String(el.direccion || '')) + '</div></td>' +
       '<td style="' + td + ';font-weight:700">' + esc(marca(c)) + '</td>' +
       '<td style="' + td + ';white-space:nowrap">' + fecha(c.inicio) + ' → ' + fecha(c.fin) + '</td>' +
       '<td style="' + td + '">' + esc(c.ejecutiva || '—') + '</td>' +
-      '<td style="' + td + ';white-space:nowrap">' + estado(c) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      '<td style="' + td + ';white-space:nowrap">' + estado(c) + '</td></tr>'; }).join('') + '</tbody></table>';
   const usadosP = ledCanjeUsadosPorPantalla_(mes);
   const chips = Object.keys(LED_CANJE_ALACC.pantallas).sort().map(k => { const n = usadosP[k] || 0, lleno = n >= LED_CANJE_ALACC.cupoMes;
     return '<span style="display:inline-block;margin:2px 4px 2px 0;padding:3px 8px;border-radius:6px;font-size:11px;border:1px solid ' + (lleno ? 'rgba(251,146,60,.5)' : 'var(--border)') + ';color:' + (lleno ? '#fb923c' : (n ? '#a5b4fc' : 'var(--muted)')) + '"><b>' + k + '</b> ' + n + '/' + LED_CANJE_ALACC.cupoMes + '</span>'; }).join('');
   const mover = d => { const [y, m] = mes.split('-').map(Number); const x = new Date(y, m - 1 + d, 1); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0'); };
   const ant = mover(-1), sig = mover(1);
   const bt = (m, t, ok) => '<button ' + (ok ? 'onclick="ledAbrirCanjeLista_(\'' + m + '\')"' : 'disabled') + ' style="padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:' + (ok ? 'var(--text)' : 'var(--muted)') + ';cursor:' + (ok ? 'pointer' : 'default') + ';font-family:inherit">' + t + '</button>';
+  document.querySelector('#modalOverlay .modal')?.classList.add('modal-ancho');
   document.getElementById('modalTitle').textContent = '🔄 Canje ALACC · ' + ledMesTexto_(mes);
   document.getElementById('modalSubtitle').textContent = canjes.length + ' de ' + ledCanjeCupoTotal_() + ' espacios usados (' + LED_CANJE_ALACC.cupoMes + ' por pantalla)';
   document.getElementById('modalBody').innerHTML =
