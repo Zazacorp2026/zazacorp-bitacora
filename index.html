@@ -1469,6 +1469,10 @@ function cfgPintarReglas_() {
   const sw = (campo, etq, ayuda) => '<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);cursor:pointer">' +
     '<div style="flex:1"><div style="font-size:13px;color:var(--text);font-weight:600">' + etq + '</div><div style="font-size:11px;color:var(--muted)">' + ayuda + '</div></div>' +
     '<input type="checkbox" ' + (r[campo] ? 'checked' : '') + ' onchange="cfgRegSet_(\'' + campo + '\', this.checked)" style="width:20px;height:20px;accent-color:var(--accent);cursor:pointer"></label>';
+  const sel = (campo, etq, ayuda, ops) => '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)">' +
+    '<div style="flex:1;min-width:220px"><div style="font-size:13px;color:var(--text);font-weight:600">' + etq + '</div><div style="font-size:11px;color:var(--muted)">' + ayuda + '</div></div>' +
+    '<select onchange="cfgRegSet_(\'' + campo + '\', this.value)" style="' + inpS + ';min-width:220px">' +
+    ops.map(o => '<option value="' + o[0] + '"' + ((r[campo] || ops[0][0]) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div>';
   const filas = c.lista.map((f, i) => '<div style="display:grid;grid-template-columns:minmax(0,1fr) 130px 36px;gap:8px;align-items:center;margin-bottom:6px">' +
     '<input value="' + esc(f.codigo) + '" placeholder="LGYQ-O-000" oninput="cfgCanjeFila_(' + i + ',\'codigo\',this.value.toUpperCase().trim())" style="' + inpS + ';width:100%;text-transform:uppercase">' +
     '<div style="display:flex;align-items:center;gap:4px"><span style="color:var(--muted)">$</span><input type="number" min="0" step="0.01" value="' + esc(String(f.tarifa)) + '" oninput="cfgCanjeFila_(' + i + ',\'tarifa\',Number(this.value))" style="' + inpS + ';width:100%;text-align:right"></div>' +
@@ -1482,7 +1486,8 @@ function cfgPintarReglas_() {
       num('ledMaxVersiones', 'Versiones de material por contrato', 'máx.', 1, 6, 'Si lo bajas, los contratos que ya tienen más versiones las conservan') +
       num('ledMaxActivas', 'Versiones al aire el mismo día', 'máx.', 1, 6, 'No puede ser más que las versiones por contrato') +
       sw('ledCorrerAlProgramar', 'Correr el contrato si se programa tarde', 'Si nunca tuvo material ni programación y su inicio ya pasó, al programarlo por primera vez empieza hoy y conserva sus días') +
-      sw('ledBloqueaOffline', 'No dejar contratar pantallas OFFLINE', 'Encendido: las ejecutivas no pueden en ninguna offline (tú siempre puedes). Apagado: pueden en todas. Para abrir solo una pantalla, déjalo encendido y usa el botón ✅ en esa pantalla del módulo LED')) +
+      sw('ledBloqueaOffline', 'No dejar contratar pantallas OFFLINE', 'Encendido: las ejecutivas no pueden en ninguna offline (tú siempre puedes). Apagado: pueden en todas. Para abrir solo una pantalla, déjalo encendido y usa el botón ✅ en esa pantalla del módulo LED') +
+      sel('ledPausaQuien', 'Quién puede pausar y re-activar pautas LED', 'Botones ⏸ Pausar y ▶ RE-ACTIVAR de cada contrato en el módulo LED', [['DUENA_ADMIN', 'Ejecutiva dueña y administrador'], ['ADMIN', 'Solo administrador']])) +
     caja('🤝 Convenio ALACC (canje)', 'Pantallas que entran en el canje, su tarifa mensual y cuántos canjes se permiten por mes.',
       '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px">' +
         '<label style="font-size:12px;color:var(--muted)">Vigente desde<br><input type="date" value="' + esc(c.desde) + '" onchange="cfgCanjeSet_(\'desde\',this.value)" style="' + inpS + ';margin-top:4px"></label>' +
@@ -11243,7 +11248,7 @@ function buildLEDUI(container, data) {
         // Materiales (hasta 6 versiones) y botón para programarlos día por día
         const bonifPendiente = !!(c.bonificada && c.estadoAuth === 'PENDIENTE');
         const puedeProg = !bonifPendiente && c.estado !== 'PAUSADO' && (esAdmin || nxActuaComo_(c.ejecutiva));
-        const puedePausa = esAdmin || nxActuaComo_(c.ejecutiva);
+        const puedePausa = esAdmin || (((window.NX_REGLAS_PUB || {}).ledPausaQuien !== 'ADMIN') && nxActuaComo_(c.ejecutiva));
         htmlGrupos += '<div style="font-size:10px;color:var(--muted);margin-top:4px" onclick="event.stopPropagation()">' +
           (mats.length ? mats.slice().sort((x, y) => String(x.version).localeCompare(String(y.version))).map(m => '<div>' + esc(m.version) + ': ' + esc(m.nombre) + '</div>').join('') : '<div>Sin materiales cargados</div>') +
           (bonifPendiente ? '<div style="margin-top:4px;font-size:10.5px;color:#fbbf24;font-weight:700">⏳ Esperando autorización: la programación se habilita al autorizarla</div>' : '') +
