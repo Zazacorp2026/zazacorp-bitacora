@@ -1488,11 +1488,11 @@ function cfgPintarReglas_() {
       sw('ledCorrerAlProgramar', 'Correr el contrato si se programa tarde', 'Si nunca tuvo material ni programación y su inicio ya pasó, al programarlo por primera vez empieza hoy y conserva sus días') +
       sw('ledBloqueaOffline', 'No dejar contratar pantallas OFFLINE', 'Encendido: las ejecutivas no pueden en ninguna offline (tú siempre puedes). Apagado: pueden en todas. Para abrir solo una pantalla, déjalo encendido y usa el botón ✅ en esa pantalla del módulo LED') +
       sel('ledPausaQuien', 'Quién puede pausar y re-activar pautas LED', 'Botones ⏸ Pausar y ▶ RE-ACTIVAR de cada contrato en el módulo LED', [['DUENA_ADMIN', 'Ejecutiva dueña y administrador'], ['ADMIN', 'Solo administrador']])) +
-    caja('🤝 Convenio ALACC (canje)', 'Pantallas que entran en el canje, su tarifa mensual y cuántos canjes se permiten por mes.',
+    caja('🤝 Convenio ALACC (canje)', 'Pantallas que entran en el canje, su tarifa mensual y cuántos espacios de canje tiene cada pantalla al mes.',
       '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px">' +
         '<label style="font-size:12px;color:var(--muted)">Vigente desde<br><input type="date" value="' + esc(c.desde) + '" onchange="cfgCanjeSet_(\'desde\',this.value)" style="' + inpS + ';margin-top:4px"></label>' +
         '<label style="font-size:12px;color:var(--muted)">hasta<br><input type="date" value="' + esc(c.hasta) + '" onchange="cfgCanjeSet_(\'hasta\',this.value)" style="' + inpS + ';margin-top:4px"></label>' +
-        '<label style="font-size:12px;color:var(--muted)">Canjes por mes<br><input type="number" min="0" max="50" value="' + esc(String(c.cupoMes)) + '" oninput="cfgCanjeSet_(\'cupoMes\',parseInt(this.value,10))" style="' + inpS + ';margin-top:4px;width:110px;text-align:right"></label>' +
+        '<label style="font-size:12px;color:var(--muted)">Espacios por pantalla al mes<br><input type="number" min="0" max="50" value="' + esc(String(c.cupoMes)) + '" oninput="cfgCanjeSet_(\'cupoMes\',parseInt(this.value,10))" style="' + inpS + ';margin-top:4px;width:110px;text-align:right"></label>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:minmax(0,1fr) 130px 36px;gap:8px;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px"><span>CÓDIGO DE PANTALLA</span><span>TARIFA / MES</span><span></span></div>' +
       (filas || '<div style="font-size:12px;color:var(--muted);padding:8px 0">Sin pantallas en el convenio.</div>') +
@@ -11922,6 +11922,14 @@ function ledCodigoDePlayer_(pid) {
   return el ? el.codigo : pid;
 }
 function ledTarifaCanje_(codigo) { return LED_CANJE_ALACC.pantallas[ledCodigoBase_(codigo)] || 0; }
+// (2026-11-17) el cupo del canje es POR PANTALLA: cupoMes espacios al mes en cada pantalla del convenio
+function ledCanjeCupoTotal_() { return LED_CANJE_ALACC.cupoMes * Object.keys(LED_CANJE_ALACC.pantallas).length; }
+function ledCanjeUsadosPorPantalla_(mes) {
+  const u = {};
+  ledCanjeDelMes_(mes).forEach(c => { const k = ledCodigoBase_(ledCodigoDePlayer_(c.playerId) || c.nombrePantalla || ''); u[k] = (u[k] || 0) + 1; });
+  return u;
+}
+function ledCanjeLlenas_(mes) { const u = ledCanjeUsadosPorPantalla_(mes); return Object.keys(LED_CANJE_ALACC.pantallas).filter(k => (u[k] || 0) >= LED_CANJE_ALACC.cupoMes); }
 function ledCanjeDelMes_(mes) {
   return ((_ledData && _ledData.contratos) || []).filter(c => c.tipo === 'CANJE' && c.estado !== 'CANCELADO' && String(c.inicio || '').slice(0, 7) === mes && String(c.traslado || '').indexOf('MOVIDO DESDE') !== 0);
 }
@@ -11946,24 +11954,24 @@ function ledMesTexto_(mes) { return LED_MESES_ES[parseInt(mes.slice(5, 7), 10) -
 function ledKpiCanje_() {
   const hoy = new Date().toISOString().slice(0, 10);
   if (hoy < LED_CANJE_ALACC.desde || hoy > LED_CANJE_ALACC.hasta) return '';
-  const mes = hoy.slice(0, 7), usados = ledCanjeDelMes_(mes);
-  const lleno = usados.length >= LED_CANJE_ALACC.cupoMes;
+  const mes = hoy.slice(0, 7), usados = ledCanjeDelMes_(mes), llenas = ledCanjeLlenas_(mes);
+  const lleno = llenas.length >= Object.keys(LED_CANJE_ALACC.pantallas).length;
   const det = usados.length ? usados.map(c => ledCodigoDePlayer_(c.playerId) + ' · ' + c.cliente).join(' / ') : 'Vigente hasta 31-dic-2026 · no acumulable';
   return '<div class="led-kpi" title="' + esc(det) + '" style="' + (lleno ? 'border-color:rgba(251,146,60,.55)' : 'border-color:rgba(129,140,248,.45)') + '">' +
-    '<b style="color:' + (lleno ? '#fb923c' : '#a5b4fc') + '">' + usados.length + ' / ' + LED_CANJE_ALACC.cupoMes + '</b>' +
+    '<b style="color:' + (lleno ? '#fb923c' : '#a5b4fc') + '">' + usados.length + ' / ' + ledCanjeCupoTotal_() + '</b>' +
     '<span>Canje ALACC · ' + ledMesTexto_(mes) + '</span>' +
-    '<small>' + esc(lleno ? 'Cupo lleno: los siguientes se cobran' : det) + '</small></div>';
+    '<small>' + esc(lleno ? 'Cupo lleno: los siguientes se cobran' : (llenas.length ? 'Llenas: ' + llenas.join(', ') : LED_CANJE_ALACC.cupoMes + ' por pantalla')) + '</small></div>';
 }
 function ledBarraCanje_() {
   const hoy = new Date().toISOString().slice(0, 10);
   if (hoy < LED_CANJE_ALACC.desde || hoy > LED_CANJE_ALACC.hasta) return '';
-  const mes = hoy.slice(0, 7), usados = ledCanjeDelMes_(mes);
-  const lleno = usados.length >= LED_CANJE_ALACC.cupoMes;
+  const mes = hoy.slice(0, 7), usados = ledCanjeDelMes_(mes), llenas = ledCanjeLlenas_(mes);
+  const lleno = llenas.length > 0;
   return '<div style="margin:0 0 14px;padding:10px 14px;border-radius:10px;border:1px solid ' + (lleno ? 'rgba(251,146,60,.5)' : 'rgba(129,140,248,.5)') + ';background:' + (lleno ? 'rgba(251,146,60,.08)' : 'rgba(129,140,248,.08)') + ';font-size:12.5px">' +
-    '<b>🔄 Canje ALACC · ' + ledMesTexto_(mes) + ':</b> ' + usados.length + ' de ' + LED_CANJE_ALACC.cupoMes + ' espacios usados' +
-    (lleno ? ' <span style="color:#fb923c;font-weight:700">· los siguientes de este mes se cobran ($600 / BIESS $2.000 / en L $3.000 + IVA)</span>' : '') +
+    '<b>🔄 Canje ALACC · ' + ledMesTexto_(mes) + ':</b> ' + usados.length + ' de ' + ledCanjeCupoTotal_() + ' espacios usados (' + LED_CANJE_ALACC.cupoMes + ' por pantalla)' +
+    (lleno ? ' <span style="color:#fb923c;font-weight:700">· cupo lleno en ' + esc(llenas.join(', ')) + ': ahí los siguientes de este mes se cobran ($600 / BIESS $2.000 / en L $3.000 + IVA)</span>' : '') +
     (usados.length ? '<div style="color:var(--muted);font-size:11.5px;margin-top:3px">' + usados.map(c => esc(ledCodigoDePlayer_(c.playerId)) + ' · ' + esc(c.cliente) + ' (' + c.inicio.slice(8) + '–' + c.fin.slice(8) + ')').join(' · ') + '</div>' : '') +
-    '<div style="color:var(--muted);font-size:11px;margin-top:3px">Convenio vigente hasta el 31-dic-2026 · 7 pantallas · no acumulable</div></div>';
+    '<div style="color:var(--muted);font-size:11px;margin-top:3px">Convenio vigente hasta el 31-dic-2026 · ' + Object.keys(LED_CANJE_ALACC.pantallas).length + ' pantallas · ' + LED_CANJE_ALACC.cupoMes + ' espacios por pantalla al mes · no acumulable</div></div>';
 }
 
 let ledMultiSel = new Set();
@@ -12006,7 +12014,7 @@ function openModalMultiContratoLED() {
         <button type="button" id="lm-tipo-canje" onclick="lmSetTipo('CANJE')" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:transparent;color:var(--muted)">🔄 Canje ALACC</button>
       </div>
       <div id="lm-canje-box" style="display:none;border:1px solid rgba(129,140,248,.45);background:rgba(129,140,248,.07);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Contrato ALACC: 2 espacios por mes calendario en total, no acumulables. Desde el 3ro del mes se cobra la tarifa del contrato (+ IVA). Las fechas deben quedar dentro del mismo mes.</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Contrato ALACC: 2 espacios por mes calendario en CADA pantalla del convenio, no acumulables. Desde el 3ro del mes en una misma pantalla se cobra la tarifa del contrato (+ IVA). Las fechas deben quedar dentro del mismo mes.</div>
         <div class="form-group" style="margin-bottom:10px"><label>Marca que pauta ALACC (obligatorio)</label><input type="text" id="lm-canje-marca" placeholder="Ej: SUPERMAXI, ETAFASHION" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();checkLEDMultiForm()"></div>
         <div id="lm-canje-detalle" style="font-size:12.5px"></div>
       </div>
@@ -12149,17 +12157,18 @@ function lmCanjeActualizar_() {
   const fuera = items.filter(x => !ledTarifaCanje_(x.el.codigo));
   if (!error && fuera.length) error = 'No están en el convenio: ' + fuera.map(x => x.el.codigo).join(', ') + '. Quítalas de la selección.';
   const mes = (ini || new Date().toISOString()).slice(0, 7);
-  let libres = Math.max(0, LED_CANJE_ALACC.cupoMes - ledCanjeDelMes_(mes).length);
-  const usados0 = LED_CANJE_ALACC.cupoMes - libres;
+  const usadosP = ledCanjeUsadosPorPantalla_(mes);
+  const usados0 = ledCanjeDelMes_(mes).length;
   let pagar = 0;
   const filas = items.map(x => {
     const tar = ledTarifaCanje_(x.el.codigo);
     if (!tar) return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08);color:var(--muted)"><span>' + esc(x.el.codigo) + '</span><span>No está en el convenio</span></div>';
-    const enCanje = libres > 0; if (enCanje) libres--; else pagar += tar;
+    const kb = ledCodigoBase_(x.el.codigo);
+    const enCanje = (usadosP[kb] || 0) < LED_CANJE_ALACC.cupoMes; if (enCanje) usadosP[kb] = (usadosP[kb] || 0) + 1; else pagar += tar;
     return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)"><span><b>' + esc(x.el.codigo) + '</b> <span style="color:var(--muted);font-size:11px">' + esc(String(x.el.direccion || '').slice(0, 34)) + '</span></span>' +
-      (enCanje ? '<span style="color:#4ade80;font-weight:700">Canje · $0</span>' : '<span style="color:#fb923c;font-weight:700">Pagada · $' + tar.toLocaleString('en-US') + ' + IVA</span>') + '</div>';
+      (enCanje ? '<span style="color:#4ade80;font-weight:700">Canje · $0</span>' : '<span style="color:#fb923c;font-weight:700">Ya usó sus ' + LED_CANJE_ALACC.cupoMes + ' del mes · Pagada · $' + tar.toLocaleString('en-US') + ' + IVA</span>') + '</div>';
   }).join('');
-  box.innerHTML = '<div style="margin-bottom:6px"><b>' + ledMesTexto_(mes) + ':</b> ' + usados0 + ' de ' + LED_CANJE_ALACC.cupoMes + ' espacios de canje ya usados</div>' + filas +
+  box.innerHTML = '<div style="margin-bottom:6px"><b>' + ledMesTexto_(mes) + ':</b> ' + usados0 + ' de ' + ledCanjeCupoTotal_() + ' espacios de canje ya usados (' + LED_CANJE_ALACC.cupoMes + ' por pantalla)</div>' + filas +
     (pagar ? '<div style="margin-top:8px;color:#fb923c;font-weight:700">Excedente a facturar a ALACC: $' + pagar.toLocaleString('en-US') + ' + IVA</div>' : '') +
     (error ? '<div style="margin-top:8px;color:#f87171;font-weight:700">⚠️ ' + esc(error) + '</div>' : '');
   return error;
