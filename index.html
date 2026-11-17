@@ -11155,6 +11155,7 @@ function buildLEDUI(container, data) {
       // (2026-11-06) Al aire = ya empezó (ocupa puesto hoy). Próximos = empiezan después: se muestran aparte y no ocupan puesto hoy
       const playerContratos = contratos.filter(c => c.playerId === player.playerId && ledAlAire_(c)).sort((a,b)=>(a.orden||999)-(b.orden||999));
       const playerProximos  = contratos.filter(c => c.playerId === player.playerId && c.activo && !ledAlAire_(c)).sort((a,b)=>ledInicioEfectivo_(a).localeCompare(ledInicioEfectivo_(b)));
+      const playerPausados  = contratos.filter(c => c.playerId === player.playerId && c.estado === 'PAUSADO'); // (2026-11-17) no ocupan puesto
       const spotsUsados     = playerContratos.reduce((s, c) => s + c.spots, 0);
       const pct             = Math.min(100, Math.round(spotsUsados / SPOTS_DIA_CLIENT * 100));
       const esAdmin = (_usuarioActual || '').toUpperCase() === 'JORGE';
@@ -11234,14 +11235,15 @@ function buildLEDUI(container, data) {
             ' · <span style="color:' + colorDias + '">' + diasRestantes + ' días</span>' +
           '</div>' +
           (esProximo ? (() => { const d = ledInicioEfectivo_(c); const porProg = d !== c.inicio; return '<div style="margin-top:4px"><span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;background:rgba(129,140,248,.15);color:#a5b4fc;border:1px solid rgba(129,140,248,.45)">🕒 Próximo · ' + (porProg ? 'programado desde ' : 'desde ') + d.slice(8, 10) + '/' + d.slice(5, 7) + '</span></div>'; })() : '') +
-          ledAvisoProgramacion_(c) +
+          (c.estado === 'PAUSADO' ? '<div style="margin-top:4px;font-size:10.5px;font-weight:700;color:#fbbf24">⏸ Pausada desde ' + esc((c.pausa && c.pausa.desde) || '') + ' · ' + ((c.pausa && c.pausa.dias) || '?') + ' días pendientes' + (c.pausa && c.pausa.motivo ? '<div style="font-weight:500;color:var(--muted)">' + esc(c.pausa.motivo) + '</div>' : '') + '</div>' : ledAvisoProgramacion_(c)) +
           (c.traslado && c.traslado.indexOf('MOVIDO DESDE') === 0 ? '<div style="font-size:10px;color:#a5b4fc;margin-top:3px">🔀 ' + esc(c.traslado.split(' · ')[0].replace('MOVIDO DESDE', 'Movida desde')) + '</div>' : '') +
           (c.contratadoPor ? '<div style="margin-top:4px"><span style="font-size:10px;padding:2px 7px;border-radius:4px;' +
             (esZaza ? 'background:rgba(34,197,94,.18);color:#4ade80;border:1px solid rgba(34,197,94,.4)' : 'background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4)') +
             '">' + c.contratadoPor + '</span></div>' : '');
         // Materiales (hasta 6 versiones) y botón para programarlos día por día
         const bonifPendiente = !!(c.bonificada && c.estadoAuth === 'PENDIENTE');
-        const puedeProg = !bonifPendiente && (esAdmin || nxActuaComo_(c.ejecutiva));
+        const puedeProg = !bonifPendiente && c.estado !== 'PAUSADO' && (esAdmin || nxActuaComo_(c.ejecutiva));
+        const puedePausa = esAdmin || nxActuaComo_(c.ejecutiva);
         htmlGrupos += '<div style="font-size:10px;color:var(--muted);margin-top:4px" onclick="event.stopPropagation()">' +
           (mats.length ? mats.slice().sort((x, y) => String(x.version).localeCompare(String(y.version))).map(m => '<div>' + esc(m.version) + ': ' + esc(m.nombre) + '</div>').join('') : '<div>Sin materiales cargados</div>') +
           (bonifPendiente ? '<div style="margin-top:4px;font-size:10.5px;color:#fbbf24;font-weight:700">⏳ Esperando autorización: la programación se habilita al autorizarla</div>' : '') +
@@ -11249,7 +11251,9 @@ function buildLEDUI(container, data) {
         '</div>';
         htmlGrupos += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" onclick="event.stopPropagation()">' +
           (esAdmin ? '<button onclick="cancelarContratoLED(\'' + c.id + '\')" style="font-size:10px;background:transparent;border:1px solid rgba(248,113,113,.3);border-radius:5px;color:#f87171;padding:3px 8px;cursor:pointer">Quitar</button>' : '') +
-          (esAdmin ? '<button onclick="ledAbrirTraslado_(\'' + esc(c.playerId) + '\',[\'' + c.id + '\'])" title="Mover a otra pantalla" style="font-size:10px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.4);border-radius:5px;color:#818cf8;padding:3px 8px;cursor:pointer">🔀 Mover</button>' : '') +
+          (puedePausa && c.estado === 'PAUSADO' ? '<button onclick="ledAbrirReactivar_(\'' + c.id + '\')" style="font-size:10px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.45);border-radius:5px;color:#4ade80;padding:3px 8px;cursor:pointer;font-weight:700">▶ RE-ACTIVAR</button>' : '') +
+          (puedePausa && c.estado !== 'PAUSADO' && !bonifPendiente ? '<button onclick="ledAbrirPausa_(\'' + c.id + '\')" title="Pausar la pauta" style="font-size:10px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.4);border-radius:5px;color:#fbbf24;padding:3px 8px;cursor:pointer">⏸ Pausar</button>' : '') +
+          (esAdmin && c.estado !== 'PAUSADO' ? '<button onclick="ledAbrirTraslado_(\'' + esc(c.playerId) + '\',[\'' + c.id + '\'])" title="Mover a otra pantalla" style="font-size:10px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.4);border-radius:5px;color:#818cf8;padding:3px 8px;cursor:pointer">🔀 Mover</button>' : '') +
           (esAdmin && !esProximo && idx > 0 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+lista[idx-1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↑</button>' : '') +
           (esAdmin && !esProximo && idx < lista.length-1 ? '<button onclick="moverOrdenLED(\''+c.id+'\',\''+lista[idx+1].id+'\')" style="font-size:10px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:3px 8px;cursor:pointer">↓</button>' : '') +
         '</div>';
@@ -11265,6 +11269,10 @@ function buildLEDUI(container, data) {
           : offlineNoAdmin
           ? '<div class="led-slot-empty" style="cursor:not-allowed;opacity:.55;border-color:rgba(248,113,113,.4);color:#f87171">📴 Offline · no disponible</div>'
           : '<div class="led-slot-empty" onclick="openModalNuevoContratoLED(\'' + player.playerId + '\',\'' + (player.name||'') + '\')">Ingresar nueva contratación</div>';
+      }
+      if (playerPausados.length) {
+        htmlGrupos += '<div style="grid-column:1/-1;font-size:11px;font-weight:800;color:#fbbf24;margin-top:6px;padding-top:8px;border-top:1px dashed rgba(245,158,11,.4)">⏸ Pausadas · no salen al aire ni ocupan puesto; sus días pendientes corren desde que se re-activan</div>';
+        playerPausados.forEach((c, idx) => pintarContratoLED_(c, idx, playerPausados));
       }
       if (playerProximos.length) {
         htmlGrupos += '<div style="grid-column:1/-1;font-size:11px;font-weight:800;color:#a5b4fc;margin-top:6px;padding-top:8px;border-top:1px dashed rgba(129,140,248,.35)">🕒 Próximos · aún no empiezan (o su programación arranca después), no ocupan puesto hoy</div>';
@@ -11488,6 +11496,113 @@ async function ledTrasConfirmar_() {
     showToast('❌ ' + e.message, 'error');
     btn.disabled = false; btn.textContent = '🔀 Mover';
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  (2026-11-17) PAUSAR / RE-ACTIVAR PAUTA LED (ver ledPausarPauta / ledReactivarPauta en Code.gs)
+// ══════════════════════════════════════════════════════════════
+function ledDiasEntreLocal_(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
+function ledSumarDiasLocal_(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function ledCodPantalla_(c) { return ledCodigoDePlayer_(c.playerId) || c.nombrePantalla || c.playerId; }
+// Pantallas de la misma campaña (mismo cliente y fechas) que se pueden pausar junto con esta
+function ledCampaniaDe_(c, filtro) {
+  return ((_ledData && _ledData.contratos) || []).filter(x => filtro(x) && String(x.cliente).trim().toUpperCase() === String(c.cliente).trim().toUpperCase() &&
+    (x.grupoIni || x.inicio) === (c.grupoIni || c.inicio) && (x.grupoFin || x.fin) === (c.grupoFin || c.fin));
+}
+function ledAbrirPausa_(id) {
+  const c = ((_ledData && _ledData.contratos) || []).find(x => x.id === id);
+  if (!c) return;
+  const hoy = ledHoyLocal_();
+  const lista = ledCampaniaDe_(c, x => x.estado !== 'CANCELADO' && x.estado !== 'PAUSADO' && x.fin >= hoy);
+  document.getElementById('modalTitle').textContent = '⏸ Pausar pauta · ' + c.cliente;
+  document.getElementById('modalSubtitle').textContent = 'Deja de salir al aire; los días que faltan se guardan y corren desde que la re-actives';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="contratar-form">
+      <div class="form-group" style="margin-bottom:10px"><label>Pantallas a pausar</label>
+        <div style="border:1px solid var(--border);border-radius:8px;padding:6px 8px">
+          ${lista.map(x => `<label style="display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;cursor:pointer;text-transform:none;letter-spacing:0">
+            <input type="checkbox" class="ledpz-chk" value="${esc(x.id)}" ${x.id === id ? 'checked' : ''} onchange="ledPausaResumen_()" style="width:auto">
+            <span><b>${esc(ledCodPantalla_(x))}</b> <span style="color:var(--muted)">${x.inicio} → ${x.fin}</span></span></label>`).join('')}
+        </div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:150px"><label>Pausar desde</label><input type="date" id="ledpz-desde" value="${hoy}" min="${hoy}" onchange="ledPausaResumen_()"></div>
+        <div class="form-group" style="flex:2;min-width:180px"><label>Motivo</label><input type="text" id="ledpz-motivo" placeholder="Ej. el cliente pidió pausar por cambio de arte"></div>
+      </div>
+      <div id="ledpz-resumen" style="font-size:12px;color:var(--muted);margin:8px 0;line-height:1.6"></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">Se enviará un correo a John (programación), a ti y a Jorge para apagar el material.</div>
+      <button id="ledpz-btn" onclick="ledPausaConfirmar_()" style="width:100%;padding:12px;background:#f59e0b;border:none;border-radius:8px;color:#000;font-weight:800;font-size:13px;cursor:pointer">⏸ Pausar pauta</button>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+  ledPausaResumen_();
+}
+function ledPausaResumen_() {
+  const el = document.getElementById('ledpz-resumen'); if (!el) return;
+  const desde = document.getElementById('ledpz-desde').value;
+  const ids = [...document.querySelectorAll('.ledpz-chk:checked')].map(x => x.value);
+  const cs = ((_ledData && _ledData.contratos) || []).filter(x => ids.includes(x.id));
+  el.innerHTML = cs.map(x => { const p = desde > x.inicio ? desde : x.inicio; const n = ledDiasEntreLocal_(p, x.fin) + 1; return '• <b>' + esc(ledCodPantalla_(x)) + '</b>: deja de salir desde el ' + p + ' · quedan <b>' + n + (n === 1 ? ' día' : ' días') + '</b> pendientes'; }).join('<br>') || 'Marca al menos una pantalla';
+}
+async function ledPausaConfirmar_() {
+  const ids = [...document.querySelectorAll('.ledpz-chk:checked')].map(x => x.value);
+  const desde = document.getElementById('ledpz-desde').value;
+  const motivo = document.getElementById('ledpz-motivo').value.trim();
+  if (!ids.length) { showToast('Marca al menos una pantalla', 'info'); return; }
+  if (motivo.length < 3) { showToast('Escribe el motivo de la pausa', 'info'); document.getElementById('ledpz-motivo').focus(); return; }
+  const btn = document.getElementById('ledpz-btn');
+  btn.disabled = true; btn.textContent = '⏳ Pausando…';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledPausarPauta', ids, desde, motivo }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'No se pudo pausar');
+    showToast('⏸ Pauta pausada (' + json.pausados + (json.pausados === 1 ? ' pantalla' : ' pantallas') + ') · correo enviado', 'success');
+    if (json.avisoCorreo) showToast('⚠️ ' + json.avisoCorreo, 'error');
+    closeModal(); _ledData = null; renderLED(document.getElementById('mainContent'));
+  } catch (e) { showToast('❌ ' + e.message, 'error'); btn.disabled = false; btn.textContent = '⏸ Pausar pauta'; }
+}
+function ledAbrirReactivar_(id) {
+  const c = ((_ledData && _ledData.contratos) || []).find(x => x.id === id);
+  if (!c) return;
+  const hoy = ledHoyLocal_();
+  const lista = ((_ledData && _ledData.contratos) || []).filter(x => x.estado === 'PAUSADO' && String(x.cliente).trim().toUpperCase() === String(c.cliente).trim().toUpperCase() && x.pausa && c.pausa && x.pausa.desde === c.pausa.desde);
+  document.getElementById('modalTitle').textContent = '▶ Re-activar pauta · ' + c.cliente;
+  document.getElementById('modalSubtitle').textContent = 'Los días pendientes empiezan a correr desde el día que elijas';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="contratar-form">
+      <div class="form-group" style="margin-bottom:10px"><label>Pantallas a re-activar</label>
+        <div style="border:1px solid var(--border);border-radius:8px;padding:6px 8px">
+          ${lista.map(x => `<label style="display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;cursor:pointer;text-transform:none;letter-spacing:0">
+            <input type="checkbox" class="ledra-chk" value="${esc(x.id)}" checked onchange="ledReactivarResumen_()" style="width:auto">
+            <span><b>${esc(ledCodPantalla_(x))}</b> <span style="color:var(--muted)">pausada desde ${esc(x.pausa.desde)} · ${x.pausa.dias} días pendientes</span></span></label>`).join('')}
+        </div></div>
+      <div class="form-group"><label>Re-activar desde</label><input type="date" id="ledra-desde" value="${hoy}" min="${hoy}" onchange="ledReactivarResumen_()"></div>
+      <div id="ledra-resumen" style="font-size:12px;color:var(--muted);margin:8px 0;line-height:1.6"></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">Se revisa que la pantalla tenga espacio esos días y se envía la programación actualizada (Excel) a John, la ejecutiva y Jorge.</div>
+      <button id="ledra-btn" onclick="ledReactivarConfirmar_()" style="width:100%;padding:12px;background:#22c55e;border:none;border-radius:8px;color:#000;font-weight:800;font-size:13px;cursor:pointer">▶ RE-ACTIVAR</button>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+  ledReactivarResumen_();
+}
+function ledReactivarResumen_() {
+  const el = document.getElementById('ledra-resumen'); if (!el) return;
+  const desde = document.getElementById('ledra-desde').value;
+  const ids = [...document.querySelectorAll('.ledra-chk:checked')].map(x => x.value);
+  const cs = ((_ledData && _ledData.contratos) || []).filter(x => ids.includes(x.id));
+  el.innerHTML = cs.map(x => { const n = Number(x.pausa && x.pausa.dias) || 1; return '• <b>' + esc(ledCodPantalla_(x)) + '</b>: sale del ' + desde + ' al <b>' + ledSumarDiasLocal_(desde, n - 1) + '</b> (' + n + (n === 1 ? ' día' : ' días') + ')'; }).join('<br>') || 'Marca al menos una pantalla';
+}
+async function ledReactivarConfirmar_() {
+  const ids = [...document.querySelectorAll('.ledra-chk:checked')].map(x => x.value);
+  const desde = document.getElementById('ledra-desde').value;
+  if (!ids.length) { showToast('Marca al menos una pantalla', 'info'); return; }
+  const btn = document.getElementById('ledra-btn');
+  btn.disabled = true; btn.textContent = '⏳ Re-activando…';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'ledReactivarPauta', ids, desde }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'No se pudo re-activar');
+    showToast('▶ Pauta re-activada · termina el ' + json.nuevoFin, 'success');
+    if (json.avisoCorreo) showToast('⚠️ ' + json.avisoCorreo, 'error');
+    closeModal(); _ledData = null; renderLED(document.getElementById('mainContent'));
+  } catch (e) { showToast('❌ ' + e.message, 'error'); btn.disabled = false; btn.textContent = '▶ RE-ACTIVAR'; }
 }
 
 function agregarEspaciosLED(playerId, capacidadActual) {
