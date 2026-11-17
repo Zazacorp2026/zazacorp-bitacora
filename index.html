@@ -1489,6 +1489,8 @@ function cfgPintarReglas_() {
       sw('ledCorrerAlProgramar', 'Correr el contrato si se programa tarde', 'Si nunca tuvo material ni programación y su inicio ya pasó, al programarlo por primera vez empieza hoy y conserva sus días') +
       sw('ledBloqueaOffline', 'No dejar contratar pantallas OFFLINE', 'Encendido: las ejecutivas no pueden en ninguna offline (tú siempre puedes). Apagado: pueden en todas. Para abrir solo una pantalla, déjalo encendido y usa el botón ✅ en esa pantalla del módulo LED') +
       sel('ledPausaQuien', 'Quién puede pausar y re-activar pautas LED', 'Botones ⏸ Pausar y ▶ RE-ACTIVAR de cada contrato en el módulo LED', [['DUENA_ADMIN', 'Ejecutiva dueña y administrador'], ['ADMIN', 'Solo administrador']])) +
+    caja('📄 Orden de contratación', 'Se aplica al contratar o renovar vallas, LED y Scrolling. Las ejecutivas siempre deben subir el PDF (salvo bonificadas y canje).',
+      sw('pdfOpcionalAdmin', 'El administrador puede contratar sin subir la orden (PDF)', 'Encendido: para ti el PDF es opcional. Apagado: también a ti se te pide el PDF')) +
     caja('🤝 Convenio ALACC (canje)', 'Pantallas que entran en el canje, su tarifa mensual y cuántos espacios de canje tiene cada pantalla al mes.',
       '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px">' +
         '<label style="font-size:12px;color:var(--muted)">Vigente desde<br><input type="date" value="' + esc(c.desde) + '" onchange="cfgCanjeSet_(\'desde\',this.value)" style="' + inpS + ';margin-top:4px"></label>' +
@@ -7199,7 +7201,7 @@ function abrirFormularioAnuncianteScrolling(codigo) {
         <input type="text" id="scr-contratadopor-manual" placeholder="Especificar" style="display:none;margin-top:6px" oninput="checkScrForm()">
       </div>
       <div class="pdf-upload-area" id="scrPdfUploadArea" onclick="document.getElementById('scrPdfFileInput').click()">
-        📎 <span id="scrPdfFileName">${(_usuarioActual||'').toUpperCase()==='JORGE' ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
+        📎 <span id="scrPdfFileName">${nxPdfOpcional_() ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
       </div>
       <input type="file" id="scrPdfFileInput" accept="application/pdf" style="display:none" onchange="handleScrPdfFile(event)">
       <button id="btnScrConfirmar" onclick="confirmarContratoScrolling('${codigo}')" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:not-allowed;opacity:.5">🔄 Registrar anunciante</button>
@@ -7282,7 +7284,7 @@ async function confirmarContratoScrolling(codigo) {
     if (!comisionAgencia) faltantes.push('comisión de agencia');
     if (!contratadoPor) faltantes.push('contratado por');
     if (!_scrPdfBase64) faltantes.push('PDF de la orden de contratación');
-  }
+  } else if (!_scrPdfBase64 && !nxPdfOpcional_()) faltantes.push('PDF de la orden de contratación');
   if (faltantes.length) { showToast('Falta completar: ' + faltantes.join(', '), 'info'); return; }
   if (fin <= inicio) { showToast('❌ La fecha fin debe ser posterior a la fecha de inicio', 'error'); return; }
 
@@ -8406,6 +8408,9 @@ let multiSelectInvMode = false;
 let selectedInv = new Set(); // selección independiente pestaña Inventario
 let _multiPdfFile = null;
 let _multiPdfBase64 = null;
+// (2026-11-17) En vallas el PDF de la orden es opcional para el administrador (igual que en LED y Scrolling)
+function nxPdfOpcional_() { return (_usuarioActual || '').toUpperCase() === 'JORGE' && (window.NX_REGLAS_PUB || {}).pdfOpcionalAdmin !== false; }
+function nxPdfTexto_() { return nxPdfOpcional_() ? 'Solo PDF · Opcional para admin' : 'Solo PDF · Obligatorio'; }
 
 function toggleMultiSelect() {
   multiSelectMode = !multiSelectMode;
@@ -8545,7 +8550,7 @@ function openModalMultiContratar() {
       <div class="pdf-upload-area" id="mpdfUploadArea" onclick="document.getElementById('mpdfFileInput').click()">
         <div class="pdf-icon">📎</div>
         <p><strong>Click para subir la Orden de Contratación</strong></p>
-        <p>Solo PDF · Obligatorio</p>
+        <p>${nxPdfTexto_()}</p>
         <div class="pdf-name" id="mpdfFileName"></div>
       </div>
       <input type="file" id="mpdfFileInput" accept="application/pdf" style="display:none" onchange="handleMultiPdf(event)">
@@ -8632,7 +8637,7 @@ function checkMultiForm() {
   const fechasInvalidas = !!(i && f && f <= i);
   const btn = document.getElementById('btnMultiContratar');
   if (!btn) return;
-  const ok = c && e && i && f && agencia && comision && todosConValor && _multiPdfBase64 && !bloqueadoPorMinimo && !fechasInvalidas;
+  const ok = c && e && i && f && agencia && comision && todosConValor && (_multiPdfBase64 || nxPdfOpcional_()) && !bloqueadoPorMinimo && !fechasInvalidas;
   btn.disabled = !ok;
   btn.textContent = fechasInvalidas ? '❌ La fecha fin debe ser posterior al inicio' : (bloqueadoPorMinimo ? '❌ Hay valores menores al permitido' : (ok ? '⚡ Confirmar Contratación Múltiple' : (!todosConValor ? '💲 Completa el valor mensual de cada valla' : '📎 Sube el PDF para continuar')));
 }
@@ -9234,7 +9239,7 @@ function openModalContratar(codigo) {
       <div class="pdf-upload-area" id="pdfUploadArea" onclick="document.getElementById('pdfFileInput').click()">
         <div class="pdf-icon">📎</div>
         <p><strong>Click para subir la Orden de Contratación</strong></p>
-        <p>Solo PDF · Obligatorio para confirmar</p>
+        <p>${nxPdfOpcional_() ? 'Solo PDF · Opcional para admin' : 'Solo PDF · Obligatorio para confirmar'}</p>
         <div class="pdf-name" id="pdfFileName"></div>
       </div>
       <input type="file" id="pdfFileInput" accept="application/pdf" style="display:none" onchange="handlePdfUpload(event,'${codigo}')">
@@ -9408,7 +9413,7 @@ function checkContratarForm() {
 
   const bloqueadoPorMinimo = qzValidarValorMinimoUnitario();
   const fechasInvalidas = !!(inicio && fin && fin <= inicio);
-  const ok = cliente && ejecutiva && inicio && fin && agencia && comision && _pdfBase64 && !bloqueadoPorMinimo && !fechasInvalidas;
+  const ok = cliente && ejecutiva && inicio && fin && agencia && comision && (_pdfBase64 || nxPdfOpcional_()) && !bloqueadoPorMinimo && !fechasInvalidas;
   btn.disabled = !ok;
   btn.textContent = fechasInvalidas ? '❌ La fecha fin debe ser posterior al inicio' : (bloqueadoPorMinimo ? '❌ El valor es menor al permitido' : (ok ? '⚡ Confirmar Contratación' : '📎 Sube el PDF para continuar'));
 }
@@ -9473,7 +9478,7 @@ function openModalRenovar(codigo) {
         </div>
       </div>
       <div class="pdf-upload-area" id="rnPdfArea" onclick="document.getElementById('rnPdfInput').click()">
-        <div class="pdf-icon">📎</div><p><strong>Click para subir la Orden de Renovación</strong></p><p>Solo PDF · Obligatorio</p>
+        <div class="pdf-icon">📎</div><p><strong>Click para subir la Orden de Renovación</strong></p><p>${nxPdfTexto_()}</p>
         <div class="pdf-name" id="rnPdfNombre"></div>
       </div>
       <input type="file" id="rnPdfInput" accept="application/pdf" style="display:none" onchange="rnPdf(event)">
@@ -9524,7 +9529,7 @@ function rnActualizar() {
   document.getElementById('rn-resumen').innerHTML = sel.length
     ? sel.length + ' valla(s) · suma mensual <b>' + qzMoney(suma) + '</b> · total renovación <b style="color:#4ade80">' + qzMoney(total) + '</b>'
     : 'Marca al menos una valla';
-  const ok = sel.length && fin && !error && sinValor.length === 0 && document.getElementById('rn-agencia').value.trim() && rnComision_() && _rnPdfBase64;
+  const ok = sel.length && fin && !error && sinValor.length === 0 && document.getElementById('rn-agencia').value.trim() && rnComision_() && (_rnPdfBase64 || nxPdfOpcional_());
   btn.disabled = !ok;
   btn.textContent = error ? 'Corrige los datos marcados' : (ok ? '🔁 Confirmar renovación' + (sel.length > 1 ? ' múltiple' : '') : (sinValor.length ? 'Ingresa el valor mensual de cada valla' : (!_rnPdfBase64 ? '📎 Sube el PDF para continuar' : 'Completa los campos')));
 }
@@ -9605,7 +9610,7 @@ async function confirmarContratacion(codigo) {
   const agencia   = document.getElementById('ct-agencia').value.trim();
   const comision  = getComisionValor();
 
-  if (!cliente || !ejecutiva || !inicio || !fin || !agencia || !comision || !_pdfBase64) {
+  if (!cliente || !ejecutiva || !inicio || !fin || !agencia || !comision || (!_pdfBase64 && !nxPdfOpcional_())) {
     showToast('Completa todos los campos y sube el PDF', 'info');
     return;
   }
@@ -11236,6 +11241,7 @@ function buildLEDUI(container, data) {
             (esAdmin ? '<span style="font-size:10px;color:var(--muted);margin-right:4px">#'+(c.orden||idx+1)+'</span>' : '') +
             '<span class="led-contrato-cliente">' + c.cliente + '</span>' +
             (c.bonificada ? '<span style="font-size:9.5px;font-weight:800;margin-left:6px;padding:2px 7px;border-radius:10px;' + (c.estadoAuth === 'PENDIENTE' ? 'background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.5)' : 'background:rgba(167,139,250,.18);color:#c4b5fd;border:1px solid rgba(167,139,250,.5)') + '">' + (c.estadoAuth === 'PENDIENTE' ? '⏳ POR AUTORIZAR' : '🎁 BONIFICADA') + '</span>' : '') +
+            (c.tipo === 'CANJE' ? '<span title="Espacio de canje del convenio ALACC ($0)" style="font-size:9.5px;font-weight:800;margin-left:6px;padding:2px 7px;border-radius:10px;background:rgba(129,140,248,.18);color:#a5b4fc;border:1px solid rgba(129,140,248,.5)">🔄 CANJE ALACC</span>' : '') +
           '</div>' +
           '<div class="led-contrato-meta">' + c.inicio + ' → ' + c.fin +
             ' · <span style="color:' + colorDias + '">' + diasRestantes + ' días</span>' +
@@ -12120,7 +12126,7 @@ function openModalMultiContratoLED() {
         <div class="form-group"><label>Link VNNOX</label><input type="text" class="lm-mat-link" data-n="${n}" placeholder="(opcional)"></div>
       </div>`).join('')}
       <div class="pdf-upload-area" id="lmPdfArea" onclick="document.getElementById('lmPdfInput').click()">
-        📎 <span id="lmPdfNombre">${(_usuarioActual || '').toUpperCase() === 'JORGE' ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
+        📎 <span id="lmPdfNombre">${nxPdfOpcional_() ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
       </div>
       <input type="file" id="lmPdfInput" accept="application/pdf" style="display:none" onchange="handleLEDMultiPdf(event)">
       <button id="btnLEDMultiConfirmar" onclick="confirmarContratoLEDMulti()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:14px;cursor:not-allowed;opacity:.5">📺 Registrar contratación múltiple</button>
@@ -12167,7 +12173,7 @@ function lmSetTipo(t) {
   set('lm-l-suma', bon ? 'Valor de lista mensual' : 'Suma mensual');
   set('lm-l-total', bon ? 'Valor de lista que se bonifica (período completo)' : 'Total del contrato (todas las pantallas)');
   const pdfN = document.getElementById('lmPdfNombre');
-  if (pdfN && !_ledMultiPdfFile) pdfN.textContent = bon ? 'Orden o respaldo en PDF (opcional)' : (((_usuarioActual || '').toUpperCase() === 'JORGE') ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)');
+  if (pdfN && !_ledMultiPdfFile) pdfN.textContent = bon ? 'Orden o respaldo en PDF (opcional)' : (nxPdfOpcional_() ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)');
   const btn = document.getElementById('btnLEDMultiConfirmar');
   if (btn) btn.textContent = bon ? '🎁 Registrar bonificación' : '📺 Registrar contratación múltiple';
   if (bon) {
@@ -12259,7 +12265,7 @@ function checkLEDMultiForm() {
     document.getElementById('lm-inicio')?.value && document.getElementById('lm-fin')?.value && ledMultiMeses_();
   const ok = _lmTipo === 'CANJE' ? (basicosCanje && (document.getElementById('lm-canje-marca')?.value || '').trim() && !lmCanjeActualizar_())
     : _lmTipo === 'BONIFICADA' ? (basicos && bonOk)
-    : (esAdmin ? basicos : (basicos && document.getElementById('lm-agencia')?.value.trim() && ledMultiComision_() && ledMultiContratadoPor_() && _ledMultiPdfBase64));
+    : (esAdmin ? (basicos && (_ledMultiPdfBase64 || nxPdfOpcional_())) : (basicos && document.getElementById('lm-agencia')?.value.trim() && ledMultiComision_() && ledMultiContratadoPor_() && _ledMultiPdfBase64));
   btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.5'; btn.style.cursor = ok ? 'pointer' : 'not-allowed';
 }
 async function confirmarContratoLEDMulti() {
@@ -13020,7 +13026,7 @@ function openModalNuevoContratoLED(prePlayerId, prePlayerName) {
       </div>
       </div>
       <div class="pdf-upload-area" id="ledPdfUploadArea" onclick="document.getElementById('ledPdfFileInput').click()">
-        📎 <span id="ledPdfFileName">${(_usuarioActual||'').toUpperCase()==='JORGE' ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
+        📎 <span id="ledPdfFileName">${nxPdfOpcional_() ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)'}</span>
       </div>
       <input type="file" id="ledPdfFileInput" accept="application/pdf" style="display:none" onchange="handleLEDPdfFile(event)">
       <button id="btnLEDConfirmar" onclick="confirmarContratoLED()" disabled style="width:100%;margin-top:14px;padding:12px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:not-allowed;opacity:.5">📺 Registrar Contrato LED</button>
@@ -13061,7 +13067,7 @@ function ledSetTipo(t) {
   const lv = document.getElementById('led-l-valor'); if (lv) lv.textContent = bon ? 'Valor de LISTA mensual (USD, referencia)' : 'Valor mensual (USD)';
   const lt = document.getElementById('led-l-total'); if (lt) lt.textContent = bon ? 'Valor de lista del período (USD)' : 'Valor total (USD)';
   const pdfN = document.getElementById('ledPdfFileName');
-  if (pdfN && !_ledPdfFile) pdfN.textContent = bon ? 'Orden o respaldo en PDF (opcional)' : (((_usuarioActual || '').toUpperCase() === 'JORGE') ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)');
+  if (pdfN && !_ledPdfFile) pdfN.textContent = bon ? 'Orden o respaldo en PDF (opcional)' : (nxPdfOpcional_() ? 'Click para subir la Orden de Contratación (opcional para admin)' : 'Click para subir la Orden de Contratación (PDF, obligatorio)');
   const btn = document.getElementById('btnLEDConfirmar'); if (btn) btn.textContent = bon ? '🎁 Registrar bonificación' : '📺 Registrar Contrato LED';
   if (bon) {
     // Sugerir el valor de lista con la tarifa vigente de la pantalla, si existe
@@ -13183,7 +13189,7 @@ async function confirmarContratoLED() {
     if (!comisionAgencia) faltantes.push('comisión de agencia');
     if (!contratadoPor) faltantes.push('contratado por');
     if (!_ledPdfBase64) faltantes.push('PDF de la orden de contratación');
-  }
+  } else if (!_ledPdfBase64 && !nxPdfOpcional_()) faltantes.push('PDF de la orden de contratación');
   if (faltantes.length) {
     showToast('Falta completar: ' + faltantes.join(', '), 'info');
     return;
