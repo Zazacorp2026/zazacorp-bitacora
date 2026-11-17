@@ -8487,19 +8487,66 @@ function updateFloatingBtn() {
   }
 }
 
+// ── (2026-11-17) Valor "mensual" o "por el periodo" al contratar vallas ──
+// En modo periodo la ejecutiva escribe lo que cuesta TODO el periodo y Nexus calcula el mensual equivalente
+// (lo que se guarda en el Sheet, el historial y el Wallet sigue siendo el valor mensual).
+let _mctModoValor = 'MES', _ctModoValor = 'MES';
+function nxMesesEntre_(inicio, fin) {
+  if (!inicio || !fin || fin <= inicio) return 0;
+  const d = Math.round((new Date(fin + 'T00:00:00') - new Date(inicio + 'T00:00:00')) / 86400000);
+  return d < 30 ? d / 30 : Math.round((d / 30) * 2) / 2;
+}
+function nxMensualDesdePeriodo_(valorPeriodo, meses) { return meses > 0 ? Math.round(valorPeriodo / meses * 100) / 100 : 0; }
+const nxFmt_ = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function nxToggleModoValor_(prefijo, modo) {
+  const on = 'background:var(--accent);color:#000', off = 'background:transparent;color:var(--muted)';
+  ['MES', 'PERIODO'].forEach(m => { const b = document.getElementById(prefijo + '-modo-' + m); if (b) b.style.cssText = b.dataset.base + ';' + (m === modo ? on : off); });
+}
+function nxSelectorModoValor_(prefijo, fn) {
+  const base = 'flex:1;border:none;border-radius:6px;padding:5px 8px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit';
+  return '<div style="display:flex;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px;margin-bottom:8px">' +
+    '<button type="button" id="' + prefijo + '-modo-MES" data-base="' + base + '" onclick="' + fn + '(\'MES\')" style="' + base + ';background:var(--accent);color:#000">Valor mensual</button>' +
+    '<button type="button" id="' + prefijo + '-modo-PERIODO" data-base="' + base + '" onclick="' + fn + '(\'PERIODO\')" style="' + base + ';background:transparent;color:var(--muted)">Valor por el periodo</button></div>';
+}
+function mctSetModoValor(modo) {
+  _mctModoValor = modo; nxToggleModoValor_('mct', modo);
+  document.querySelectorAll('.mct-valor-valla').forEach(inp => inp.placeholder = modo === 'PERIODO' ? 'Valor periodo' : 'Valor mensual');
+  actualizarTotalesMulti();
+}
+// Valor MENSUAL de una valla en la contratación múltiple (convierte si se escribió por periodo)
+function mctMensualDe_(inp) {
+  const v = parseFloat(inp.value) || 0;
+  if (_mctModoValor !== 'PERIODO') return v;
+  return nxMensualDesdePeriodo_(v, calcularMesesMulti());
+}
+function ctSetModoValor(modo) {
+  _ctModoValor = modo; nxToggleModoValor_('ct', modo);
+  const lab = document.getElementById('ct-valor-label'); if (lab) lab.textContent = modo === 'PERIODO' ? 'Valor por el periodo (USD)' : 'Valor mensual (USD)';
+  calcularPeriodoContrato();
+}
+// Valor MENSUAL de la contratación individual ('' si el campo está vacío)
+function ctValorMensual_() {
+  const campo = document.getElementById('ct-valor')?.value;
+  if (!campo) return '';
+  const v = parseFloat(campo) || 0;
+  if (_ctModoValor !== 'PERIODO') return v;
+  return nxMensualDesdePeriodo_(v, nxMesesEntre_(document.getElementById('ct-inicio')?.value, document.getElementById('ct-fin')?.value));
+}
+
 function openModalMultiContratar() {
   if (ledNoLibresSel_('contratar')) return;
   if (selectedVallas.size === 0) return;
   const vallas = [...selectedVallas].map(c => DATA.find(v => v.codigo === c)).filter(Boolean);
-  _multiPdfFile = null; _multiPdfBase64 = null;
+  _multiPdfFile = null; _multiPdfBase64 = null; _mctModoValor = 'MES';
   const today = new Date().toISOString().split('T')[0];
 
   document.getElementById('modalTitle').textContent = '⚡ Contratación Múltiple';
   document.getElementById('modalSubtitle').textContent = vallas.length + ' vallas seleccionadas';
 
   document.getElementById('modalBody').innerHTML = `
-    <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#60a5fa;max-height:120px;overflow-y:auto">
-      ${vallas.map(v => '<div style="padding:4px 0;display:flex;align-items:center;gap:8px">📍 <strong>' + v.codigo + '</strong> — ' + v.direccion.substring(0,40) + '… <input type="number" class="mct-valor-valla" data-codigo="' + v.codigo + '" placeholder="Valor mensual" style="width:110px;margin-left:auto;padding:3px 6px;font-size:11px" oninput="actualizarTotalesMulti()"></div>').join('')}
+    ${nxSelectorModoValor_('mct', 'mctSetModoValor')}
+    <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#60a5fa;max-height:220px;overflow-y:auto">
+      ${vallas.map(v => '<div style="padding:4px 0;display:flex;align-items:center;gap:8px">📍 <strong>' + v.codigo + '</strong> — ' + v.direccion.substring(0,40) + '… <input type="number" class="mct-valor-valla" data-codigo="' + v.codigo + '" placeholder="Valor mensual" style="width:110px;margin-left:auto;padding:3px 6px;font-size:11px" oninput="actualizarTotalesMulti()"><span class="mct-equiv" data-codigo="' + v.codigo + '" style="min-width:120px;font-size:10.5px;color:var(--muted);text-align:right"></span></div>').join('')}
       <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.15);font-size:12px;display:flex;flex-direction:column;gap:4px">
         <div style="display:flex;justify-content:space-between"><span>Suma mensual (todas las vallas):</span><strong id="mct-suma-mensual">$0.00</strong></div>
         <div style="display:flex;justify-content:space-between;color:#4ade80;font-size:14px"><span>Valor total contratación múltiple:</span><strong id="mct-total-multi">$0.00</strong></div>
@@ -8598,7 +8645,7 @@ function qzValidarValoresMinimoMulti() {
   const inputs = [...document.querySelectorAll('.mct-valor-valla')];
   const codigosBloqueados = [];
   inputs.forEach(inp => {
-    const valor = parseFloat(inp.value) || 0;
+    const valor = mctMensualDe_(inp);
     const min = qzValorMinimoDe(inp.dataset.codigo);
     const bloqueado = valor > 0 && min > 0 && valor < min;
     inp.style.border = bloqueado ? '1px solid var(--red)' : '';
@@ -8616,9 +8663,14 @@ function qzValidarValoresMinimoMulti() {
 
 function actualizarTotalesMulti() {
   const inputs = [...document.querySelectorAll('.mct-valor-valla')];
-  const suma = inputs.reduce((acc, inp) => acc + (parseFloat(inp.value) || 0), 0);
+  const suma = inputs.reduce((acc, inp) => acc + mctMensualDe_(inp), 0);
   const meses = calcularMesesMulti();
-  const total = suma * meses;
+  const total = _mctModoValor === 'PERIODO' ? inputs.reduce((acc, inp) => acc + (parseFloat(inp.value) || 0), 0) : suma * meses;
+  document.querySelectorAll('.mct-equiv').forEach(sp => {
+    const inp = inputs.find(x => x.dataset.codigo === sp.dataset.codigo);
+    const v = inp ? parseFloat(inp.value) || 0 : 0;
+    sp.textContent = !v ? '' : (_mctModoValor === 'PERIODO' ? (meses ? '≈ ' + nxFmt_(mctMensualDe_(inp)) + ' / mes' : 'pon las fechas') : (meses ? 'periodo: ' + nxFmt_(v * meses) : ''));
+  });
   document.getElementById('mct-suma-mensual').textContent = '$' + suma.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   document.getElementById('mct-total-multi').textContent = '$' + total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   checkMultiForm();
@@ -8632,7 +8684,7 @@ function checkMultiForm() {
   const agencia = document.getElementById('mct-agencia')?.value.trim();
   const comision = getMultiComision();
   const valores = [...document.querySelectorAll('.mct-valor-valla')];
-  const todosConValor = valores.length > 0 && valores.every(inp => parseFloat(inp.value) > 0);
+  const todosConValor = valores.length > 0 && valores.every(inp => mctMensualDe_(inp) > 0);
   const bloqueadoPorMinimo = qzValidarValoresMinimoMulti();
   const fechasInvalidas = !!(i && f && f <= i);
   const btn = document.getElementById('btnMultiContratar');
@@ -8660,7 +8712,7 @@ async function confirmarMultiContratacion() {
   const comision = getMultiComision();
   const valoresPorCodigo = {};
   document.querySelectorAll('.mct-valor-valla').forEach(inp => {
-    if (inp.value) valoresPorCodigo[inp.dataset.codigo] = parseFloat(inp.value) || '';
+    if (inp.value) valoresPorCodigo[inp.dataset.codigo] = mctMensualDe_(inp) || '';
   });
   const sumaMensual = Object.values(valoresPorCodigo).reduce((a,b) => a + (parseFloat(b)||0), 0);
   // Mismo cálculo de período que la contratación individual (30 días = 1 mes, medios meses)
@@ -8683,7 +8735,7 @@ async function confirmarMultiContratacion() {
         action: 'contratarMultiple',
         codigos, cliente, ejecutiva, inicio, fin, periodo,
         agenciaContratante: agencia, comisionAgencia: comision, valoresPorCodigo,
-        sumaMensual: sumaMensual, valorTotalMulti: sumaMensual * (calcularMesesMulti() || 0),
+        sumaMensual: sumaMensual, valorTotalMulti: _mctModoValor === 'PERIODO' ? [...document.querySelectorAll('.mct-valor-valla')].reduce((a, i) => a + (parseFloat(i.value) || 0), 0) : sumaMensual * (calcularMesesMulti() || 0),
         pdfBase64: _multiPdfBase64,
         pdfNombre: _multiPdfFile ? _multiPdfFile.name : 'orden.pdf'
       })
@@ -9148,9 +9200,9 @@ function qzValidarValorMinimoUnitario() {
   // la valla ya tenía en el inventario (contratar() no lo sobreescribe) —
   // así que el mínimo se valida contra ESE valor, no contra 0. Dejar el
   // campo vacío no debe ser una forma de saltarse el mínimo.
-  const campoValor = document.getElementById('ct-valor')?.value;
+  const campoValor = ctValorMensual_();
   const vActual = DATA.find(x => x.codigo === _ctCodigoActual);
-  const valor = campoValor ? (parseFloat(campoValor) || 0) : Number((vActual && vActual.valor) || 0);
+  const valor = campoValor !== '' ? (Number(campoValor) || 0) : Number((vActual && vActual.valor) || 0);
   const min = qzValorMinimoDe(_ctCodigoActual);
   const bloqueado = valor > 0 && min > 0 && valor < min;
   const errEl = document.getElementById('ct-valor-error');
@@ -9167,7 +9219,7 @@ function openModalContratar(codigo) {
   document.getElementById('modalSubtitle').textContent = v.codigo + ' · ' + esc(v.lugar) + ' · ' + v.tipo;
 
   const today = new Date().toISOString().split('T')[0];
-  _pdfFile = null; _pdfBase64 = null;
+  _pdfFile = null; _pdfBase64 = null; _ctModoValor = 'MES';
 
   document.getElementById('modalBody').innerHTML = `
     <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#60a5fa">
@@ -9201,8 +9253,10 @@ function openModalContratar(codigo) {
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Valor mensual (USD)</label>
+          ${nxSelectorModoValor_('ct', 'ctSetModoValor')}
+          <label id="ct-valor-label">Valor mensual (USD)</label>
           <input type="number" id="ct-valor" placeholder="Ej: 2500" oninput="calcularPeriodoContrato()" style="width:100%">
+          <div id="ct-valor-equiv" style="font-size:11px;color:var(--muted);margin-top:3px"></div>
           <div id="ct-valor-error" style="display:none;color:var(--red);font-size:11px;font-weight:700;margin-top:4px">El valor ingresado es menor al permitido</div>
         </div>
         <div class="form-group">
@@ -9280,7 +9334,9 @@ function handlePdfUpload(event, codigo) {
 function calcularPeriodoContrato() {
   const inicio = document.getElementById('ct-inicio')?.value;
   const fin    = document.getElementById('ct-fin')?.value;
-  const valor  = parseFloat(document.getElementById('ct-valor')?.value) || 0;
+  const valor  = Number(ctValorMensual_()) || 0;
+  const eq = document.getElementById('ct-valor-equiv');
+  if (eq) eq.textContent = (_ctModoValor === 'PERIODO' && document.getElementById('ct-valor')?.value) ? (valor ? '≈ ' + nxFmt_(valor) + ' mensual (es lo que se guarda como valor de la valla)' : 'Pon las fechas para calcular el mensual') : '';
 
   if (inicio && fin && fin > inicio) {
     const d1 = new Date(inicio + 'T00:00:00');
@@ -9301,6 +9357,7 @@ function calcularPeriodoContrato() {
       if (periodoEl) periodoEl.value = mesesTxt + (meses === 1 ? ' MES' : ' MESES');
       if (totalEl)   totalEl.value  = valor > 0 ? '$ ' + (valor * meses).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
     }
+    if (_ctModoValor === 'PERIODO' && totalEl) { const vp = parseFloat(document.getElementById('ct-valor')?.value) || 0; totalEl.value = vp > 0 ? '$ ' + vp.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : ''; }
   }
   checkContratarForm();
 }
@@ -9629,7 +9686,7 @@ async function confirmarContratacion(codigo) {
   btn.textContent = '⏳ Procesando...';
 
   try {
-    const valor = document.getElementById('ct-valor')?.value || '';
+    const valor = String(ctValorMensual_());
     const periodo = document.getElementById('ct-periodo')?.value || '';
     const valorTotal = document.getElementById('ct-valor-total')?.value.replace(/[$,\s]/g,'') || '';
     const vData = DATA.find(x => x.codigo === codigo);
