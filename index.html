@@ -12051,7 +12051,7 @@ function openModalMultiContratoLED() {
         <button type="button" id="lm-tipo-canje" onclick="lmSetTipo('CANJE')" style="flex:1;border:none;border-radius:7px;padding:8px;font-size:13px;font-weight:800;cursor:pointer;background:transparent;color:var(--muted)">🔄 Canje ALACC</button>
       </div>
       <div id="lm-canje-box" style="display:none;border:1px solid rgba(129,140,248,.45);background:rgba(129,140,248,.07);border-radius:10px;padding:12px;margin-bottom:12px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Contrato ALACC: 2 espacios por mes calendario en CADA pantalla del convenio, no acumulables. Desde el 3ro del mes en una misma pantalla se cobra la tarifa del contrato (+ IVA). Las fechas deben quedar dentro del mismo mes.</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Contrato ALACC: 2 espacios por mes calendario en CADA pantalla del convenio, no acumulables. Desde el 3ro del mes en una misma pantalla se cobra la tarifa del contrato (+ IVA). El espacio cuenta en el mes en que empieza y puede pasar al mes siguiente (máximo un mes de duración).</div>
         <div class="form-group" style="margin-bottom:10px"><label>Marca que pauta ALACC (obligatorio)</label><input type="text" id="lm-canje-marca" placeholder="Ej: SUPERMAXI, ETAFASHION" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();checkLEDMultiForm()"></div>
         <div id="lm-canje-detalle" style="font-size:12.5px"></div>
       </div>
@@ -12189,7 +12189,7 @@ function lmCanjeActualizar_() {
   const ini = document.getElementById('lm-inicio')?.value || '', fin = document.getElementById('lm-fin')?.value || '';
   const items = ledMultiElementos_();
   let error = '';
-  if (ini && fin && ini.slice(0, 7) !== fin.slice(0, 7)) error = 'El canje debe empezar y terminar dentro del mismo mes (no es acumulable).';
+  if (ini && fin && Math.round((new Date(fin + 'T00:00:00Z') - new Date(ini + 'T00:00:00Z')) / 86400000) + 1 > 31) error = 'Cada espacio de canje dura máximo un mes (31 días). Para más tiempo registra otro canje que empiece el mes siguiente.';
   else if (ini && (ini < LED_CANJE_ALACC.desde || fin > LED_CANJE_ALACC.hasta)) error = 'El convenio solo está vigente del 01-mar-2026 al 31-dic-2026.';
   const fuera = items.filter(x => !ledTarifaCanje_(x.el.codigo));
   if (!error && fuera.length) error = 'No están en el convenio: ' + fuera.map(x => x.el.codigo).join(', ') + '. Quítalas de la selección.';
