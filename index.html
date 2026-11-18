@@ -489,8 +489,8 @@
     .logo img{height:38px !important;}
     .header-right{gap:8px;flex-wrap:wrap;}
     .header-right a[title="Manual de usuario"] span{display:none;}
-    .header-right button[onclick="forzarRecarga()"]{font-size:0;padding:6px 8px;}
-    .header-right button[onclick="forzarRecarga()"]::before{content:'↻';font-size:14px;}
+    .header-right button[onclick="forzarRecarga()"]{font-size:0;padding:6px 10px;}
+    .header-right button[onclick="forzarRecarga()"]::before{content:'↻';font-size:16px;font-weight:800;color:#111;}
     .user-badge{padding:4px 8px;font-size:11px;}
 
     .tabs{padding:10px 10px 0;gap:4px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
@@ -601,7 +601,7 @@
     <img id="headerLogo" style="height:48px;width:auto" alt="Zazacorp">
   </div>
   <div class="header-right">
-    <button onclick="forzarRecarga()" title="Sincronizar con Google Sheets" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">↻ Sincronizar</button>
+    <button onclick="forzarRecarga()" title="Sincronizar con el servidor" style="background:#f59e0b;border:none;border-radius:8px;color:#111;font-size:12.5px;font-weight:800;letter-spacing:.3px;padding:7px 14px;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s" onmouseover="this.style.background='#fbbf24'" onmouseout="this.style.background='#f59e0b'">↻ SINCRONIZAR</button>
     <a href="manual.html" target="_blank" title="Manual de usuario" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer;font-family:'Space Grotesk',sans-serif;transition:all .2s;text-decoration:none;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">📖 Manual</a>
     <div class="stat-pill sp-green" id="st-disp">● – DISP.</div>
     <div class="stat-pill sp-yellow" id="st-res">● – RESERV.</div>
@@ -1896,18 +1896,46 @@ async function init() {
   // mientras tanto su valor por defecto seguro (espaciosLEDDisponibles)
   // hasta que la pestaña LED se visite al menos una vez en la sesión.
 }
+// (2026-11-18) Pop up centrado al sincronizar: "SINCRONIZANDO CON EL SERVIDOR…" → "SINCRONIZACIÓN COMPLETA" (se cierra solo)
+let _nxSyncTimer = null;
+function nxSyncPopup_(estado) {
+  let ov = document.getElementById('nxSyncOverlay');
+  if (!ov) {
+    if (!document.getElementById('nxSyncCss')) {
+      const st = document.createElement('style'); st.id = 'nxSyncCss';
+      st.textContent = '@keyframes nxSyncGira{to{transform:rotate(360deg)}}#nxSyncOverlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;transition:opacity .25s}#nxSyncOverlay .nxs-box{background:var(--surface,#16181d);border:1.5px solid #f59e0b;border-radius:14px;padding:24px 30px;text-align:center;min-width:260px;font-family:\'Space Grotesk\',sans-serif}#nxSyncOverlay .nxs-ico{font-size:34px;line-height:1;display:inline-block}#nxSyncOverlay .nxs-gira{animation:nxSyncGira 1s linear infinite}#nxSyncOverlay .nxs-tit{font-weight:800;font-size:15px;margin-top:12px;letter-spacing:.4px}#nxSyncOverlay .nxs-sub{color:var(--muted,#9ca3af);font-size:12px;margin-top:6px}';
+      document.head.appendChild(st);
+    }
+    ov = document.createElement('div'); ov.id = 'nxSyncOverlay';
+    document.body.appendChild(ov);
+  }
+  clearTimeout(_nxSyncTimer);
+  if (estado === 'cerrar') { ov.remove(); return; }
+  const ok = estado === 'ok', col = ok ? '#10b981' : '#f59e0b';
+  ov.style.opacity = '1';
+  ov.innerHTML = '<div class="nxs-box" style="border-color:' + col + '">' +
+    '<div class="nxs-ico' + (ok ? '' : ' nxs-gira') + '" style="color:' + col + '">' + (ok ? '✓' : '↻') + '</div>' +
+    '<div class="nxs-tit" style="color:' + col + '">' + (ok ? 'SINCRONIZACIÓN COMPLETA' : 'SINCRONIZANDO CON EL SERVIDOR…') + '</div>' +
+    '<div class="nxs-sub">' + (ok ? 'Datos actualizados' : 'Un momento, por favor') + '</div></div>';
+  if (ok) _nxSyncTimer = setTimeout(() => { ov.style.opacity = '0'; _nxSyncTimer = setTimeout(() => ov.remove(), 250); }, 1500);
+}
 async function forzarRecarga() {
   localStorage.removeItem('zz_cache_v2');
   localStorage.removeItem('zz_cache_v2_meta');
-  showToast('↻ Sincronizando con Google Sheets...', 'info');
-  // Forzar sync Sheet → Firebase antes de recargar
-  try { await fetch(API_URL + '?action=syncFirebase', { cache: 'no-store' }); } catch(e) {}
-  await fetchFresh();
-  // Si estás en LED, también refresca esa pestaña saltándose su caché de
-  // 90s — "Sincronizar" debe traer lo más fresco posible en cualquier
-  // pestaña, no solo en el inventario general.
-  if (state.tab === 'led') await renderLED(document.getElementById('mainContent'), true);
-  showToast('✓ Datos actualizados', 'success');
+  nxSyncPopup_('cargando');
+  try {
+    // Forzar sync Sheet → Firebase antes de recargar
+    try { await fetch(API_URL + '?action=syncFirebase', { cache: 'no-store' }); } catch(e) {}
+    await fetchFresh();
+    // Si estás en LED, también refresca esa pestaña saltándose su caché de
+    // 90s — "Sincronizar" debe traer lo más fresco posible en cualquier
+    // pestaña, no solo en el inventario general.
+    if (state.tab === 'led') await renderLED(document.getElementById('mainContent'), true);
+    nxSyncPopup_('ok');
+  } catch (e) {
+    nxSyncPopup_('cerrar');
+    showToast('❌ No se pudo sincronizar: ' + (e && e.message ? e.message : e), 'error');
+  }
 }
 
 async function loadData(force = false) {
