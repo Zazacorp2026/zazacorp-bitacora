@@ -1898,7 +1898,7 @@ async function init() {
 }
 // (2026-11-18) Pop up centrado al sincronizar: "SINCRONIZANDO CON EL SERVIDOR…" → "SINCRONIZACIÓN COMPLETA" (se cierra solo)
 let _nxSyncTimer = null;
-function nxSyncPopup_(estado) {
+function nxSyncPopup_(estado, titulo, sub) {
   let ov = document.getElementById('nxSyncOverlay');
   if (!ov) {
     if (!document.getElementById('nxSyncCss')) {
@@ -1915,8 +1915,8 @@ function nxSyncPopup_(estado) {
   ov.style.opacity = '1';
   ov.innerHTML = '<div class="nxs-box" style="border-color:' + col + '">' +
     '<div class="nxs-ico' + (ok ? '' : ' nxs-gira') + '" style="color:' + col + '">' + (ok ? '✓' : '↻') + '</div>' +
-    '<div class="nxs-tit" style="color:' + col + '">' + (ok ? 'SINCRONIZACIÓN COMPLETA' : 'SINCRONIZANDO CON EL SERVIDOR…') + '</div>' +
-    '<div class="nxs-sub">' + (ok ? 'Datos actualizados' : 'Un momento, por favor') + '</div></div>';
+    '<div class="nxs-tit" style="color:' + col + '">' + (titulo || (ok ? 'SINCRONIZACIÓN COMPLETA' : 'SINCRONIZANDO CON EL SERVIDOR…')) + '</div>' +
+    '<div class="nxs-sub">' + (sub || (ok ? 'Datos actualizados' : 'Un momento, por favor')) + '</div></div>';
   if (ok) _nxSyncTimer = setTimeout(() => { ov.style.opacity = '0'; _nxSyncTimer = setTimeout(() => ov.remove(), 250); }, 1500);
 }
 async function forzarRecarga() {
@@ -4271,6 +4271,7 @@ function insBloqueEditarAdmin(r) {
         '<select data-campo="estado" style="display:block;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:12px;margin-top:3px">' +
           '<option value="PENDIENTE" ' + (r.estado === 'PENDIENTE' ? 'selected' : '') + '>PENDIENTE</option>' +
           '<option value="CERTIFICADO" ' + (r.estado === 'CERTIFICADO' ? 'selected' : '') + '>CERTIFICADO</option>' +
+          '<option value="CONTINUIDAD" ' + (r.estado === 'CONTINUIDAD' ? 'selected' : '') + '>CONTINUIDAD (mismo arte)</option>' +
         '</select></div>' +
       insCampoAdmin_('Inicio real', 'inicioReal', r.inicioReal, 'date') +
       insCampoAdmin_('Fin real', 'finReal', r.finReal, 'date') +
@@ -4319,13 +4320,72 @@ async function insGuardarManualUI(id) {
   }
 }
 
+// (2026-11-24) Etiqueta de renovación según el arte
+function insEtiquetaRenovacion_(r) {
+  const pill = 'font-size:9px;font-weight:800;border-radius:20px;padding:2px 8px;margin-left:4px;';
+  if (r.arte === 'CAMBIO_MITAD') return ' <span style="' + pill + 'color:#fbbf24;background:rgba(245,158,11,.15)">🎨 CAMBIO DE ARTE A MITAD DE PERIODO</span>';
+  if (r.estado === 'CONTINUIDAD') return ' <span style="' + pill + 'color:#60a5fa;background:rgba(59,130,246,.15)">🔁 CONTINUIDAD · SIN CAMBIO DE ARTE</span>';
+  if (r.tipo === 'RENOVACIÓN') return ' <span style="' + pill + 'color:#34d399;background:rgba(16,185,129,.15)">🔁 RENOVACIÓN' + (r.arte === 'NUEVO' ? ' · ARTE NUEVO' : '') + '</span>';
+  return '';
+}
+async function insAccionSimpleUI_(id, accion, btnId, pregunta, verbo, okMsg) {
+  if (!confirm(pregunta)) return;
+  const btn = document.getElementById(btnId);
+  const textoOriginal = btn ? btn.textContent : '';
+  const intervalo = insBotonProcesando(btn, verbo);
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: accion, id: id }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error');
+    showToast(okMsg, 'success');
+    await insCargarDatos();
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error');
+    insDetenerBotonProcesando(btn, null, textoOriginal);
+  } finally {
+    clearInterval(intervalo);
+  }
+}
+function insSoloRenovoUI(id) {
+  insAccionSimpleUI_(id, 'insSoloRenovoPeriodo', 'insBtnSoloRenovo_' + id,
+    '¿Solo se renovó el periodo, con el MISMO arte?\n\nSe cierra como Continuidad (sin instalación que certificar) y las fechas pactadas quedan como reales.',
+    'Guardando', '🔁 Marcada como continuidad — mismo arte');
+}
+function insClienteCambiaArteUI(id) {
+  insAccionSimpleUI_(id, 'insClienteCambiaArte', 'insBtnCambiaArte_' + id,
+    '¿El cliente decidió cambiar el arte?\n\nVuelve a Pendientes de certificar (prueba de color y fecha real del cambio). El inicio y fin del contrato NO se mueven.',
+    'Reabriendo', '🎨 Vuelve a pendientes — cambio de arte a mitad de periodo');
+}
+
+function insCardContinuidad(r) {
+  return '<div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid #3b82f6;border-radius:0;padding:12px;margin-bottom:9px">' +
+    '<div style="display:flex;gap:10px;align-items:flex-start">' +
+      insFotoHtml(r.codigo) +
+      '<div style="flex:1;min-width:0;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+        '<div>' +
+          '<div style="font-weight:800;font-size:13px;color:var(--accent)">' + esc(r.codigo) + '</div>' +
+          '<div style="font-size:11.5px;color:var(--text);margin-top:2px"><b>' + esc(r.cliente) + '</b> · ' + esc(r.ejecutiva) + insEtiquetaRenovacion_(r) + '</div>' +
+          '<div style="font-size:10.5px;color:var(--muted);margin-top:3px">Solo se renovó el periodo — no hubo instalación. Marcó: ' + esc(r.certificadoPor) + '</div>' +
+        '</div>' +
+        (insPuedeCertificar ? '<button id="insBtnCambiaArte_' + r.id + '" onclick="insClienteCambiaArteUI(\'' + r.id + '\')" style="background:transparent;border:1px solid #f59e0b;border-radius:7px;color:#fbbf24;font-weight:800;font-size:11px;padding:7px 12px;cursor:pointer;white-space:nowrap">🎨 Cliente cambia el arte</button>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div style="margin-top:10px">' + insCajaFecha('PERIODO RENOVADO', r.inicioContratado, r.finContratado, 'pactado') + '</div>' +
+    insComentarioLecturaHTML_(r) +
+    insBloqueEditarAdmin(r) +
+  '</div>';
+}
+
 function insCardPendiente(r) {
   const diasEsperando = insDiasEntre(r.inicioContratado, new Date().toISOString().slice(0,10));
   const controles = insPuedeCertificar
     ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">' +
         '<input type="date" id="insFecha_' + r.id + '" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 8px;font-size:12px;font-family:inherit">' +
+        (r.tipo === 'RENOVACIÓN' && r.arte !== 'CAMBIO_MITAD' ? '<button id="insBtnSoloRenovo_' + r.id + '" onclick="insSoloRenovoUI(\'' + r.id + '\')" title="No cambió el arte: se cierra como continuidad, sin certificar instalación" style="background:transparent;border:1px solid #3b82f6;border-radius:7px;color:#60a5fa;font-weight:800;font-size:11.5px;padding:8px 12px;cursor:pointer;white-space:nowrap">🔁 Solo renovó periodo</button>' : '') +
         '<button id="insBtnCertificar_' + r.id + '" onclick="insCertificarUI(\'' + r.id + '\')" style="background:var(--green);border:1px solid var(--green);border-radius:7px;color:#0a1a0a;font-weight:800;font-size:11.5px;padding:8px 14px;cursor:pointer;white-space:nowrap">✅ Certificar</button>' +
-      '</div>' + insBloqueComentario(r)
+      '</div>' +
+      (r.arte === 'CAMBIO_MITAD' ? '<div style="font-size:10.5px;color:#fbbf24;margin-top:5px">La fecha que pongas es la fecha del cambio de arte. El inicio y fin del contrato no se mueven.</div>' : '') +
+      insBloqueComentario(r)
     : '<div style="margin-top:10px;font-size:10.5px;color:var(--muted);text-align:center">⏳ Esperando certificación de instalación</div>';
   return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:9px">' +
     '<div style="display:flex;gap:10px;align-items:flex-start">' +
@@ -4335,7 +4395,7 @@ function insCardPendiente(r) {
         '<div>' +
           '<div style="font-weight:800;font-size:13px;color:var(--accent)">' + esc(r.codigo) + '</div>' +
           '<div style="font-size:11px;color:var(--muted)">' + esc(r.direccion) + ' · ' + esc(r.ciudad) + '</div>' +
-          '<div style="font-size:11.5px;color:var(--text);margin-top:4px"><b>' + esc(r.cliente) + '</b> · ' + esc(r.ejecutiva) + (r.tipo === 'RENOVACIÓN' ? ' <span style="font-size:9px;font-weight:800;color:#34d399;background:rgba(16,185,129,.15);border-radius:20px;padding:2px 8px;margin-left:4px">🔁 RENOVACIÓN</span>' : '') + '</div>' +
+          '<div style="font-size:11.5px;color:var(--text);margin-top:4px"><b>' + esc(r.cliente) + '</b> · ' + esc(r.ejecutiva) + insEtiquetaRenovacion_(r) + '</div>' +
           insHistoricoHTML(r) +
         '</div>' +
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">' +
@@ -4360,17 +4420,18 @@ function insCardCertificada(r) {
   const baseAtraso = tienePruebaColor ? r.fechaPruebaColor : r.inicioContratado;
   const refAtraso = tienePruebaColor ? 'la prueba de color' : 'lo pactado';
   const diasAtraso = insDiasEntre(baseAtraso, r.inicioReal);
-  const colorAtraso = diasAtraso > 0 ? '#ef4444' : '#10b981';
-  const txtAtraso = diasAtraso > 0 ? ('+' + diasAtraso + ' día' + (diasAtraso===1?'':'s') + ' de atraso')
+  let colorAtraso = diasAtraso > 0 ? '#ef4444' : '#10b981';
+  let txtAtraso = diasAtraso > 0 ? ('+' + diasAtraso + ' día' + (diasAtraso===1?'':'s') + ' de atraso')
     : diasAtraso < 0 ? (Math.abs(diasAtraso) + ' día' + (Math.abs(diasAtraso)===1?'':'s') + ' antes de ' + refAtraso)
     : 'A tiempo';
+  if (r.arte === 'CAMBIO_MITAD') { txtAtraso = '🎨 Arte cambiado el ' + r.inicioReal; colorAtraso = '#f59e0b'; }
   return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:9px">' +
     '<div style="display:flex;gap:10px;align-items:flex-start">' +
       insFotoHtml(r.codigo) +
       '<div style="flex:1;min-width:0;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
         '<div>' +
           '<div style="font-weight:800;font-size:13px;color:var(--accent)">' + esc(r.codigo) + '</div>' +
-          '<div style="font-size:11.5px;color:var(--text);margin-top:2px"><b>' + esc(r.cliente) + '</b> · ' + esc(r.ejecutiva) + (r.tipo === 'RENOVACIÓN' ? ' <span style="font-size:9px;font-weight:800;color:#34d399;background:rgba(16,185,129,.15);border-radius:20px;padding:2px 8px;margin-left:4px">🔁 RENOVACIÓN</span>' : '') + '</div>' +
+          '<div style="font-size:11.5px;color:var(--text);margin-top:2px"><b>' + esc(r.cliente) + '</b> · ' + esc(r.ejecutiva) + insEtiquetaRenovacion_(r) + '</div>' +
           insHistoricoHTML(r) +
         '</div>' +
         '<div style="text-align:right">' +
@@ -4476,7 +4537,7 @@ function insSelectFiltroHTML_(campo, etiqueta) {
 }
 
 function insSelectEstadoHTML_() {
-  const opciones = [['', 'Todas'], ['PENDIENTE', 'Por certificar'], ['CERTIFICADO', 'Certificadas']];
+  const opciones = [['', 'Todas'], ['PENDIENTE', 'Por certificar'], ['CERTIFICADO', 'Certificadas'], ['CONTINUIDAD', 'Continuidad (mismo arte)']];
   return '<select onchange="insCambiarFiltro(\'estado\',this.value)" style="background:var(--surface);border:1px solid var(--accent);border-radius:8px;color:var(--text);padding:9px 10px;font-size:12.5px;font-weight:700;font-family:inherit;min-width:140px">' +
     opciones.map(function (o) { return '<option value="' + o[0] + '" ' + (insFiltro.estado === o[0] ? 'selected' : '') + '>' + o[1] + '</option>'; }).join('') +
   '</select>';
@@ -4531,14 +4592,14 @@ function insRenderLista() {
   if (!board) return;
   const pendientes = insDataCache.filter(function (r) { return r.estado === 'PENDIENTE' && insCumpleFiltro(r); });
   const certificadasMes = insDataCache.filter(function (r) {
-      return r.estado === 'CERTIFICADO' && String(r.fechaCertificacion || '').slice(0, 7) === insMesFiltro && insCumpleFiltro(r);
+      return (r.estado === 'CERTIFICADO' || r.estado === 'CONTINUIDAD') && String(r.fechaCertificacion || '').slice(0, 7) === insMesFiltro && insCumpleFiltro(r);
     })
     .sort((a,b) => new Date(b.fechaCertificacion) - new Date(a.fechaCertificacion));
 
   // Si eligieron un estado puntual en el filtro, la otra sección ni
   // siquiera se dibuja — mostrarla vacía con "nada pendiente 🎉" sería
   // engañoso cuando en realidad está oculta a propósito por el filtro.
-  const mostrarPendientes = insFiltro.estado !== 'CERTIFICADO';
+  const mostrarPendientes = !insFiltro.estado || insFiltro.estado === 'PENDIENTE';
   const mostrarCertificadas = insFiltro.estado !== 'PENDIENTE';
 
   board.innerHTML =
@@ -4550,13 +4611,13 @@ function insRenderLista() {
     : '') +
     (mostrarCertificadas ?
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 8px;flex-wrap:wrap">' +
-        '<div style="font-size:12.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px">✅ Certificadas<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + certificadasMes.length + '</span></div>' +
+        '<div style="font-size:12.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px">✅ Certificadas y continuidades<span style="background:var(--surface2);color:var(--muted);border-radius:20px;padding:1px 9px;font-size:10px;font-weight:700">' + certificadasMes.length + '</span></div>' +
         '<div style="display:flex;align-items:center;gap:8px">' +
           '<label style="font-size:10px;color:var(--muted);font-weight:700">MES</label>' +
           '<input type="month" value="' + insMesFiltro + '" onchange="insCambiarMes(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit">' +
         '</div>' +
       '</div>' +
-      (certificadasMes.length ? certificadasMes.map(insCardCertificada).join('') : '<div class="empty" style="padding:20px"><p>Ninguna certificación este mes</p></div>')
+      (certificadasMes.length ? certificadasMes.map(function (r) { return r.estado === 'CONTINUIDAD' ? insCardContinuidad(r) : insCardCertificada(r); }).join('') : '<div class="empty" style="padding:20px"><p>Ninguna certificación este mes</p></div>')
     : '');
 }
 
@@ -9512,6 +9573,25 @@ function checkContratarForm() {
 //  validar todo (cliente, ejecutiva, dueña, mínimos, fechas).
 // ══════════════════════════════════════════════════════════════
 let _rnPdfBase64 = null, _rnPdfFile = null, _rnCodigoBase = null;
+// (2026-11-24) Por cada valla a renovar: 'NUEVO' (cambia el arte → pendiente de certificar) o 'MISMO' (continuidad). Obligatorio.
+let _rnArte = {};
+function rnArteBotonesHTML_(c) {
+  const a = _rnArte[c] || '';
+  const base = 'border-radius:7px;font-size:11px;font-weight:800;padding:5px 10px;cursor:pointer;white-space:nowrap;';
+  return '<span style="display:inline-flex;align-items:center;gap:5px"><span style="font-size:10.5px;color:var(--muted);font-weight:700">¿Cambia el arte?</span>' +
+    '<button type="button" onclick="rnElegirArte(\'' + c + '\',\'NUEVO\')" style="' + base + (a === 'NUEVO' ? 'background:rgba(245,158,11,.2);border:1px solid #f59e0b;color:#fbbf24' : 'background:transparent;border:1px solid var(--border);color:var(--muted)') + '">🎨 Sí, arte nuevo</button>' +
+    '<button type="button" onclick="rnElegirArte(\'' + c + '\',\'MISMO\')" style="' + base + (a === 'MISMO' ? 'background:rgba(16,185,129,.2);border:1px solid #10b981;color:#34d399' : 'background:transparent;border:1px solid var(--border);color:var(--muted)') + '">🔁 No, mismo arte</button></span>';
+}
+function rnElegirArte(c, valor) {
+  _rnArte[c] = valor;
+  const cont = document.getElementById('rn-arte-' + c);
+  if (cont) cont.innerHTML = rnArteBotonesHTML_(c);
+  rnActualizar();
+}
+function rnTodosMismoArte() {
+  rnSeleccion_().forEach(function (c) { _rnArte[c] = 'MISMO'; const cont = document.getElementById('rn-arte-' + c); if (cont) cont.innerHTML = rnArteBotonesHTML_(c); });
+  rnActualizar();
+}
 function rnNorm_(t) { return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase(); }
 function rnSumarDia_(iso) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; }
 function rnPuedeUsuario_(v) {
@@ -9525,7 +9605,7 @@ function rnElegible_(v) {
 function openModalRenovar(codigo) {
   const base = DATA.find(x => x.codigo === codigo);
   if (!rnElegible_(base)) { showToast('Esta valla no cumple las condiciones para renovar', 'info'); return; }
-  _rnCodigoBase = codigo; _rnPdfBase64 = null; _rnPdfFile = null;
+  _rnCodigoBase = codigo; _rnPdfBase64 = null; _rnPdfFile = null; _rnArte = {};
   const hermanas = DATA.filter(v => rnElegible_(v) && rnNorm_(v.cliente) === rnNorm_(base.cliente) && rnNorm_(v.ejecutiva) === rnNorm_(base.ejecutiva))
     .sort((a, b) => (a.codigo === codigo ? -1 : b.codigo === codigo ? 1 : a.codigo.localeCompare(b.codigo)));
   document.getElementById('modalTitle').textContent = '🔁 Renovar contratación actual';
@@ -9535,12 +9615,14 @@ function openModalRenovar(codigo) {
       El nuevo período empieza el día siguiente al término del contrato actual. Si marcas varias vallas, se renuevan juntas con la misma fecha fin.
     </div>
     ${hermanas.some(v => v.reserva2_cliente && !(rnNorm_(v.reserva2_cliente) === rnNorm_(v.cliente) && rnNorm_(v.reserva2_ejecutiva) === rnNorm_(v.ejecutiva))) ? '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:8px;padding:9px 14px;margin-bottom:14px;font-size:12px;color:var(--accent)">⚠️ Alguna valla tiene una pre-reserva de OTRO cliente: seguirá en cola y empezará cuando termine esta renovación.</div>' : ''}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:4px"><button type="button" onclick="rnTodosMismoArte()" style="background:transparent;border:1px dashed #10b981;border-radius:7px;color:#34d399;font-size:11px;font-weight:700;padding:5px 10px;cursor:pointer">🔁 Todas las marcadas con el mismo arte</button></div>
     <div id="rn-lista" style="margin-bottom:14px">
-      ${hermanas.map(v => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px;flex-wrap:wrap">
+      ${hermanas.map(v => `<div class="rn-fila" data-codigo="${esc(v.codigo)}" style="display:flex;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px;flex-wrap:wrap;border-radius:6px">
         <input type="checkbox" class="rn-chk" data-codigo="${esc(v.codigo)}" ${v.codigo === codigo ? 'checked' : ''} onchange="rnActualizar()">
         <strong>${esc(v.codigo)}</strong>
         <span style="color:var(--muted)">hoy hasta ${esc(v.termino)} → renueva desde <b style="color:#34d399">${rnSumarDia_(v.termino)}</b></span>
         <span style="margin-left:auto;display:flex;align-items:center;gap:4px">$<input type="number" class="rn-valor" data-codigo="${esc(v.codigo)}" value="${Number(v.valor) || ''}" placeholder="Valor mensual" oninput="rnActualizar()" style="width:110px"></span>
+        <div style="flex-basis:100%;display:flex;justify-content:flex-end;align-items:center;gap:8px"><span class="rn-arte-falta" style="display:none;font-size:10.5px;color:var(--red);font-weight:700">Falta elegir si cambia el arte</span><span id="rn-arte-${esc(v.codigo)}">${rnArteBotonesHTML_(v.codigo)}</span></div>
       </div>`).join('')}
     </div>
     <div class="contratar-form">
@@ -9609,20 +9691,31 @@ function rnActualizar() {
       suma += val; total += val * m;
     }
   });
+  // (2026-11-24) Arte obligatorio por cada valla marcada
+  const sinArte = sel.filter(c => _rnArte[c] !== 'NUEVO' && _rnArte[c] !== 'MISMO');
+  document.querySelectorAll('.rn-fila').forEach(f => {
+    const falta = sel.includes(f.dataset.codigo) && sinArte.includes(f.dataset.codigo);
+    f.style.background = falta ? 'rgba(239,68,68,.08)' : '';
+    f.style.outline = falta ? '1px solid rgba(239,68,68,.5)' : '';
+    const t = f.querySelector('.rn-arte-falta'); if (t) t.style.display = falta ? 'inline' : 'none';
+  });
   const errEl = document.getElementById('rn-error');
   errEl.style.display = error ? 'block' : 'none'; errEl.textContent = error;
   document.getElementById('rn-resumen').innerHTML = sel.length
     ? sel.length + ' valla(s) · suma mensual <b>' + qzMoney(suma) + '</b> · total renovación <b style="color:#4ade80">' + qzMoney(total) + '</b>'
     : 'Marca al menos una valla';
-  const ok = sel.length && fin && !error && sinValor.length === 0 && document.getElementById('rn-agencia').value.trim() && rnComision_() && (_rnPdfBase64 || nxPdfOpcional_());
+  const ok = sel.length && fin && !error && sinValor.length === 0 && sinArte.length === 0 && document.getElementById('rn-agencia').value.trim() && rnComision_() && (_rnPdfBase64 || nxPdfOpcional_());
   btn.disabled = !ok;
-  btn.textContent = error ? 'Corrige los datos marcados' : (ok ? '🔁 Confirmar renovación' + (sel.length > 1 ? ' múltiple' : '') : (sinValor.length ? 'Ingresa el valor mensual de cada valla' : (!_rnPdfBase64 ? '📎 Sube el PDF para continuar' : 'Completa los campos')));
+  btn.textContent = error ? 'Corrige los datos marcados' : (sel.length && sinArte.length) ? ('🎨 Elige si cambia el arte en ' + sinArte.length + ' valla' + (sinArte.length === 1 ? '' : 's')) : (ok ? '🔁 Confirmar renovación' + (sel.length > 1 ? ' múltiple' : '') : (sinValor.length ? 'Ingresa el valor mensual de cada valla' : (!_rnPdfBase64 ? '📎 Sube el PDF para continuar' : 'Completa los campos')));
 }
 async function confirmarRenovacion() {
   const codigos = rnSeleccion_();
   const base = DATA.find(x => x.codigo === _rnCodigoBase);
   const fin = document.getElementById('rn-fin').value;
   if (!codigos.length || !base || !fin) return;
+  const artePorCodigo = {};
+  const faltanArte = codigos.filter(c => { artePorCodigo[c] = _rnArte[c]; return _rnArte[c] !== 'NUEVO' && _rnArte[c] !== 'MISMO'; });
+  if (faltanArte.length) { showToast('Elige si cambia el arte en: ' + faltanArte.join(', '), 'info'); rnActualizar(); return; }
   const valoresPorCodigo = {};
   document.querySelectorAll('.rn-valor').forEach(i => { if (codigos.includes(i.dataset.codigo)) valoresPorCodigo[i.dataset.codigo] = parseFloat(i.value) || ''; });
   if (!(await visConfirmar_(codigos))) return;
@@ -9631,7 +9724,7 @@ async function confirmarRenovacion() {
   try {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({
       action: 'contratar', renovacion: true,
-      codigos, cliente: base.cliente, ejecutiva: base.ejecutiva, fin, valoresPorCodigo,
+      codigos, cliente: base.cliente, ejecutiva: base.ejecutiva, fin, valoresPorCodigo, artePorCodigo,
       agenciaContratante: document.getElementById('rn-agencia').value.trim(), comisionAgencia: rnComision_(),
       pdfBase64: _rnPdfBase64, pdfNombre: _rnPdfFile ? _rnPdfFile.name : 'orden_renovacion.pdf'
     }) });
@@ -11711,7 +11804,7 @@ function agregarEspaciosLED(playerId, capacidadActual) {
         <label>¿Cuántos espacios más querés agregar?</label>
         <input type="number" id="esp-cantidad" value="5" min="1" style="font-size:18px">
       </div>
-      <button onclick="confirmarAgregarEspaciosLED('${playerId}',${capacidadActual})" style="width:100%;padding:12px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-weight:700;font-size:13px;cursor:pointer">➕ Agregar</button>
+      <button id="btnAgregarEspacios" onclick="confirmarAgregarEspaciosLED('${playerId}',${capacidadActual})" style="width:100%;padding:12px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-weight:700;font-size:13px;cursor:pointer">➕ Agregar</button>
     </div>`;
   document.getElementById('modalOverlay').classList.add('open');
 }
@@ -11720,16 +11813,25 @@ async function confirmarAgregarEspaciosLED(playerId, capacidadActual) {
   const cantidad = document.getElementById('esp-cantidad').value;
   if (!cantidad || isNaN(cantidad) || Number(cantidad) <= 0) { showToast('Ingresa un número válido', 'info'); return; }
   const nuevaCapacidad = capacidadActual + Number(cantidad);
+  // (2026-11-26) Que se vea que está procesando: botón bloqueado + pop up centrado (como Sincronizar),
+  // y al final se repinta LED sin caché para que el número nuevo aparezca de inmediato.
+  const btn = document.getElementById('btnAgregarEspacios');
+  if (btn) { if (btn.disabled) return; btn.disabled = true; btn.style.opacity = '.7'; btn.textContent = '⏳ Agregando espacios…'; }
+  nxSyncPopup_('cargando', 'AGREGANDO ' + Number(cantidad) + ' ESPACIO' + (Number(cantidad) === 1 ? '' : 'S') + '…', 'De ' + capacidadActual + ' a ' + nuevaCapacidad + ' espacios · un momento, por favor');
   try {
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
       action:'setCapacidadLED', playerId, capacidad: nuevaCapacidad, solicitante: _usuarioActual
     })});
     const json = await res.json();
     if (json.error) throw new Error(json.error);
-    showToast('✅ Ahora tiene ' + nuevaCapacidad + ' espacios', 'success');
     closeModal();
-    renderLED(document.getElementById('mainContent'));
-  } catch(e) { showToast('❌ ' + e.message, 'error'); }
+    try { await renderLED(document.getElementById('mainContent'), true); } catch (e2) {}
+    nxSyncPopup_('ok', 'ESPACIOS AGREGADOS', 'Ahora tiene ' + nuevaCapacidad + ' espacios');
+  } catch(e) {
+    nxSyncPopup_('cerrar');
+    showToast('❌ No se pudieron agregar los espacios: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = '➕ Agregar'; }
+  }
 }
 
 // (2026-11-09) Jorge decide, pantalla por pantalla, si se puede subir orden aunque esté offline
