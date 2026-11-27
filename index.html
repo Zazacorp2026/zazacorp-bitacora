@@ -11308,6 +11308,7 @@ function buildLEDUI(container, data) {
     esExterno: el.esExterno,
     sn: el.sn, account: el.account,
     capacidad: el.capacidad,
+    capacidadRegular: el.capacidadRegular || 15,
     bloqueada: !!el.bloqueada,
     permiteOffline: !!el.permiteOffline,
     offlineLibre: !!el.offlineLibre,
@@ -11452,6 +11453,11 @@ function buildLEDUI(container, data) {
       playerContratos.forEach((c, idx) => pintarContratoLED_(c, idx, playerContratos));
       if (esAdmin) {
         htmlGrupos += '<div class="led-slot-empty" style="border-color:#60a5fa;color:#60a5fa" onclick="agregarEspaciosLED(\'' + player.playerId + '\',' + capacidad + ')">+ Agregar más espacios</div>';
+        // (2026-11-27) Quitar espacios (volver a lo regular) cuando la pantalla tiene más de lo regular
+        const capRegular = player.capacidadRegular || 15;
+        if (capacidad > capRegular) {
+          htmlGrupos += '<div class="led-slot-empty" style="border-color:#f59e0b;color:#fbbf24" onclick="quitarEspaciosLED(\'' + player.playerId + '\',' + capacidad + ',' + capRegular + ',' + playerContratos.length + ',' + playerProximos.length + ',' + playerPausados.length + ')">− Quitar espacios</div>';
+        }
       }
       for (let s = playerContratos.length; s < capacidad; s++) {
         htmlGrupos += noContratable
@@ -11831,6 +11837,59 @@ async function confirmarAgregarEspaciosLED(playerId, capacidadActual) {
     nxSyncPopup_('cerrar');
     showToast('❌ No se pudieron agregar los espacios: ' + e.message, 'error');
     if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = '➕ Agregar'; }
+  }
+}
+
+// (2026-11-27) Quitar espacios: volver a la cantidad regular o dejar un número, nunca menos de los contratos con puesto
+function quitarEspaciosLED(playerId, capacidadActual, regular, alAire, proximos, pausados) {
+  const minimo = Math.max(1, alAire + proximos + pausados);
+  const destinoRegular = Math.max(regular, minimo);
+  const caja = (t, v) => '<div style="background:var(--bg3,rgba(255,255,255,.05));border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center"><div style="font-size:11px;color:var(--muted)">' + t + '</div><div style="font-size:20px;font-weight:800">' + v + '</div></div>';
+  document.getElementById('modalTitle').textContent = '− Quitar espacios';
+  document.getElementById('modalSubtitle').textContent = 'Hoy tiene ' + capacidadActual + ' espacios · regular ' + regular;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="contratar-form">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
+        ${caja('Actual', capacidadActual)}${caja('Ocupados', alAire + proximos + pausados)}${caja('Mínimo', minimo)}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:14px">Ocupados = ${alAire} al aire + ${proximos} próximos${pausados ? ' + ' + pausados + ' pausados' : ''}</div>
+      ${destinoRegular < capacidadActual
+        ? `<button class="btnQuitarEsp" onclick="confirmarQuitarEspaciosLED('${playerId}',${capacidadActual},${destinoRegular},${minimo})" style="width:100%;padding:12px;background:#f59e0b;border:none;border-radius:8px;color:#111;font-weight:800;font-size:13px;cursor:pointer;margin-bottom:14px">↩ Volver a ${destinoRegular}${destinoRegular === regular ? ' (regular)' : ' (lo mínimo posible hoy)'}</button>`
+        : `<div style="font-size:12px;color:#fbbf24;margin-bottom:14px">Hoy no se puede bajar: todos los espacios están ocupados.</div>`}
+      <div class="form-group" style="margin-bottom:10px">
+        <label>O dejarla en (mínimo ${minimo}):</label>
+        <input type="number" id="esp-quitar-total" value="${destinoRegular}" min="${minimo}" max="${capacidadActual - 1}" style="font-size:18px">
+      </div>
+      <button class="btnQuitarEsp" onclick="confirmarQuitarEspaciosLED('${playerId}',${capacidadActual},Number(document.getElementById('esp-quitar-total').value),${minimo})" style="width:100%;padding:12px;background:transparent;border:1px solid #f59e0b;border-radius:8px;color:#fbbf24;font-weight:700;font-size:13px;cursor:pointer">Aplicar</button>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+async function confirmarQuitarEspaciosLED(playerId, capacidadActual, nuevaCapacidad, minimo) {
+  nuevaCapacidad = Math.floor(Number(nuevaCapacidad));
+  if (!nuevaCapacidad || nuevaCapacidad < 1) { showToast('Ingresa un número válido', 'info'); return; }
+  if (nuevaCapacidad >= capacidadActual) { showToast('Para quitar, el número debe ser menor que ' + capacidadActual, 'info'); return; }
+  if (nuevaCapacidad < minimo) { showToast('No se puede bajar de ' + minimo + ': hay ' + minimo + ' contratos con puesto. Quita o mueve alguno primero.', 'error'); return; }
+  const btns = Array.from(document.querySelectorAll('.btnQuitarEsp'));
+  if (btns.some(b => b.disabled)) return;
+  const textos = btns.map(b => b.textContent);
+  btns.forEach(b => { b.disabled = true; b.style.opacity = '.7'; });
+  if (btns[0]) btns[0].textContent = '⏳ Quitando espacios…';
+  const q = capacidadActual - nuevaCapacidad;
+  nxSyncPopup_('cargando', 'QUITANDO ' + q + ' ESPACIO' + (q === 1 ? '' : 'S') + '…', 'De ' + capacidadActual + ' a ' + nuevaCapacidad + ' espacios · un momento, por favor');
+  try {
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
+      action:'setCapacidadLED', playerId, capacidad: nuevaCapacidad, solicitante: _usuarioActual
+    })});
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    closeModal();
+    try { await renderLED(document.getElementById('mainContent'), true); } catch (e2) {}
+    nxSyncPopup_('ok', 'ESPACIOS QUITADOS', 'Ahora tiene ' + nuevaCapacidad + ' espacios');
+  } catch(e) {
+    nxSyncPopup_('cerrar');
+    showToast('❌ No se pudieron quitar los espacios: ' + e.message, 'error');
+    btns.forEach((b, i) => { b.disabled = false; b.style.opacity = ''; b.textContent = textos[i]; });
   }
 }
 
